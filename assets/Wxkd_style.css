@@ -1,0 +1,326 @@
+/* assets/Wxkd_style.css */
+
+/* Estilos gerais */
+body {
+    background-color: #f8f9fa;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Container principal da tabela */
+.table-container {
+    background: #fff;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+}
+
+/* Cards com filtro */
+.card-filter {
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+}
+
+.card-filter:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.2);
+}
+
+.card-filter.active {
+    border-color: #0d6efd;
+    box-shadow: 0 4px 8px rgba(13,110,253,0.3);
+}
+
+.card-filter.active .card-text {
+    color: #0d6efd !important;
+}
+
+/* Indicador de filtro */
+.alert {
+    border-radius: 8px;
+    border: none;
+}
+
+.card-title {
+    color: #6c757d;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.card-text {
+    font-size: 2.5rem;
+    font-weight: bold;
+    margin: 0;
+}
+
+/* Container de pesquisa com ícone */
+.search-container {
+    position: relative;
+    width: 250px;
+}
+
+.search-container input {
+    padding-right: 35px;
+}
+
+.search-icon {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #6c757d;
+    pointer-events: none;
+}
+
+/* Textos pequenos */
+.text-sm {
+    font-size: 0.875rem;
+}
+
+/* Controles superiores */
+.gap-2 {
+    gap: 0.5rem;
+}
+
+/* Scroll horizontal para tabela */
+.table-responsive-horizontal {
+    border-radius: 8px;
+    overflow-x: auto;
+    overflow-y: visible;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    white-space: nowrap;
+}
+
+.table-responsive-horizontal::-webkit-scrollbar {
+    height: 8px;
+}
+
+.table-responsive-horizontal::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.table-responsive-horizontal::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+.table-responsive-horizontal::-webkit-scrollbar-thumb:hover {
+    background: #a1a1a1;
+}
+
+/* Coluna de checkbox */
+.checkbox-column {
+    width: 40px;
+    min-width: 40px;
+    text-align: center;
+    position: sticky;
+    left: 0;
+    background-color: inherit;
+    z-index: 10;
+}
+
+.checkbox-column input[type="checkbox"] {
+    margin: 0;
+}
+
+/* Garantir que a tabela mantenha largura mínima */
+#dataTable {
+    min-width: 1200px;
+    white-space: nowrap;
+}
+
+#dataTable th,
+#dataTable td {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
+}
+
+/* Sticky para header da checkbox */
+.table-dark .checkbox-column {
+    background-color: var(--bs-dark);
+    border-right: 1px solid rgba(255,255,255,0.2);
+}
+
+.table-striped tbody tr:nth-of-type(odd) .checkbox-column {
+    background-color: rgba(0,0,0,0.05);
+}
+
+.table-hover tbody tr:hover .checkbox-column {
+    background-color: rgba(0,123,255,0.05);
+}
+
+.table {
+    margin-bottom: 0;
+}
+
+.table thead th {
+    border-top: none;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    letter-spacing: 0.5px;
+}
+
+.table tbody tr:hover {
+    background-color: rgba(0,123,255,0.05);
+}
+
+/* Ordenação */
+.sortable {
+    cursor: pointer;
+    position: relative;
+    user-select: none;
+    transition: background-color 0.2s ease;
+}
+
+.sortable:hover {
+    background-color: rgb(70, 70, 70) !important;
+}
+
+.sortable::after {
+    content: '';
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-bottom: 4px solid #adb5bd;
+    opacity: 0.5;
+}
+
+.sortable.sort-asc::after {
+    border-bottom: 4px solid #fff;
+    border-top: none;
+    opacity: 1;
+}
+
+.sortable.sort-desc::after {
+    border-top: 4px solid #fff;
+    border-bottom: none;
+    opacity: 1;
+}
+
+/* Paginação */
+.pagination-info {
+    font-size: 0.875rem;
+    color: #6c757d;
+}
+
+.pagination .page-link {
+    border-radius: 4px;
+    margin: 0 2px;
+    border: 1px solid #dee2e6;
+    color: #495057;
+    padding: 0.375rem 0.75rem;
+}
+
+.pagination .page-link:hover {
+    background-color: #e9ecef;
+    border-color: #adb5bd;
+}
+
+.pagination .page-item.active .page-link {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+.pagination .page-item.disabled .page-link {
+    color: #6c757d;
+    background-color: #fff;
+    border-color: #dee2e6;
+}
+
+/* Botões */
+.btn {
+    font-weight: 500;
+    border-radius: 6px;
+    padding: 6px 12px;
+}
+
+.btn-sm {
+    padding: 4px 8px;
+    font-size: 0.875rem;
+}
+
+.btn:focus {
+    box-shadow: none;
+}
+
+/* Campos de formulário */
+.form-control-sm, .form-select-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    border-radius: 4px;
+}
+
+#searchInput {
+    border-radius: 6px;
+    border: 1px solid #ced4da;
+}
+
+#searchInput:focus {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 0.2rem rgba(13,110,253,0.25);
+}
+
+/* Badge de status */
+.badge {
+    font-size: 0.75rem;
+    padding: 4px 8px;
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+    .table-container {
+        padding: 15px;
+    }
+    
+    .card-text {
+        font-size: 2rem;
+    }
+    
+    .table-responsive {
+        font-size: 0.9rem;
+    }
+    
+    .d-flex.gap-2 {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .search-container {
+        width: 100%;
+    }
+    
+    .btn-sm {
+        width: 100%;
+        margin-bottom: 4px;
+    }
+    
+    .pagination-info {
+        text-align: center;
+        margin-bottom: 10px;
+    }
+    
+    .d-flex.justify-content-between {
+        flex-direction: column;
+    }
+}
+
+/* Otimizações de performance */
+.table-responsive {
+    will-change: scroll-position;
+}
+
+.sortable {
+    will-change: background-color;
+}
