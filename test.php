@@ -1,61 +1,44 @@
 <?php
-// models/Wxkd_DashboardModel.php - IMPLEMENTAÇÃO REAL
+// models/Wxkd_DashboardModel.php - IMPLEMENTAÇÃO REAL PARA SEU DATABASE WRAPPER
 class Wxkd_DashboardModel {
-    private $db;
+    public $sql;
     
-    public function __construct() {
-        // Configurar conexão com banco de dados
+    public function Wxkd_Construct() {
+        // Inicializar sua conexão customizada
         try {
-            $host = 'localhost';
-            $dbname = 'sistema_lojas';
-            $username = 'root';
-            $password = '';
-            
-            $this->db = new PDO(
-                "mysql:host=$host;dbname=$dbname;charset=utf8mb4",
-                $username,
-                $password,
-                [
-                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                    PDO::ATTR_EMULATE_PREPARES => false
-                ]
-            );
-        } catch (PDOException $e) {
+            $this->sql = new MSSQL();
+        } catch (Exception $e) {
             throw new Exception("Erro na conexão com banco de dados: " . $e->getMessage());
         }
     }
     
     public function getCardData() {
         try {
-            $cardData = [];
+            $cardData = array();
             
-            // Cadastramento - lojas ativas e pendentes
-            $stmt = $this->db->prepare("
+            // Cadastramento - usando qtdRows
+            $cardData['cadastramento'] = $this->sql->qtdRows("
                 SELECT COUNT(*) as total 
                 FROM lojas_cadastramento 
                 WHERE status IN ('Ativo', 'Pendente')
             ");
-            $stmt->execute();
-            $cardData['cadastramento'] = $stmt->fetchColumn();
             
-            // Descadastramento - lojas ativas e pendentes
-            $stmt = $this->db->prepare("
+            // Descadastramento
+            $cardData['descadastramento'] = $this->sql->qtdRows("
                 SELECT COUNT(*) as total 
                 FROM lojas_descadastramento 
                 WHERE status IN ('Ativo', 'Pendente')
             ");
-            $stmt->execute();
-            $cardData['descadastramento'] = $stmt->fetchColumn();
             
-            // Histórico - todos os processos realizados
-            $stmt = $this->db->prepare("SELECT COUNT(*) as total FROM lojas_historico");
-            $stmt->execute();
-            $cardData['historico'] = $stmt->fetchColumn();
+            // Histórico
+            $cardData['historico'] = $this->sql->qtdRows("
+                SELECT COUNT(*) as total 
+                FROM lojas_historico
+            ");
             
             return $cardData;
             
-        } catch (PDOException $e) {
+        } catch (Exception $e) {
             throw new Exception("Erro ao buscar dados dos cards: " . $e->getMessage());
         }
     }
@@ -67,20 +50,22 @@ class Wxkd_DashboardModel {
     
     public function getTableDataByFilter($filter = 'all') {
         try {
+            $sql = "";
+            
             switch($filter) {
                 case 'cadastramento':
-                    $stmt = $this->db->prepare("
+                    $sql = "
                         SELECT id, nome, email, telefone, cidade, estado, data_cadastro, 
                                status, tipo, categoria, observacoes, 'cadastramento' as tipo_processo,
                                created_at, updated_at
                         FROM lojas_cadastramento 
                         WHERE status IN ('Ativo', 'Pendente')
                         ORDER BY created_at DESC
-                    ");
+                    ";
                     break;
                     
                 case 'descadastramento':
-                    $stmt = $this->db->prepare("
+                    $sql = "
                         SELECT id, nome, email, telefone, cidade, estado, data_cadastro, 
                                status, tipo, categoria, observacoes, 'descadastramento' as tipo_processo,
                                motivo_descadastramento, data_solicitacao_descadastramento,
@@ -88,11 +73,11 @@ class Wxkd_DashboardModel {
                         FROM lojas_descadastramento 
                         WHERE status IN ('Ativo', 'Pendente')
                         ORDER BY created_at DESC
-                    ");
+                    ";
                     break;
                     
                 case 'historico':
-                    $stmt = $this->db->prepare("
+                    $sql = "
                         SELECT id, nome, email, telefone, cidade, estado, data_cadastro, 
                                status, tipo, categoria, observacoes, 'historico' as tipo_processo,
                                processo_origem, data_processamento, usuario_processamento, 
@@ -104,11 +89,11 @@ class Wxkd_DashboardModel {
                                END as status_processo
                         FROM lojas_historico 
                         ORDER BY data_processamento DESC
-                    ");
+                    ";
                     break;
                     
-                default: // 'all' - mostra cadastramento e descadastramento
-                    $stmt = $this->db->prepare("
+                default: // 'all' - usando UNION ALL
+                    $sql = "
                         SELECT id, nome, email, telefone, cidade, estado, data_cadastro, 
                                status, tipo, categoria, observacoes, 'cadastramento' as tipo_processo,
                                created_at as data_referencia
@@ -124,64 +109,67 @@ class Wxkd_DashboardModel {
                         WHERE status IN ('Ativo', 'Pendente')
                         
                         ORDER BY data_referencia DESC
-                    ");
+                    ";
             }
             
-            $stmt->execute();
-            return $stmt->fetchAll();
+            // Usando select() do seu wrapper
+            $result = $this->sql->select($sql);
+            return $result;
             
-        } catch (PDOException $e) {
+        } catch (Exception $e) {
             throw new Exception("Erro ao buscar dados da tabela: " . $e->getMessage());
         }
     }
     
     public function getSelectedTableData($selectedIds, $filter = 'all') {
         if (empty($selectedIds)) {
-            return [];
+            return array();
         }
         
         try {
-            $placeholders = str_repeat('?,', count($selectedIds) - 1) . '?';
+            // Criar lista de IDs para SQL
+            $idsList = "'" . implode("','", $selectedIds) . "'";
+            $sql = "";
             
             switch($filter) {
                 case 'cadastramento':
-                    $stmt = $this->db->prepare("
+                    $sql = "
                         SELECT * FROM lojas_cadastramento 
-                        WHERE id IN ($placeholders)
-                    ");
+                        WHERE id IN ($idsList)
+                    ";
                     break;
                     
                 case 'descadastramento':
-                    $stmt = $this->db->prepare("
+                    $sql = "
                         SELECT * FROM lojas_descadastramento 
-                        WHERE id IN ($placeholders)
-                    ");
+                        WHERE id IN ($idsList)
+                    ";
                     break;
                     
                 case 'historico':
-                    $stmt = $this->db->prepare("
+                    $sql = "
                         SELECT * FROM lojas_historico 
-                        WHERE id IN ($placeholders)
-                    ");
+                        WHERE id IN ($idsList)
+                    ";
                     break;
                     
                 default:
                     // Para 'all', buscar em ambas as tabelas
-                    $stmt = $this->db->prepare("
+                    $sql = "
                         SELECT *, 'cadastramento' as tipo_processo FROM lojas_cadastramento 
-                        WHERE id IN ($placeholders)
+                        WHERE id IN ($idsList)
                         
                         UNION ALL
                         
                         SELECT *, 'descadastramento' as tipo_processo FROM lojas_descadastramento 
-                        WHERE id IN ($placeholders)
-                    ");
+                        WHERE id IN ($idsList)
+                    ";
             }
             
-            $stmt->execute($selectedIds);
-            return $stmt->fetchAll();
+            $result = $this->sql->select($sql);
+            return $result;
             
-        } catch (PDOException $e) {
+        } catch (Exception $e) {
             throw new Exception("Erro ao buscar dados selecionados: " . $e->getMessage());
         }
     }
@@ -192,21 +180,22 @@ class Wxkd_DashboardModel {
         }
         
         try {
-            $this->db->beginTransaction();
+            // Iniciar transação - ajuste conforme seu wrapper
+            // Pode ser: $this->db->beginTransaction(); ou $this->db->query("BEGIN TRANSACTION");
+            $this->startTransaction();
             
-            $placeholders = str_repeat('?,', count($selectedIds) - 1) . '?';
+            $idsList = "'" . implode("','", $selectedIds) . "'";
             
-            // 1. Buscar dados que serão movidos
-            $selectStmt = $this->db->prepare("SELECT * FROM lojas_$sourceTable WHERE id IN ($placeholders)");
-            $selectStmt->execute($selectedIds);
-            $dataToMove = $selectStmt->fetchAll();
+            // 1. Buscar dados que serão movidos usando select
+            $sql = "SELECT * FROM lojas_$sourceTable WHERE id IN ($idsList)";
+            $dataToMove = $this->sql->select($sql);
             
             if (empty($dataToMove)) {
-                $this->db->rollback();
+                $this->rollbackTransaction();
                 return false;
             }
             
-            // 2. Inserir no histórico
+            // 2. Inserir no histórico usando insert
             foreach ($dataToMove as $row) {
                 $insertSql = "
                     INSERT INTO lojas_historico 
@@ -214,77 +203,143 @@ class Wxkd_DashboardModel {
                      observacoes, processo_origem, data_processamento, usuario_processamento, 
                      arquivo_gerado";
                 
-                $values = [
-                    $row['nome'], $row['email'], $row['telefone'], $row['cidade'], $row['estado'],
-                    $row['data_cadastro'], $row['status'], $row['tipo'], $row['categoria'], 
-                    $row['observacoes'], $sourceTable, date('Y-m-d H:i:s'), 
-                    $_SESSION['user_id'] ?? 'sistema',
-                    'arquivo_' . date('YmdHis') . '_' . $row['id'] . '.txt'
-                ];
+                $valuesSql = " VALUES (
+                    '" . $this->escapeString($row['nome']) . "',
+                    '" . $this->escapeString($row['email']) . "',
+                    '" . $this->escapeString($row['telefone']) . "',
+                    '" . $this->escapeString($row['cidade']) . "',
+                    '" . $this->escapeString($row['estado']) . "',
+                    '" . $this->escapeString($row['data_cadastro']) . "',
+                    '" . $this->escapeString($row['status']) . "',
+                    '" . $this->escapeString($row['tipo']) . "',
+                    '" . $this->escapeString($row['categoria']) . "',
+                    '" . $this->escapeString($row['observacoes']) . "',
+                    '$sourceTable',
+                    GETDATE(),
+                    '" . $this->getCurrentUser() . "',
+                    'arquivo_" . date('YmdHis') . "_" . $row['id'] . ".txt'";
                 
                 // Adicionar campos específicos do descadastramento
-                if ($sourceTable === 'descadastramento') {
+                if ($sourceTable === 'descadastramento' && isset($row['motivo_descadastramento'])) {
                     $insertSql .= ", motivo_descadastramento, data_solicitacao_descadastramento";
-                    $values[] = $row['motivo_descadastramento'] ?? null;
-                    $values[] = $row['data_solicitacao_descadastramento'] ?? null;
+                    $valuesSql .= ", '" . $this->escapeString($row['motivo_descadastramento']) . "'";
+                    $valuesSql .= ", '" . $this->escapeString($row['data_solicitacao_descadastramento']) . "'";
                 }
                 
-                $insertSql .= ") VALUES (" . str_repeat('?,', count($values) - 1) . "?)";
+                $valuesSql .= ")";
+                $fullInsertSql = $insertSql . ")" . $valuesSql;
                 
-                $insertStmt = $this->db->prepare($insertSql);
-                $insertStmt->execute($values);
+                // Executar insert
+                $this->sql->insert($fullInsertSql);
             }
             
-            // 3. Remover da tabela original
-            $deleteStmt = $this->db->prepare("DELETE FROM lojas_$sourceTable WHERE id IN ($placeholders)");
-            $deleteStmt->execute($selectedIds);
+            // 3. Remover da tabela original usando delete
+            $deleteSql = "DELETE FROM lojas_$sourceTable WHERE id IN ($idsList)";
+            $this->sql->delete($deleteSql);
             
             // 4. Log da operação
             $this->logOperation($selectedIds, $sourceTable, count($dataToMove));
             
-            $this->db->commit();
+            $this->commitTransaction();
             return true;
             
-        } catch (PDOException $e) {
-            $this->db->rollback();
+        } catch (Exception $e) {
+            $this->rollbackTransaction();
             throw new Exception("Erro ao mover dados para histórico: " . $e->getMessage());
         }
     }
     
+    private function startTransaction() {
+        // Ajuste conforme seu wrapper:
+        // Opção 1: $this->sql->beginTransaction();
+        // Opção 2: $this->sql->query("BEGIN TRANSACTION");
+        // Opção 3: $this->sql->execute("BEGIN TRANSACTION");
+        
+        // Temporário - substitua pela sua implementação:
+        try {
+            $this->sql->select("BEGIN TRANSACTION");
+        } catch (Exception $e) {
+            // Se select não funcionar, tente outros métodos disponíveis
+        }
+    }
+    
+    private function commitTransaction() {
+        // Ajuste conforme seu wrapper:
+        try {
+            $this->sql->select("COMMIT TRANSACTION");
+        } catch (Exception $e) {
+            // Implementar conforme seu wrapper
+        }
+    }
+    
+    private function rollbackTransaction() {
+        // Ajuste conforme seu wrapper:
+        try {
+            $this->sql->select("ROLLBACK TRANSACTION");
+        } catch (Exception $e) {
+            // Implementar conforme seu wrapper
+        }
+    }
+    
+    private function getCurrentUser() {
+        // Pegar usuário atual
+        if (isset($_SESSION['user_id'])) {
+            return $_SESSION['user_id'];
+        }
+        return 'sistema';
+    }
+    
+    private function escapeString($value) {
+        // Escapar strings para SQL - ajuste conforme necessário
+        if ($value === null) {
+            return '';
+        }
+        return str_replace("'", "''", $value);
+    }
+    
     private function logOperation($selectedIds, $sourceTable, $recordCount) {
         try {
-            // Criar tabela de log se não existir
-            $createLogTable = "
-                CREATE TABLE IF NOT EXISTS operacoes_log (
-                    id INT PRIMARY KEY AUTO_INCREMENT,
-                    tipo_operacao VARCHAR(50) NOT NULL,
-                    tabela_origem VARCHAR(50) NOT NULL,
-                    ids_processados TEXT NOT NULL,
-                    quantidade_registros INT NOT NULL,
-                    usuario VARCHAR(100),
-                    data_operacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    observacoes TEXT
-                )
-            ";
-            $this->db->exec($createLogTable);
+            // Verificar se tabela de log existe
+            $tableExists = $this->sql->qtdRows("
+                SELECT COUNT(*) as existe 
+                FROM INFORMATION_SCHEMA.TABLES 
+                WHERE TABLE_NAME = 'operacoes_log'
+            ") > 0;
             
-            // Inserir log
-            $logStmt = $this->db->prepare("
+            if (!$tableExists) {
+                // Criar tabela de log usando comando disponível
+                $createLogTable = "
+                    CREATE TABLE operacoes_log (
+                        id INT IDENTITY(1,1) PRIMARY KEY,
+                        tipo_operacao NVARCHAR(50) NOT NULL,
+                        tabela_origem NVARCHAR(50) NOT NULL,
+                        ids_processados NVARCHAR(MAX) NOT NULL,
+                        quantidade_registros INT NOT NULL,
+                        usuario NVARCHAR(100),
+                        data_operacao DATETIME DEFAULT GETDATE(),
+                        observacoes NVARCHAR(MAX)
+                    )
+                ";
+                $this->sql->select($createLogTable); // ou método apropriado para DDL
+            }
+            
+            // Inserir log usando insert
+            $logSql = "
                 INSERT INTO operacoes_log 
                 (tipo_operacao, tabela_origem, ids_processados, quantidade_registros, usuario, observacoes)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ");
+                VALUES (
+                    'conversao_txt',
+                    '$sourceTable',
+                    '" . implode(',', $selectedIds) . "',
+                    $recordCount,
+                    '" . $this->getCurrentUser() . "',
+                    'Conversão realizada de $recordCount registro(s) da tabela lojas_$sourceTable para histórico'
+                )
+            ";
             
-            $logStmt->execute([
-                'conversao_txt',
-                $sourceTable,
-                implode(',', $selectedIds),
-                $recordCount,
-                $_SESSION['user_id'] ?? 'sistema',
-                "Conversão realizada de $recordCount registro(s) da tabela lojas_$sourceTable para histórico"
-            ]);
+            $this->sql->insert($logSql);
             
-        } catch (PDOException $e) {
+        } catch (Exception $e) {
             // Log não deve interromper a operação principal
             error_log("Erro ao criar log de operação: " . $e->getMessage());
         }
@@ -303,7 +358,7 @@ class Wxkd_DashboardModel {
                 foreach ($row as $key => $value) {
                     // Sanitizar nome do elemento XML
                     $elementName = preg_replace('/[^a-zA-Z0-9_]/', '_', $key);
-                    $child = $item->addChild($elementName, htmlspecialchars($value ?? ''));
+                    $child = $item->addChild($elementName, htmlspecialchars($value ? $value : ''));
                 }
             }
             
@@ -317,7 +372,7 @@ class Wxkd_DashboardModel {
     public function generateTXT($data) {
         try {
             $txt = '';
-            $headers = [];
+            $headers = array();
             
             // Gerar cabeçalhos (primeira linha)
             if (!empty($data)) {
@@ -327,9 +382,9 @@ class Wxkd_DashboardModel {
             
             // Gerar dados
             foreach ($data as $row) {
-                $rowData = [];
+                $rowData = array();
                 foreach ($headers as $header) {
-                    $rowData[] = $row[$header] ?? '';
+                    $rowData[] = isset($row[$header]) ? $row[$header] : '';
                 }
                 $txt .= implode("\t", $rowData) . "\n";
             }
@@ -370,18 +425,19 @@ class Wxkd_DashboardModel {
     
     private function updateHistoryWithConvertedLine($originalId, $convertedLine) {
         try {
-            // Atualizar registro no histórico com a linha convertida
-            $stmt = $this->db->prepare("
+            // Atualizar registro no histórico com a linha convertida usando update
+            $updateSql = "
                 UPDATE lojas_historico 
-                SET linha_convertida = ? 
+                SET linha_convertida = '" . $this->escapeString($convertedLine) . "'
                 WHERE id = (
-                    SELECT MAX(id) FROM lojas_historico 
-                    WHERE observacoes LIKE CONCAT('%', ?, '%')
+                    SELECT TOP 1 id FROM lojas_historico 
+                    WHERE observacoes LIKE '%$originalId%'
+                    ORDER BY data_processamento DESC
                 )
-            ");
-            $stmt->execute([$convertedLine, $originalId]);
+            ";
+            $this->sql->update($updateSql);
             
-        } catch (PDOException $e) {
+        } catch (Exception $e) {
             // Não interromper processo principal
             error_log("Erro ao atualizar linha convertida: " . $e->getMessage());
         }
@@ -389,27 +445,27 @@ class Wxkd_DashboardModel {
     
     private function convertRowToSpecificFormat($row) {
         // MAPA DE CONVERSÃO REAL
-        $conversionMap = [
-            'id' => ['type' => 'numeric', 'length' => 10, 'position' => 1],
-            'nome' => ['type' => 'text_hash', 'length' => 15, 'position' => 2],
-            'email' => ['type' => 'text_hash', 'length' => 20, 'position' => 3],
-            'telefone' => ['type' => 'numeric_clean', 'length' => 11, 'position' => 4],
-            'cidade' => ['type' => 'text_hash', 'length' => 10, 'position' => 5],
-            'estado' => ['type' => 'state_code', 'length' => 2, 'position' => 6],
-            'data_cadastro' => ['type' => 'date_numeric', 'length' => 8, 'position' => 7],
-            'status' => ['type' => 'status_code', 'length' => 1, 'position' => 8],
-            'tipo' => ['type' => 'type_code', 'length' => 3, 'position' => 9],
-            'categoria' => ['type' => 'category_code', 'length' => 5, 'position' => 10],
-            'observacoes' => ['type' => 'text_hash', 'length' => 25, 'position' => 11]
-        ];
+        $conversionMap = array(
+            'id' => array('type' => 'numeric', 'length' => 10, 'position' => 1),
+            'nome' => array('type' => 'text_hash', 'length' => 15, 'position' => 2),
+            'email' => array('type' => 'text_hash', 'length' => 20, 'position' => 3),
+            'telefone' => array('type' => 'numeric_clean', 'length' => 11, 'position' => 4),
+            'cidade' => array('type' => 'text_hash', 'length' => 10, 'position' => 5),
+            'estado' => array('type' => 'state_code', 'length' => 2, 'position' => 6),
+            'data_cadastro' => array('type' => 'date_numeric', 'length' => 8, 'position' => 7),
+            'status' => array('type' => 'status_code', 'length' => 1, 'position' => 8),
+            'tipo' => array('type' => 'type_code', 'length' => 3, 'position' => 9),
+            'categoria' => array('type' => 'category_code', 'length' => 5, 'position' => 10),
+            'observacoes' => array('type' => 'text_hash', 'length' => 25, 'position' => 11)
+        );
         
-        $convertedValues = [];
+        $convertedValues = array();
         
         // Converter cada campo conforme o mapa
         foreach ($row as $field => $value) {
             if (isset($conversionMap[$field])) {
                 $config = $conversionMap[$field];
-                $convertedValue = $this->convertValue($value ?? '', $config['type'], $config['length']);
+                $convertedValue = $this->convertValue($value ? $value : '', $config['type'], $config['length']);
                 $convertedValues[$config['position']] = $convertedValue;
             }
         }
@@ -445,25 +501,26 @@ class Wxkd_DashboardModel {
         switch ($type) {
             case 'numeric':
                 $number = preg_replace('/[^0-9]/', '', (string)$value);
-                return str_pad($number ?: '0', $maxLength, '0', STR_PAD_LEFT);
+                return str_pad($number ? $number : '0', $maxLength, '0', STR_PAD_LEFT);
                 
             case 'numeric_clean':
                 $clean = preg_replace('/[^0-9]/', '', (string)$value);
-                return str_pad($clean ?: '0', $maxLength, '0', STR_PAD_LEFT);
+                return str_pad($clean ? $clean : '0', $maxLength, '0', STR_PAD_LEFT);
                 
             case 'text_hash':
                 $hash = abs(crc32((string)$value));
                 return str_pad((string)$hash, $maxLength, '0', STR_PAD_LEFT);
                 
             case 'state_code':
-                $stateCodes = [
+                $stateCodes = array(
                     'AC' => '12', 'AL' => '17', 'AP' => '16', 'AM' => '23', 'BA' => '29', 'CE' => '23',
                     'DF' => '53', 'ES' => '32', 'GO' => '52', 'MA' => '21', 'MT' => '51', 'MS' => '50',
                     'MG' => '31', 'PA' => '15', 'PB' => '25', 'PR' => '41', 'PE' => '26', 'PI' => '22',
                     'RJ' => '33', 'RN' => '24', 'RS' => '43', 'RO' => '11', 'RR' => '14', 'SC' => '42',
                     'SP' => '35', 'SE' => '28', 'TO' => '27'
-                ];
-                return $stateCodes[strtoupper($value)] ?? '99';
+                );
+                $upperValue = strtoupper($value);
+                return isset($stateCodes[$upperValue]) ? $stateCodes[$upperValue] : '99';
                 
             case 'date_numeric':
                 $timestamp = strtotime($value);
@@ -474,11 +531,11 @@ class Wxkd_DashboardModel {
                 return str_pad($date, $maxLength, '0', STR_PAD_LEFT);
                 
             case 'status_code':
-                $statusCodes = [
+                $statusCodes = array(
                     'Ativo' => '1', 'Inativo' => '0', 'Pendente' => '2', 
                     'Processado' => '3', 'Cancelado' => '4'
-                ];
-                return $statusCodes[$value] ?? '9';
+                );
+                return isset($statusCodes[$value]) ? $statusCodes[$value] : '9';
                 
             case 'type_code':
                 $hash = abs(crc32((string)$value)) % 999;
@@ -494,73 +551,58 @@ class Wxkd_DashboardModel {
         }
     }
     
-    // Métodos utilitários adicionais
+    // Métodos utilitários
     
     public function getStatistics() {
         try {
-            $stats = [];
-            
-            // Estatísticas gerais
-            $stmt = $this->db->prepare("
-                SELECT 
-                    (SELECT COUNT(*) FROM lojas_cadastramento) as total_cadastramento,
-                    (SELECT COUNT(*) FROM lojas_descadastramento) as total_descadastramento,
-                    (SELECT COUNT(*) FROM lojas_historico) as total_historico,
-                    (SELECT COUNT(*) FROM lojas_historico WHERE DATE(data_processamento) = CURDATE()) as processados_hoje
+            // Usando qtdRows para contar
+            $stats = array();
+            $stats['total_cadastramento'] = $this->sql->qtdRows("SELECT COUNT(*) FROM lojas_cadastramento");
+            $stats['total_descadastramento'] = $this->sql->qtdRows("SELECT COUNT(*) FROM lojas_descadastramento");
+            $stats['total_historico'] = $this->sql->qtdRows("SELECT COUNT(*) FROM lojas_historico");
+            $stats['processados_hoje'] = $this->sql->qtdRows("
+                SELECT COUNT(*) FROM lojas_historico 
+                WHERE CAST(data_processamento AS DATE) = CAST(GETDATE() AS DATE)
             ");
-            $stmt->execute();
-            $stats = $stmt->fetch();
-            
-            // Top 5 cidades com mais lojas
-            $stmt = $this->db->prepare("
-                SELECT cidade, COUNT(*) as total FROM (
-                    SELECT cidade FROM lojas_cadastramento
-                    UNION ALL
-                    SELECT cidade FROM lojas_descadastramento
-                    UNION ALL
-                    SELECT cidade FROM lojas_historico
-                ) as todas_cidades
-                GROUP BY cidade
-                ORDER BY total DESC
-                LIMIT 5
-            ");
-            $stmt->execute();
-            $stats['top_cidades'] = $stmt->fetchAll();
             
             return $stats;
             
-        } catch (PDOException $e) {
+        } catch (Exception $e) {
             throw new Exception("Erro ao buscar estatísticas: " . $e->getMessage());
         }
     }
     
     public function validateTableStructure() {
         try {
-            $requiredTables = ['lojas_cadastramento', 'lojas_descadastramento', 'lojas_historico'];
-            $existingTables = [];
+            $requiredTables = array('lojas_cadastramento', 'lojas_descadastramento', 'lojas_historico');
+            $existingTables = array();
             
             foreach ($requiredTables as $table) {
-                $stmt = $this->db->prepare("SHOW TABLES LIKE ?");
-                $stmt->execute([$table]);
-                if ($stmt->rowCount() > 0) {
+                $exists = $this->sql->qtdRows("
+                    SELECT COUNT(*) as existe 
+                    FROM INFORMATION_SCHEMA.TABLES 
+                    WHERE TABLE_NAME = '$table'
+                ") > 0;
+                
+                if ($exists) {
                     $existingTables[] = $table;
                 }
             }
             
-            return [
+            return array(
                 'required' => $requiredTables,
                 'existing' => $existingTables,
                 'missing' => array_diff($requiredTables, $existingTables),
                 'all_present' => count($existingTables) === count($requiredTables)
-            ];
+            );
             
-        } catch (PDOException $e) {
+        } catch (Exception $e) {
             throw new Exception("Erro ao validar estrutura das tabelas: " . $e->getMessage());
         }
     }
     
     public function __destruct() {
-        $this->db = null;
+        $this->sql = null;
     }
 }
 ?>
