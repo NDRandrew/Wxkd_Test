@@ -59,7 +59,21 @@ class Wxkd_DashboardModel {
             try {
                 // Check if the getChaveCadastro method exists and works
                 if (method_exists($this, 'getChaveCadastro')) {
+                    error_log("getChaveCadastro method exists, calling with filter: " . $filter);
+                    
                     $chaveResults = $this->getChaveCadastro($filter);
+                    error_log("getChaveCadastro returned: " . gettype($chaveResults));
+                    
+                    if (is_array($chaveResults)) {
+                        error_log("getChaveCadastro returned array with " . count($chaveResults) . " items");
+                        
+                        // Debug: show first few results
+                        if (!empty($chaveResults)) {
+                            error_log("First chave result: " . print_r($chaveResults[0], true));
+                        }
+                    } else {
+                        error_log("getChaveCadastro did not return array, returned: " . gettype($chaveResults));
+                    }
                     
                     if (!empty($chaveResults) && is_array($chaveResults)) {
                         // Extract chave_loja values from results
@@ -67,22 +81,38 @@ class Wxkd_DashboardModel {
                         foreach ($chaveResults as $row) {
                             if (isset($row['chave_loja']) && !empty($row['chave_loja'])) {
                                 $chavesLoja[] = "'" . $this->escapeString($row['chave_loja']) . "'";
+                                error_log("Added chave_loja: " . $row['chave_loja']);
+                            } else {
+                                error_log("Row missing chave_loja or empty: " . print_r($row, true));
                             }
                         }
+                        
+                        error_log("Total chavesLoja extracted: " . count($chavesLoja));
                         
                         // Build WHERE clause only if we have chaves
                         if (!empty($chavesLoja)) {
                             $whereClause = " AND chave_loja IN (" . implode(',', $chavesLoja) . ")";
                             $useChaveFilter = true;
+                            error_log("Built WHERE clause: " . $whereClause);
+                        } else {
+                            error_log("No valid chave_loja values found, not using chave filter");
                         }
+                    } else {
+                        error_log("getChaveCadastro returned empty or non-array result");
                     }
+                } else {
+                    error_log("getChaveCadastro method does not exist");
                 }
             } catch (Exception $e) {
                 // If chave filtering fails, continue without it
-                error_log("Chave filtering failed: " . $e->getMessage());
+                error_log("Chave filtering failed with exception: " . $e->getMessage());
+                error_log("Exception trace: " . $e->getTraceAsString());
                 $useChaveFilter = false;
                 $whereClause = '';
             }
+            
+            error_log("Final useChaveFilter: " . ($useChaveFilter ? 'true' : 'false'));
+            error_log("Final whereClause: '" . $whereClause . "'");
             
             switch($filter) {
                 case 'cadastramento':
