@@ -61,44 +61,50 @@ class Wxkd_DashboardModel {
                 if (method_exists($this, 'getChaveCadastro')) {
                     error_log("getChaveCadastro method exists, calling with filter: " . $filter);
                     
-                    $chaveResults = $this->getChaveCadastro($filter);
-                    error_log("getChaveCadastro returned: " . gettype($chaveResults));
-                    
-                    if (is_array($chaveResults)) {
-                        error_log("getChaveCadastro returned array with " . count($chaveResults) . " items");
+                    // For 'all' filter, your function probably doesn't handle it
+                    // So we'll handle 'all' case specially later in the switch
+                    if ($filter !== 'all') {
+                        $chaveResults = $this->getChaveCadastro($filter);
+                        error_log("getChaveCadastro returned: " . gettype($chaveResults));
                         
-                        // Debug: show first few results
-                        if (!empty($chaveResults)) {
-                            error_log("First chave result: " . print_r($chaveResults[0], true));
-                        }
-                    } else {
-                        error_log("getChaveCadastro did not return array, returned: " . gettype($chaveResults));
-                    }
-                    
-                    if (!empty($chaveResults) && is_array($chaveResults)) {
-                        // Extract chave_loja values from results
-                        $chavesLoja = array();
-                        foreach ($chaveResults as $row) {
-                            if (isset($row['chave_loja']) && !empty($row['chave_loja'])) {
-                                $chavesLoja[] = "'" . $this->escapeString($row['chave_loja']) . "'";
-                                error_log("Added chave_loja: " . $row['chave_loja']);
-                            } else {
-                                error_log("Row missing chave_loja or empty: " . print_r($row, true));
+                        if (is_array($chaveResults)) {
+                            error_log("getChaveCadastro returned array with " . count($chaveResults) . " items");
+                            
+                            // Debug: show first few results
+                            if (!empty($chaveResults)) {
+                                error_log("First chave result: " . print_r($chaveResults[0], true));
                             }
+                        } else {
+                            error_log("getChaveCadastro did not return array, returned: " . gettype($chaveResults));
                         }
                         
-                        error_log("Total chavesLoja extracted: " . count($chavesLoja));
-                        
-                        // Build WHERE clause only if we have chaves
-                        if (!empty($chavesLoja)) {
-                            $whereClause = " AND chave_loja IN (" . implode(',', $chavesLoja) . ")";
-                            $useChaveFilter = true;
-                            error_log("Built WHERE clause: " . $whereClause);
+                        if (!empty($chaveResults) && is_array($chaveResults)) {
+                            // Extract chave_loja values from results
+                            $chavesLoja = array();
+                            foreach ($chaveResults as $row) {
+                                if (isset($row['chave_loja']) && !empty($row['chave_loja'])) {
+                                    $chavesLoja[] = "'" . $this->escapeString($row['chave_loja']) . "'";
+                                    error_log("Added chave_loja: " . $row['chave_loja']);
+                                } else {
+                                    error_log("Row missing chave_loja or empty: " . print_r($row, true));
+                                }
+                            }
+                            
+                            error_log("Total chavesLoja extracted: " . count($chavesLoja));
+                            
+                            // Build WHERE clause only if we have chaves
+                            if (!empty($chavesLoja)) {
+                                $whereClause = " AND chave_loja IN (" . implode(',', $chavesLoja) . ")";
+                                $useChaveFilter = true;
+                                error_log("Built WHERE clause: " . $whereClause);
+                            } else {
+                                error_log("No valid chave_loja values found, not using chave filter");
+                            }
                         } else {
-                            error_log("No valid chave_loja values found, not using chave filter");
+                            error_log("getChaveCadastro returned empty or non-array result");
                         }
                     } else {
-                        error_log("getChaveCadastro returned empty or non-array result");
+                        error_log("Filter is 'all' - will handle specially in switch statement");
                     }
                 } else {
                     error_log("getChaveCadastro method does not exist");
@@ -111,8 +117,8 @@ class Wxkd_DashboardModel {
                 $whereClause = '';
             }
             
-            error_log("Final useChaveFilter: " . ($useChaveFilter ? 'true' : 'false'));
-            error_log("Final whereClause: '" . $whereClause . "'");
+            error_log("Before switch - useChaveFilter: " . ($useChaveFilter ? 'true' : 'false'));
+            error_log("Before switch - whereClause: '" . $whereClause . "'");
             
             switch($filter) {
                 case 'cadastramento':
@@ -156,59 +162,97 @@ class Wxkd_DashboardModel {
                     break;
                     
                 default: // 'all' - usando UNION ALL
-                    if ($useChaveFilter) {
-                        // For 'all' with chave filtering, get separate chaves
-                        try {
-                            $chavesCadastramento = $this->getChaveCadastro('cadastramento');
-                            $chavesDescadastramento = $this->getChaveCadastro('descadastramento');
-                            
-                            // Build separate WHERE clauses
-                            $chavesLojaCad = array();
-                            if (!empty($chavesCadastramento)) {
-                                foreach ($chavesCadastramento as $row) {
-                                    if (isset($row['chave_loja']) && !empty($row['chave_loja'])) {
-                                        $chavesLojaCad[] = "'" . $this->escapeString($row['chave_loja']) . "'";
-                                    }
+                    // For 'all', we need to call getChaveCadastro separately for each type
+                    // since your function probably doesn't handle 'all' case
+                    
+                    $chavesLojaCad = array();
+                    $chavesLojaDesc = array();
+                    $whereClauseCad = '';
+                    $whereClauseDesc = '';
+                    
+                    try {
+                        error_log("Handling 'all' case - getting chaves for cadastramento");
+                        $chavesCadastramento = $this->getChaveCadastro('cadastramento');
+                        error_log("Cadastramento chaves type: " . gettype($chavesCadastramento));
+                        
+                        if (is_array($chavesCadastramento) && !empty($chavesCadastramento)) {
+                            foreach ($chavesCadastramento as $row) {
+                                if (isset($row['chave_loja']) && !empty($row['chave_loja'])) {
+                                    $chavesLojaCad[] = "'" . $this->escapeString($row['chave_loja']) . "'";
                                 }
                             }
-                            
-                            $chavesLojaDesc = array();
-                            if (!empty($chavesDescadastramento)) {
-                                foreach ($chavesDescadastramento as $row) {
-                                    if (isset($row['chave_loja']) && !empty($row['chave_loja'])) {
-                                        $chavesLojaDesc[] = "'" . $this->escapeString($row['chave_loja']) . "'";
-                                    }
+                            error_log("Cadastramento chaves found: " . count($chavesLojaCad));
+                        }
+                        
+                        error_log("Getting chaves for descadastramento");
+                        $chavesDescadastramento = $this->getChaveCadastro('descadastramento');
+                        error_log("Descadastramento chaves type: " . gettype($chavesDescadastramento));
+                        
+                        if (is_array($chavesDescadastramento) && !empty($chavesDescadastramento)) {
+                            foreach ($chavesDescadastramento as $row) {
+                                if (isset($row['chave_loja']) && !empty($row['chave_loja'])) {
+                                    $chavesLojaDesc[] = "'" . $this->escapeString($row['chave_loja']) . "'";
                                 }
                             }
-                            
-                            $whereClauseCad = !empty($chavesLojaCad) ? " AND chave_loja IN (" . implode(',', $chavesLojaCad) . ")" : " AND 1=0";
-                            $whereClauseDesc = !empty($chavesLojaDesc) ? " AND chave_loja IN (" . implode(',', $chavesLojaDesc) . ")" : " AND 1=0";
-                            
+                            error_log("Descadastramento chaves found: " . count($chavesLojaDesc));
+                        }
+                        
+                        // Build WHERE clauses
+                        $whereClauseCad = !empty($chavesLojaCad) ? " AND chave_loja IN (" . implode(',', $chavesLojaCad) . ")" : "";
+                        $whereClauseDesc = !empty($chavesLojaDesc) ? " AND chave_loja IN (" . implode(',', $chavesLojaDesc) . ")" : "";
+                        
+                        error_log("Cadastramento WHERE: " . $whereClauseCad);
+                        error_log("Descadastramento WHERE: " . $whereClauseDesc);
+                        
+                        // If both are empty, don't filter by chave
+                        if (empty($whereClauseCad) && empty($whereClauseDesc)) {
+                            error_log("No chaves found for either type, using query without chave filter");
                             $sql = "
                                 SELECT id, nome, email, telefone, cidade, estado, data_cadastro, 
                                        status, tipo, categoria, observacoes, 'cadastramento' as tipo_processo,
-                                       created_at as data_referencia, chave_loja
+                                       created_at as data_referencia
                                 FROM lojas_cadastramento 
-                                WHERE status IN ('Ativo', 'Pendente') $whereClauseCad
+                                WHERE status IN ('Ativo', 'Pendente')
                                 
                                 UNION ALL
                                 
                                 SELECT id, nome, email, telefone, cidade, estado, data_cadastro, 
                                        status, tipo, categoria, observacoes, 'descadastramento' as tipo_processo,
-                                       created_at as data_referencia, chave_loja
+                                       created_at as data_referencia
                                 FROM lojas_descadastramento 
-                                WHERE status IN ('Ativo', 'Pendente') $whereClauseDesc
+                                WHERE status IN ('Ativo', 'Pendente')
                                 
                                 ORDER BY data_referencia DESC
                             ";
-                        } catch (Exception $e) {
-                            // Fall back to simple query without chave filtering
-                            $useChaveFilter = false;
+                        } else {
+                            error_log("Using chave filtered query for 'all'");
+                            // If one or both have chaves, use filtered query
+                            $cadQuery = !empty($whereClauseCad) ? 
+                                "SELECT id, nome, email, telefone, cidade, estado, data_cadastro, 
+                                        status, tipo, categoria, observacoes, 'cadastramento' as tipo_processo,
+                                        created_at as data_referencia, chave_loja
+                                 FROM lojas_cadastramento 
+                                 WHERE status IN ('Ativo', 'Pendente') $whereClauseCad" :
+                                "SELECT NULL as id, NULL as nome, NULL as email, NULL as telefone, NULL as cidade, NULL as estado, NULL as data_cadastro, 
+                                        NULL as status, NULL as tipo, NULL as categoria, NULL as observacoes, 'cadastramento' as tipo_processo,
+                                        NULL as data_referencia, NULL as chave_loja WHERE 1=0";
+                                        
+                            $descQuery = !empty($whereClauseDesc) ? 
+                                "SELECT id, nome, email, telefone, cidade, estado, data_cadastro, 
+                                        status, tipo, categoria, observacoes, 'descadastramento' as tipo_processo,
+                                        created_at as data_referencia, chave_loja
+                                 FROM lojas_descadastramento 
+                                 WHERE status IN ('Ativo', 'Pendente') $whereClauseDesc" :
+                                "SELECT NULL as id, NULL as nome, NULL as email, NULL as telefone, NULL as cidade, NULL as estado, NULL as data_cadastro, 
+                                        NULL as status, NULL as tipo, NULL as categoria, NULL as observacoes, 'descadastramento' as tipo_processo,
+                                        NULL as data_referencia, NULL as chave_loja WHERE 1=0";
+                            
+                            $sql = "$cadQuery UNION ALL $descQuery ORDER BY data_referencia DESC";
                         }
-                    }
-                    
-                    if (!$useChaveFilter) {
-                        // Original query without chave filtering
+                        
+                    } catch (Exception $e) {
+                        error_log("Exception in 'all' case: " . $e->getMessage());
+                        // Fall back to simple query without chave filtering
                         $sql = "
                             SELECT id, nome, email, telefone, cidade, estado, data_cadastro, 
                                    status, tipo, categoria, observacoes, 'cadastramento' as tipo_processo,
