@@ -1,275 +1,553 @@
-<?php
-// views/Wxkd_dashboard.php - Main Controller + View
-require_once '../models/Wxkd_DashboardModel.php';
+// assets/Wxkd_script.js
+$(document).ready(function() {
+    // Inicializar módulos
+    SearchModule.init();
+    SortModule.init();
+    PaginationModule.init();
+    CheckboxModule.init();
+    FilterModule.init();
+    ExportModule.init();
+});
 
-class Wxkd_DashboardController {
-    private $model;
+// Módulo de Filtros
+const FilterModule = {
+    currentFilter: 'all',
     
-    public function __construct() {
-        $this->model = new Wxkd_DashboardModel();
-        $this->model->Wxkd_Construct(); // Call your custom constructor
-    }
+    init: function() {
+        // Definir filtro inicial
+        this.currentFilter = window.currentFilter || 'all';
+        this.updateFilterUI();
+        
+        // Event listeners para cards
+        $('.card-filter').on('click', this.handleCardClick.bind(this));
+        
+        // Atualizar cards conforme filtro inicial
+        if (this.currentFilter !== 'all') {
+            this.setActiveCard(this.currentFilter);
+        }
+    },
     
-    public function index() {
-        $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
-        
-        // Buscar dados dos cards
-        $cardData = $this->model->getCardData();
-        
-        // Buscar dados da tabela conforme filtro
-        $tableData = $this->model->getTableDataByFilter($filter);
-        
-        return ['cardData' => $cardData, 'tableData' => $tableData, 'activeFilter' => $filter];
-    }
+    handleCardClick: function(e) {
+        const filter = $(e.currentTarget).data('filter');
+        this.applyFilter(filter);
+    },
     
-    public function exportXML() {
-        $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
-        $tableData = $this->model->getTableDataByFilter($filter);
-        
-        header('Content-Type: application/xml');
-        header('Content-Disposition: attachment; filename="dados_tabela.xml"');
-        
-        echo $this->model->generateXML($tableData);
-        exit;
-    }
-    
-    public function exportTXT() {
-        $selectedIds = isset($_POST['selectedIds']) ? $_POST['selectedIds'] : [];
-        $filter = isset($_POST['filter']) ? $_POST['filter'] : 'all';
-        
-        if (empty($selectedIds)) {
-            header('HTTP/1.1 400 Bad Request');
-            echo json_encode(['error' => 'Nenhuma linha selecionada']);
-            exit;
+    applyFilter: function(filter) {
+        if (this.currentFilter === filter && filter !== 'all') {
+            // Se clicar no mesmo filtro, limpar
+            this.clearFilter();
+            return;
         }
         
-        // Buscar dados selecionados
-        $tableData = $this->model->getSelectedTableData($selectedIds, $filter);
+        this.currentFilter = filter;
+        this.setActiveCard(filter);
+        this.updateFilterUI();
+        this.loadTableData(filter);
         
-        // Processar movimentação para histórico (apenas para cadastramento e descadastramento)
-        if ($filter === 'cadastramento' || $filter === 'descadastramento') {
-            $this->model->moveToHistory($selectedIds, $filter);
-        }
-        
-        header('Content-Type: text/plain');
-        header('Content-Disposition: attachment; filename="dados_convertidos.txt"');
-        
-        echo $this->model->generateSpecificTXT($tableData);
-        exit;
-    }
+        // Atualizar URL sem recarregar página
+        const newUrl = new URL(window.location);
+        newUrl.searchParams.set('filter', filter);
+        window.history.pushState({filter: filter}, '', newUrl);
+    },
     
-    public function ajaxGetTableData() {
-        $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
-        $tableData = $this->model->getTableDataByFilter($filter);
-        $cardData = $this->model->getCardData();
+    clearFilter: function() {
+        this.currentFilter = 'all';
+        $('.card-filter').removeClass('active');
+        $('#filterIndicator').hide();
+        this.loadTableData('all');
         
-        header('Content-Type: application/json');
-        echo json_encode([
-            'tableData' => $tableData,
-            'cardData' => $cardData,
-            'success' => true
-        ]);
-        exit;
+        // Atualizar URL
+        const newUrl = new URL(window.location);
+        newUrl.searchParams.delete('filter');
+        window.history.pushState({filter: 'all'}, '', newUrl);
+    },
+    
+    setActiveCard: function(filter) {
+        $('.card-filter').removeClass('active');
+        $(`#card-${filter}`).addClass('active');
+    },
+    
+    updateFilterUI: function() {
+        if (this.currentFilter === 'all') {
+            $('#filterIndicator').hide();
+        } else {
+            const filterNames = {
+                'cadastramento': 'Cadastramento',
+                'descadastramento': 'Descadastramento',
+                'historico': 'Histórico'
+            };
+            
+            const filterDescriptions = {
+                'cadastramento': 'Mostrando apenas lojas para cadastramento',
+                'descadastramento': 'Mostrando apenas lojas para descadastramento',
+                'historico': 'Mostrando histórico de processos realizados'
+            };
+            
+            $('#activeFilterName').text(filterNames[this.currentFilter]);
+            $('#filterDescription').text(filterDescriptions[this.currentFilter]);
+            $('#filterIndicator').show();
+        }
+    },
+    
+    loadTableData: function(filter) {
+        // Mostrar loading
+        $('#dataTable tbody').html('<tr><td colspan="12" class="text-center">Carregando...</td></tr>');
+        
+        // Fazer requisição AJAX para XML ao invés de JSON
+        $.get('?action=ajaxGetTableData&filter=' + filter)
+            .done(function(xmlData) {
+                try {
+                    // Parse XML response
+                    var $xml = $(xmlData);
+                    var success = $xml.find('success').text() === 'true';
+                    
+                    if (success) {
+                        // Extrair dados dos cards do XML
+                        var cardData = {
+                            cadastramento: $xml.find('cardData cadastramento').text(),
+                            descadastramento: $xml.find('cardData descadastramento').text(),
+                            historico: $xml.find('cardData historico').text()
+                        };
+                        
+                        // Extrair dados da tabela do XML
+                        var tableData = [];
+                        $xml.find('tableData row').each(function() {
+                            var row = {};
+                            $(this).children().each(function() {
+                                row[this.tagName] = $(this).text();
+                            });
+                            tableData.push(row);
+                        });
+                        
+                        // Atualizar dados dos cards
+                        FilterModule.updateCardCounts(cardData);
+                        
+                        // Recriar dados da tabela
+                        PaginationModule.replaceTableData(tableData);
+                        PaginationModule.currentPage = 1;
+                        PaginationModule.updateTable();
+                        
+                        // Limpar seleções
+                        CheckboxModule.clearSelections();
+                    }
+                } catch (e) {
+                    $('#dataTable tbody').html('<tr><td colspan="12" class="text-center text-danger">Erro ao processar dados</td></tr>');
+                }
+            })
+            .fail(function() {
+                $('#dataTable tbody').html('<tr><td colspan="12" class="text-center text-danger">Erro ao carregar dados</td></tr>');
+            });
+    },
+    
+    updateCardCounts: function(cardData) {
+        $('#card-cadastramento .card-text').text(cardData.cadastramento);
+        $('#card-descadastramento .card-text').text(cardData.descadastramento);
+        $('#card-historico .card-text').text(cardData.historico);
     }
-}
+};
 
-// Roteamento simples
-$action = isset($_GET['action']) ? $_GET['action'] : 'index';
-$controller = new Wxkd_DashboardController();
+// Módulo de Pesquisa
+const SearchModule = {
+    init: function() {
+        $('#searchInput').on('keyup', this.filterTable.bind(this));
+    },
+    
+    filterTable: function() {
+        const value = $('#searchInput').val().toLowerCase();
+        PaginationModule.searchTerm = value;
+        PaginationModule.currentPage = 1;
+        PaginationModule.updateTable();
+    }
+};
 
-switch($action) {
-    case 'exportXML':
-        $controller->exportXML();
-        break;
-    case 'exportTXT':
-        $controller->exportTXT();
-        break;
-    case 'ajaxGetTableData':
-        $controller->ajaxGetTableData();
-        break;
-    default:
-        $data = $controller->index();
-        $cardData = $data['cardData'];
-        $tableData = $data['tableData'];
-        $activeFilter = $data['activeFilter'];
-        break;
-}
-?>
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="../assets/Wxkd_style.css">
-</head>
-<body>
-    <div class="container-fluid py-4">
-        <div class="row">
-            <div class="col-12">
-                <h1 class="mb-4">Dashboard</h1>
-            </div>
-        </div>
+// Módulo de Ordenação
+const SortModule = {
+    sortDirection: {},
+    sortColumn: null,
+    
+    init: function() {
+        $('.sortable').on('click', this.sortTable.bind(this));
+    },
+    
+    sortTable: function(e) {
+        const column = $(e.currentTarget).data('column');
+        this.sortColumn = column;
         
-        <!-- Cards -->
-        <div class="row mb-4">
-            <div class="col-md-4">
-                <div class="card text-center card-filter" data-filter="cadastramento" id="card-cadastramento">
-                    <div class="card-body">
-                        <h5 class="card-title">Cadastramento</h5>
-                        <h2 class="card-text text-primary"><?php echo $cardData['cadastramento']; ?></h2>
-                        <small class="text-muted">Lojas para cadastrar</small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card text-center card-filter" data-filter="descadastramento" id="card-descadastramento">
-                    <div class="card-body">
-                        <h5 class="card-title">Descadastramento</h5>
-                        <h2 class="card-text text-success"><?php echo $cardData['descadastramento']; ?></h2>
-                        <small class="text-muted">Lojas para descadastrar</small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card text-center card-filter" data-filter="historico" id="card-historico">
-                    <div class="card-body">
-                        <h5 class="card-title">Histórico</h5>
-                        <h2 class="card-text text-warning"><?php echo $cardData['historico']; ?></h2>
-                        <small class="text-muted">Processos realizados</small>
-                    </div>
-                </div>
-            </div>
-        </div>
+        // Definir direção da ordenação
+        this.sortDirection[column] = this.sortDirection[column] === 'asc' ? 'desc' : 'asc';
+        const direction = this.sortDirection[column];
         
-        <!-- Indicador de Filtro Ativo -->
-        <div class="row mb-3" id="filterIndicator" style="display: none;">
-            <div class="col-12">
-                <div class="alert alert-info d-flex justify-content-between align-items-center">
-                    <span>
-                        <strong>Filtro ativo:</strong> <span id="activeFilterName"></span>
-                        <small class="ms-2" id="filterDescription"></small>
-                    </span>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearFilter()">
-                        Limpar Filtro
-                    </button>
-                </div>
-            </div>
-        </div>
+        // Atualizar indicadores visuais
+        $('.sortable').removeClass('sort-asc sort-desc');
+        $(e.currentTarget).addClass('sort-' + direction);
         
-        <!-- Área de Controles e Tabela -->
-        <div class="table-container">
-            <!-- Controles Superiores -->
-            <div class="row mb-3 align-items-center">
-                <!-- Pesquisa e Botões -->
-                <div class="col-md-8">
-                    <div class="d-flex align-items-center gap-2">
-                        <div class="search-container">
-                            <input type="text" class="form-control form-control-sm" id="searchInput" placeholder="Pesquisar na tabela...">
-                            <svg class="search-icon" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-                                <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
-                            </svg>
-                        </div>
-                        <button type="button" class="btn btn-success btn-sm" onclick="exportData('xml')">
-                            Exportar XML
-                        </button>
-                        <button type="button" class="btn btn-info btn-sm" onclick="exportData('txt')" id="exportTxtBtn" disabled>
-                            Exportar TXT (<span id="selectedCount">0</span>)
-                        </button>
-                    </div>
-                </div>
+        // Reordenar dados
+        PaginationModule.sortData();
+        PaginationModule.currentPage = 1;
+        PaginationModule.updateTable();
+    }
+};
+
+// Módulo de Paginação
+const PaginationModule = {
+    currentPage: 1,
+    itemsPerPage: 15,
+    searchTerm: '',
+    allData: [],
+    filteredData: [],
+    
+    init: function() {
+        // Capturar dados da tabela
+        this.captureTableData();
+        
+        // Event listener para mudança de itens por página
+        $('#itemsPerPage').on('change', this.changeItemsPerPage.bind(this));
+        
+        // Inicializar paginação
+        this.updateTable();
+    },
+    
+    captureTableData: function() {
+        const rows = $('#dataTable tbody tr');
+        this.allData = [];
+        
+        const self = this;
+        rows.each(function() {
+            const rowData = [];
+            $(this).find('td').each(function() {
+                rowData.push($(this).clone());
+            });
+            self.allData.push(rowData);
+        });
+    },
+    
+    replaceTableData: function(newData) {
+        // Converter novos dados para formato da tabela
+        this.allData = [];
+        
+        const self = this;
+        newData.forEach(function(row) {
+            const rowData = [];
+            
+            // Checkbox
+            const checkboxCell = $('<td class="checkbox-column">').html(
+                `<input type="checkbox" class="form-check-input row-checkbox" data-row-id="${row.id}">`
+            );
+            rowData.push(checkboxCell);
+            
+            // Demais colunas
+            rowData.push($('<td>').text(row.id));
+            rowData.push($('<td>').text(row.nome));
+            rowData.push($('<td>').text(row.email));
+            rowData.push($('<td>').text(row.telefone));
+            rowData.push($('<td>').text(row.cidade));
+            rowData.push($('<td>').text(row.estado));
+            rowData.push($('<td>').text(row.data_cadastro));
+            
+            // Status com badge
+            const statusClass = row.status === 'Ativo' ? 'bg-success' : 
+                              row.status === 'Processado' ? 'bg-info' : 'bg-secondary';
+            const statusCell = $('<td>').html(`<span class="badge ${statusClass}">${row.status}</span>`);
+            rowData.push(statusCell);
+            
+            rowData.push($('<td>').text(row.tipo));
+            rowData.push($('<td>').text(row.categoria));
+            rowData.push($('<td>').text(row.observacoes));
+            
+            self.allData.push(rowData);
+        });
+    },
+    
+    changeItemsPerPage: function() {
+        this.itemsPerPage = parseInt($('#itemsPerPage').val());
+        this.currentPage = 1;
+        this.updateTable();
+    },
+    
+    filterData: function() {
+        if (this.searchTerm === '') {
+            this.filteredData = [...this.allData];
+        } else {
+            const self = this;
+            this.filteredData = this.allData.filter(function(row) {
+                return row.some(function(cell) {
+                    return $(cell).text().toLowerCase().includes(self.searchTerm);
+                });
+            });
+        }
+    },
+    
+    sortData: function() {
+        if (SortModule.sortColumn !== null) {
+            const column = SortModule.sortColumn;
+            const direction = SortModule.sortDirection[column];
+            
+            this.filteredData.sort(function(a, b) {
+                const aValue = $(a[column]).text().trim();
+                const bValue = $(b[column]).text().trim();
                 
-                <!-- Seletor de Itens por Página -->
-                <div class="col-md-4">
-                    <div class="d-flex justify-content-end align-items-center">
-                        <label for="itemsPerPage" class="me-2 text-sm">Mostrar:</label>
-                        <select class="form-select form-select-sm" id="itemsPerPage" style="width: auto;">
-                            <option value="15">15</option>
-                            <option value="30">30</option>
-                            <option value="50">50</option>
-                        </select>
-                        <span class="ms-2 text-sm">itens</span>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Tabela -->
-            <div class="row">
-                <div class="col-12">
-                    <div class="table-responsive-horizontal">
-                        <table class="table table-striped table-hover" id="dataTable">
-                            <thead class="table-dark">
-                                <tr>
-                                    <th class="checkbox-column">
-                                        <input type="checkbox" id="selectAll" class="form-check-input">
-                                    </th>
-                                    <th class="sortable" data-column="0">ID</th>
-                                    <th class="sortable" data-column="1">Nome</th>
-                                    <th class="sortable" data-column="2">Email</th>
-                                    <th class="sortable" data-column="3">Telefone</th>
-                                    <th class="sortable" data-column="4">Cidade</th>
-                                    <th class="sortable" data-column="5">Estado</th>
-                                    <th class="sortable" data-column="6">Data Cadastro</th>
-                                    <th class="sortable" data-column="7">Status</th>
-                                    <th class="sortable" data-column="8">Tipo</th>
-                                    <th class="sortable" data-column="9">Categoria</th>
-                                    <th class="sortable" data-column="10">Observações</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($tableData as $row): ?>
-                                <tr>
-                                    <td class="checkbox-column">
-                                        <input type="checkbox" class="form-check-input row-checkbox" data-row-id="<?php echo $row['id']; ?>">
-                                    </td>
-                                    <td><?php echo htmlspecialchars($row['id']); ?></td>
-                                    <td><?php echo htmlspecialchars($row['nome']); ?></td>
-                                    <td><?php echo htmlspecialchars($row['email']); ?></td>
-                                    <td><?php echo htmlspecialchars($row['telefone']); ?></td>
-                                    <td><?php echo htmlspecialchars($row['cidade']); ?></td>
-                                    <td><?php echo htmlspecialchars($row['estado']); ?></td>
-                                    <td><?php echo htmlspecialchars($row['data_cadastro']); ?></td>
-                                    <td>
-                                        <span class="badge <?php echo $row['status'] == 'Ativo' ? 'bg-success' : 'bg-secondary'; ?>">
-                                            <?php echo htmlspecialchars($row['status']); ?>
-                                        </span>
-                                    </td>
-                                    <td><?php echo htmlspecialchars($row['tipo']); ?></td>
-                                    <td><?php echo htmlspecialchars($row['categoria']); ?></td>
-                                    <td><?php echo htmlspecialchars($row['observacoes']); ?></td>
-                                </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Paginação -->
-            <div class="row mt-3">
-                <div class="col-12">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div class="pagination-info text-sm text-muted">
-                            Mostrando <span id="showingStart">1</span> até <span id="showingEnd">15</span> de <span id="totalItems">0</span> registros
-                        </div>
-                        <nav aria-label="Navegação da tabela">
-                            <ul class="pagination pagination-sm mb-0" id="pagination">
-                                <!-- Paginação será gerada pelo JavaScript -->
-                            </ul>
-                        </nav>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+                // Tentar converter para número se possível
+                const aNum = parseFloat(aValue);
+                const bNum = parseFloat(bValue);
+                
+                let comparison;
+                if (!isNaN(aNum) && !isNaN(bNum)) {
+                    comparison = aNum - bNum;
+                } else {
+                    comparison = aValue.localeCompare(bValue, 'pt-BR');
+                }
+                
+                return direction === 'asc' ? comparison : -comparison;
+            });
+        }
+    },
     
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
-    <script>
-        // Variáveis globais
-        window.currentFilter = '<?php echo isset($activeFilter) ? $activeFilter : "all"; ?>';
-    </script>
-    <script src="../assets/Wxkd_script.js"></script>
-</body>
-</html>
+    updateTable: function() {
+        // Filtrar dados
+        this.filterData();
+        
+        // Ordenar dados se necessário
+        this.sortData();
+        
+        // Calcular paginação
+        const totalItems = this.filteredData.length;
+        const totalPages = Math.ceil(totalItems / this.itemsPerPage);
+        const startIndex = (this.currentPage - 1) * this.itemsPerPage;
+        const endIndex = Math.min(startIndex + this.itemsPerPage, totalItems);
+        
+        // Limpar tabela
+        $('#dataTable tbody').empty();
+        
+        // Adicionar linhas da página atual
+        for (let i = startIndex; i < endIndex; i++) {
+            const row = $('<tr>');
+            this.filteredData[i].forEach(function(cell) {
+                row.append(cell);
+            });
+            $('#dataTable tbody').append(row);
+        }
+        
+        // Atualizar informações de paginação
+        $('#showingStart').text(totalItems > 0 ? startIndex + 1 : 0);
+        $('#showingEnd').text(endIndex);
+        $('#totalItems').text(totalItems);
+        
+        // Atualizar controles de paginação
+        this.updatePaginationControls(totalPages);
+        
+        // Atualizar estado dos checkboxes após atualizar tabela
+        setTimeout(function() {
+            CheckboxModule.updateSelectAllState();
+            CheckboxModule.updateExportButton();
+        }, 100);
+    },
+    
+    updatePaginationControls: function(totalPages) {
+        const pagination = $('#pagination');
+        pagination.empty();
+        
+        const self = this;
+        
+        // Botão anterior
+        const prevDisabled = this.currentPage <= 1 ? 'disabled' : '';
+        pagination.append(`
+            <li class="page-item ${prevDisabled}">
+                <a class="page-link" href="#" data-page="${this.currentPage - 1}">Anterior</a>
+            </li>
+        `);
+        
+        // Páginas numeradas
+        let startPage = Math.max(1, this.currentPage - 2);
+        let endPage = Math.min(totalPages, this.currentPage + 2);
+        
+        if (endPage - startPage < 4 && totalPages > 5) {
+            if (startPage === 1) {
+                endPage = Math.min(totalPages, 5);
+            } else if (endPage === totalPages) {
+                startPage = Math.max(1, totalPages - 4);
+            }
+        }
+        
+        for (let i = startPage; i <= endPage; i++) {
+            const active = i === this.currentPage ? 'active' : '';
+            pagination.append(`
+                <li class="page-item ${active}">
+                    <a class="page-link" href="#" data-page="${i}">${i}</a>
+                </li>
+            `);
+        }
+        
+        // Botão próximo
+        const nextDisabled = this.currentPage >= totalPages ? 'disabled' : '';
+        pagination.append(`
+            <li class="page-item ${nextDisabled}">
+                <a class="page-link" href="#" data-page="${this.currentPage + 1}">Próximo</a>
+            </li>
+        `);
+        
+        // Event listeners para paginação
+        pagination.off('click').on('click', 'a.page-link', function(e) {
+            e.preventDefault();
+            const page = parseInt($(this).data('page'));
+            if (page >= 1 && page <= totalPages) {
+                self.currentPage = page;
+                self.updateTable();
+            }
+        });
+    }
+};
+
+// Módulo de Checkbox
+const CheckboxModule = {
+    init: function() {
+        // Checkbox "Selecionar Todos"
+        $('#selectAll').on('change', this.toggleSelectAll.bind(this));
+        
+        // Checkboxes individuais
+        $(document).on('change', '.row-checkbox', this.updateSelectAllState.bind(this));
+        $(document).on('change', '.row-checkbox', this.updateExportButton.bind(this));
+        
+        // Atualizar estado inicial
+        this.updateExportButton();
+    },
+    
+    toggleSelectAll: function() {
+        const isChecked = $('#selectAll').is(':checked');
+        $('.row-checkbox:visible').prop('checked', isChecked);
+        this.updateExportButton();
+    },
+    
+    updateSelectAllState: function() {
+        const totalCheckboxes = $('.row-checkbox:visible').length;
+        const checkedCheckboxes = $('.row-checkbox:visible:checked').length;
+        
+        if (checkedCheckboxes === 0) {
+            $('#selectAll').prop('indeterminate', false).prop('checked', false);
+        } else if (checkedCheckboxes === totalCheckboxes) {
+            $('#selectAll').prop('indeterminate', false).prop('checked', true);
+        } else {
+            $('#selectAll').prop('indeterminate', true).prop('checked', false);
+        }
+    },
+    
+    updateExportButton: function() {
+        const checkedCount = $('.row-checkbox:checked').length;
+        $('#selectedCount').text(checkedCount);
+        
+        const isDisabled = checkedCount === 0;
+        $('#exportTxtBtn').prop('disabled', isDisabled);
+        
+        // Atualizar texto do botão baseado no filtro
+        let buttonText = 'Exportar TXT';
+        if (FilterModule.currentFilter === 'cadastramento' || FilterModule.currentFilter === 'descadastramento') {
+            buttonText = 'Converter para TXT';
+        }
+        
+        // Atualizar o texto do botão
+        const btnContent = $('#exportTxtBtn').html();
+        const newContent = btnContent.replace(/^[^(]+/, buttonText + ' ');
+        $('#exportTxtBtn').html(newContent);
+    },
+    
+    clearSelections: function() {
+        $('.row-checkbox').prop('checked', false);
+        $('#selectAll').prop('checked', false).prop('indeterminate', false);
+        this.updateExportButton();
+    },
+    
+    getSelectedIds: function() {
+        const selectedIds = [];
+        $('.row-checkbox:checked').each(function() {
+            selectedIds.push($(this).data('row-id'));
+        });
+        return selectedIds;
+    }
+};
+
+// Módulo de Exportação
+const ExportModule = {
+    init: function() {
+        // Módulo pronto para uso
+    }
+};
+
+// Função global de exportação
+function exportData(format) {
+    if (format === 'xml') {
+        const currentFilter = FilterModule.currentFilter;
+        window.location.href = `?action=exportXML&filter=${currentFilter}`;
+    } else if (format === 'txt') {
+        const selectedIds = CheckboxModule.getSelectedIds();
+        
+        if (selectedIds.length === 0) {
+            alert('Selecione pelo menos uma linha para exportar.');
+            return;
+        }
+        
+        // Confirmar ação se for cadastramento ou descadastramento
+        const currentFilter = FilterModule.currentFilter;
+        if (currentFilter === 'cadastramento' || currentFilter === 'descadastramento') {
+            const filterName = currentFilter === 'cadastramento' ? 'Cadastramento' : 'Descadastramento';
+            const confirmMessage = `Esta ação irá:\n\n` +
+                `1. Converter ${selectedIds.length} registro(s) para TXT\n` +
+                `2. Mover os registros para o Histórico\n` +
+                `3. Remover os registros da lista de ${filterName}\n\n` +
+                `Deseja continuar?`;
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+        }
+        
+        // Criar formulário para enviar IDs selecionados
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '?action=exportTXT';
+        
+        // Adicionar filtro atual
+        const filterInput = document.createElement('input');
+        filterInput.type = 'hidden';
+        filterInput.name = 'filter';
+        filterInput.value = currentFilter;
+        form.appendChild(filterInput);
+        
+        // Adicionar IDs selecionados
+        selectedIds.forEach(function(id) {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'selectedIds[]';
+            input.value = id;
+            form.appendChild(input);
+        });
+        
+        document.body.appendChild(form);
+        form.submit();
+        document.body.removeChild(form);
+        
+        // Se foi conversão (não apenas exportação), recarregar dados após um delay
+        if (currentFilter === 'cadastramento' || currentFilter === 'descadastramento') {
+            setTimeout(function() {
+                FilterModule.loadTableData(currentFilter);
+            }, 1000);
+        }
+    }
+}
+
+// Função global para limpar filtro
+function clearFilter() {
+    FilterModule.clearFilter();
+}
+
+// Gerenciar botão voltar do navegador
+window.addEventListener('popstate', function(event) {
+    const filter = event.state?.filter || 'all';
+    FilterModule.currentFilter = filter;
+    FilterModule.updateFilterUI();
+    FilterModule.loadTableData(filter);
+    
+    if (filter === 'all') {
+        $('.card-filter').removeClass('active');
+    } else {
+        FilterModule.setActiveCard(filter);
+    }
+});
