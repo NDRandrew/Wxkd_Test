@@ -1,73 +1,70 @@
-public function ajaxGetTableData() {
-    // Debug inicial - preservar filtro
-    $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
-    error_log("ajaxGetTableData received filter: " . $filter);
-    error_log("GET params: " . print_r($_GET, true));
+<?php
+// test_wxkd_debug.php - Arquivo temporário para testar
+// DELETAR após resolver o problema
+
+require_once 'models/Wxkd_DashboardModel.php';
+
+echo "<h3>Teste Manual - Sistema Dashboard Wxkd</h3>";
+echo "<pre>";
+
+try {
+    // Inicializar model
+    $model = new Wxkd_DashboardModel();
+    $model->Wxkd_Construct();
     
-    // IMPORTANTE: Preservar o filtro durante todo o método
-    $originalFilter = $filter;
+    echo "✅ Model inicializado com sucesso\n\n";
     
-    try {
-        // Buscar dados
-        $tableData = $this->model->getTableDataByFilter($filter);
-        $cardData = $this->model->getCardData();
+    // Teste 1: getChaveCadastro
+    echo "=== TESTE 1: getChaveCadastro ===\n";
+    
+    $filters = array('cadastramento', 'descadastramento', 'historico', 'all');
+    
+    foreach ($filters as $filter) {
+        echo "Testando filtro: $filter\n";
+        $chaves = $model->getChaveCadastro($filter);
+        echo "Resultado: " . count($chaves) . " chaves\n";
         
-        error_log("ajaxGetTableData - filter preserved: " . $originalFilter);
-        error_log("ajaxGetTableData - tableData type: " . gettype($tableData));
-        error_log("ajaxGetTableData - tableData count: " . (is_array($tableData) ? count($tableData) : 'not array'));
-        
-        // Preparar resposta XML
-        $xml = '<response>';
-        $xml .= '<success>true</success>';
-        
-        // CORREÇÃO: Usar $originalFilter ao invés de $filter (pode ter sido alterado)
-        $xml .= '<debug>';
-        $xml .= '<filter>' . addcslashes($originalFilter, '"<>&') . '</filter>';
-        $xml .= '<tableDataType>' . gettype($tableData) . '</tableDataType>';
-        $xml .= '<tableDataCount>' . (is_array($tableData) ? count($tableData) : 0) . '</tableDataCount>';
-        $xml .= '</debug>';
-        
-        // Card data
-        if (is_array($cardData)) {
-            $xml .= '<cardData>';
-            foreach ($cardData as $key => $value) {
-                $xml .= '<' . $key . '>' . $value . '</' . $key . '>';
-            }
-            $xml .= '</cardData>';
-        }
-        
-        // Table data
-        $xml .= '<tableData>';
-        if (is_array($tableData) && count($tableData) > 0) {
-            foreach ($tableData as $row) {
-                $xml .= '<row>';
-                foreach ($row as $key => $value) {
-                    $xml .= '<' . $key . '>' . addcslashes($value, '"<>&') . '</' . $key . '>';
-                }
-                $xml .= '</row>';
-            }
+        if (count($chaves) > 0) {
+            echo "Primeiras 3 chaves: " . implode(', ', array_slice($chaves, 0, 3)) . "\n";
         } else {
-            error_log("ajaxGetTableData - No table data to return");
-            $xml .= '<message>No data found for filter: ' . $originalFilter . '</message>';
+            echo "❌ NENHUMA CHAVE RETORNADA!\n";
         }
-        $xml .= '</tableData>';
-        
-        $xml .= '</response>';
-        
-        // Debug da resposta XML
-        error_log("ajaxGetTableData - XML length: " . strlen($xml));
-        error_log("ajaxGetTableData - XML preview: " . substr($xml, 0, 200));
-        
-    } catch (Exception $e) {
-        error_log("ajaxGetTableData - Exception: " . $e->getMessage());
-        $xml = '<response>';
-        $xml .= '<success>false</success>';
-        $xml .= '<error>' . addcslashes($e->getMessage(), '"<>&') . '</error>';
-        $xml .= '</response>';
+        echo "---\n";
     }
     
-    // Headers
-    header('Content-Type: text/xml; charset=utf-8');
-    echo $xml;
-    exit;
+    // Teste 2: getTableDataByFilter
+    echo "\n=== TESTE 2: getTableDataByFilter ===\n";
+    
+    foreach ($filters as $filter) {
+        echo "Testando filtro: $filter\n";
+        $data = $model->getTableDataByFilter($filter);
+        echo "Resultado: " . count($data) . " registros\n";
+        
+        if (count($data) > 0) {
+            echo "Primeira linha: " . print_r($data[0], true) . "\n";
+        } else {
+            echo "❌ NENHUM REGISTRO RETORNADO!\n";
+        }
+        echo "---\n";
+    }
+    
+    // Teste 3: getCardData
+    echo "\n=== TESTE 3: getCardData ===\n";
+    $cardData = $model->getCardData();
+    print_r($cardData);
+    
+} catch (Exception $e) {
+    echo "❌ ERRO: " . $e->getMessage() . "\n";
+    echo "Stack trace: " . $e->getTraceAsString() . "\n";
 }
+
+echo "</pre>";
+?>
+
+<!-- 
+COMO USAR:
+1. Coloque este arquivo na raiz do projeto
+2. Acesse via browser: http://seusite.com/test_wxkd_debug.php  
+3. Verifique se as funções retornam dados
+4. Delete o arquivo após o teste
+-->
