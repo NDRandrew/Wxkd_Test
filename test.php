@@ -305,7 +305,136 @@ class Wxkd_DashboardModel {
         }
     }
     
-    private function generateSampleData() {
+    public function getChaveCadastro($filterChave = 'all') {
+        try {
+            $sql = "";
+            
+            switch($filterChave) {
+                case 'cadastramento':
+                    // Get chaves for stores the user can cadastro
+                    // Adjust table and column names according to your database
+                    $sql = "
+                        SELECT DISTINCT chave_loja 
+                        FROM user_permissions 
+                        WHERE user_id = '" . $this->getCurrentUserId() . "' 
+                        AND tipo_permissao = 'cadastramento'
+                        AND status = 'ativo'
+                    ";
+                    // Alternative query if you have a different structure:
+                    // $sql = "SELECT DISTINCT chave_loja FROM lojas_cadastramento WHERE responsavel_id = '" . $this->getCurrentUserId() . "'";
+                    break;
+                    
+                case 'descadastramento':
+                    // Get chaves for stores the user can descadastro
+                    $sql = "
+                        SELECT DISTINCT chave_loja 
+                        FROM user_permissions 
+                        WHERE user_id = '" . $this->getCurrentUserId() . "' 
+                        AND tipo_permissao = 'descadastramento'
+                        AND status = 'ativo'
+                    ";
+                    // Alternative query:
+                    // $sql = "SELECT DISTINCT chave_loja FROM lojas_descadastramento WHERE responsavel_id = '" . $this->getCurrentUserId() . "'";
+                    break;
+                    
+                case 'historico':
+                    // Get chaves for stores the user has processed
+                    $sql = "
+                        SELECT DISTINCT chave_loja 
+                        FROM lojas_historico 
+                        WHERE usuario_processamento = '" . $this->getCurrentUserId() . "'
+                    ";
+                    break;
+                    
+                case 'all':
+                    // Get all chaves the user has access to (any permission type)
+                    $sql = "
+                        SELECT DISTINCT chave_loja 
+                        FROM user_permissions 
+                        WHERE user_id = '" . $this->getCurrentUserId() . "' 
+                        AND status = 'ativo'
+                        
+                        UNION
+                        
+                        SELECT DISTINCT chave_loja 
+                        FROM lojas_historico 
+                        WHERE usuario_processamento = '" . $this->getCurrentUserId() . "'
+                    ";
+                    break;
+                    
+                default:
+                    error_log("Unknown filter in getChaveCadastro: " . $filterChave);
+                    return array();
+            }
+            
+            // Execute the SQL query
+            error_log("getChaveCadastro SQL: " . $sql);
+            $result = $this->sql->select($sql);
+            
+            // Debug the result
+            if ($result === false) {
+                error_log("getChaveCadastro query failed for filter: " . $filterChave);
+                return array();
+            } elseif (is_array($result)) {
+                error_log("getChaveCadastro returned " . count($result) . " chaves for filter: " . $filterChave);
+                return $result;
+            } else {
+                error_log("getChaveCadastro unexpected result type: " . gettype($result));
+                return array();
+            }
+            
+        } catch (Exception $e) {
+            error_log("Error in getChaveCadastro: " . $e->getMessage());
+            // Fallback to sample data if SQL fails
+            return $this->getSampleChaves($filterChave);
+        }
+    }
+    
+    private function getCurrentUserId() {
+        // Get current user ID - adjust according to your session management
+        if (isset($_SESSION['user_id'])) {
+            return $this->escapeString($_SESSION['user_id']);
+        } elseif (isset($_SESSION['usuario_id'])) {
+            return $this->escapeString($_SESSION['usuario_id']);
+        } elseif (isset($_COOKIE['user_id'])) {
+            return $this->escapeString($_COOKIE['user_id']);
+        } else {
+            // Default fallback user for testing
+            return 'user_default';
+        }
+    }
+    
+    private function getSampleChaves($filterChave) {
+        // Fallback sample data in case SQL queries fail
+        switch($filterChave) {
+            case 'cadastramento':
+                return array(
+                    array('chave_loja' => 'LOJA001'),
+                    array('chave_loja' => 'LOJA002'),
+                    array('chave_loja' => 'LOJA003')
+                );
+            case 'descadastramento':
+                return array(
+                    array('chave_loja' => 'LOJA004'),
+                    array('chave_loja' => 'LOJA005')
+                );
+            case 'historico':
+                return array(
+                    array('chave_loja' => 'LOJA101'),
+                    array('chave_loja' => 'LOJA102')
+                );
+            case 'all':
+                return array(
+                    array('chave_loja' => 'LOJA001'),
+                    array('chave_loja' => 'LOJA002'),
+                    array('chave_loja' => 'LOJA003'),
+                    array('chave_loja' => 'LOJA004'),
+                    array('chave_loja' => 'LOJA005')
+                );
+            default:
+                return array();
+        }
+    }
         $data = array();
         $tipos = array('cadastramento', 'descadastramento');
         
@@ -397,7 +526,7 @@ class Wxkd_DashboardModel {
             
             // 1. Buscar dados que serão movidos usando select
             $sql = "SELECT * FROM lojas_$sourceTable WHERE id IN ($idsList)";
-            $dataToMove = $this->db->select($sql);
+            $dataToMove = $this->sql->select($sql);
             
             if (empty($dataToMove)) {
                 $this->rollbackTransaction();
@@ -439,12 +568,12 @@ class Wxkd_DashboardModel {
                 $fullInsertSql = $insertSql . ")" . $valuesSql;
                 
                 // Executar insert
-                $this->db->insert($fullInsertSql);
+                $this->sql->insert($fullInsertSql);
             }
             
             // 3. Remover da tabela original usando delete
             $deleteSql = "DELETE FROM lojas_$sourceTable WHERE id IN ($idsList)";
-            $this->db->delete($deleteSql);
+            $this->sql->delete($deleteSql);
             
             // 4. Log da operação
             $this->logOperation($selectedIds, $sourceTable, count($dataToMove));
@@ -460,13 +589,13 @@ class Wxkd_DashboardModel {
     
     private function startTransaction() {
         // Ajuste conforme seu wrapper:
-        // Opção 1: $this->db->beginTransaction();
-        // Opção 2: $this->db->query("BEGIN TRANSACTION");
-        // Opção 3: $this->db->execute("BEGIN TRANSACTION");
+        // Opção 1: $this->sql->beginTransaction();
+        // Opção 2: $this->sql->query("BEGIN TRANSACTION");
+        // Opção 3: $this->sql->execute("BEGIN TRANSACTION");
         
         // Temporário - substitua pela sua implementação:
         try {
-            $this->db->select("BEGIN TRANSACTION");
+            $this->sql->select("BEGIN TRANSACTION");
         } catch (Exception $e) {
             // Se select não funcionar, tente outros métodos disponíveis
         }
@@ -475,7 +604,7 @@ class Wxkd_DashboardModel {
     private function commitTransaction() {
         // Ajuste conforme seu wrapper:
         try {
-            $this->db->select("COMMIT TRANSACTION");
+            $this->sql->select("COMMIT TRANSACTION");
         } catch (Exception $e) {
             // Implementar conforme seu wrapper
         }
@@ -484,7 +613,7 @@ class Wxkd_DashboardModel {
     private function rollbackTransaction() {
         // Ajuste conforme seu wrapper:
         try {
-            $this->db->select("ROLLBACK TRANSACTION");
+            $this->sql->select("ROLLBACK TRANSACTION");
         } catch (Exception $e) {
             // Implementar conforme seu wrapper
         }
@@ -509,7 +638,7 @@ class Wxkd_DashboardModel {
     private function logOperation($selectedIds, $sourceTable, $recordCount) {
         try {
             // Verificar se tabela de log existe
-            $tableExists = $this->db->qtdRows("
+            $tableExists = $this->sql->qtdRows("
                 SELECT COUNT(*) as existe 
                 FROM INFORMATION_SCHEMA.TABLES 
                 WHERE TABLE_NAME = 'operacoes_log'
@@ -529,7 +658,7 @@ class Wxkd_DashboardModel {
                         observacoes NVARCHAR(MAX)
                     )
                 ";
-                $this->db->select($createLogTable); // ou método apropriado para DDL
+                $this->sql->select($createLogTable); // ou método apropriado para DDL
             }
             
             // Inserir log usando insert
@@ -546,7 +675,7 @@ class Wxkd_DashboardModel {
                 )
             ";
             
-            $this->db->insert($logSql);
+            $this->sql->insert($logSql);
             
         } catch (Exception $e) {
             // Log não deve interromper a operação principal
@@ -644,7 +773,7 @@ class Wxkd_DashboardModel {
                     ORDER BY data_processamento DESC
                 )
             ";
-            $this->db->update($updateSql);
+            $this->sql->update($updateSql);
             
         } catch (Exception $e) {
             // Não interromper processo principal
@@ -766,10 +895,10 @@ class Wxkd_DashboardModel {
         try {
             // Usando qtdRows para contar
             $stats = array();
-            $stats['total_cadastramento'] = $this->db->qtdRows("SELECT COUNT(*) FROM lojas_cadastramento");
-            $stats['total_descadastramento'] = $this->db->qtdRows("SELECT COUNT(*) FROM lojas_descadastramento");
-            $stats['total_historico'] = $this->db->qtdRows("SELECT COUNT(*) FROM lojas_historico");
-            $stats['processados_hoje'] = $this->db->qtdRows("
+            $stats['total_cadastramento'] = $this->sql->qtdRows("SELECT COUNT(*) FROM lojas_cadastramento");
+            $stats['total_descadastramento'] = $this->sql->qtdRows("SELECT COUNT(*) FROM lojas_descadastramento");
+            $stats['total_historico'] = $this->sql->qtdRows("SELECT COUNT(*) FROM lojas_historico");
+            $stats['processados_hoje'] = $this->sql->qtdRows("
                 SELECT COUNT(*) FROM lojas_historico 
                 WHERE CAST(data_processamento AS DATE) = CAST(GETDATE() AS DATE)
             ");
@@ -787,7 +916,7 @@ class Wxkd_DashboardModel {
             $existingTables = array();
             
             foreach ($requiredTables as $table) {
-                $exists = $this->db->qtdRows("
+                $exists = $this->sql->qtdRows("
                     SELECT COUNT(*) as existe 
                     FROM INFORMATION_SCHEMA.TABLES 
                     WHERE TABLE_NAME = '$table'
@@ -811,7 +940,7 @@ class Wxkd_DashboardModel {
     }
     
     public function __destruct() {
-        $this->db = null;
+        $this->sql = null;
     }
 }
 ?>
