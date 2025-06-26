@@ -1,109 +1,174 @@
-public function getChaveCadastro($filter = 'all') {
-    error_log("getChaveCadastro called with filter: " . $filter);
+public function getTableDataByFilter($filter = 'all') {
+    error_log("getTableDataByFilter called with: " . $filter);
     
     try {
-        // Query base (sem filtro final)
-        $baseQuery = "select soli.CHAVE_LOJA
-            from PGTOCORSP.dbo.tb_pgto_solicitacao soli
-            left join (
-                select a.data_detalhe, cod_etapa, cod_status, exclusao, a.cod_solicitacao, cod_detalhe,
-                       datediff(day,a.data_detalhe,getdate()) as dias_ocorrencia 
-                from PGTOCORSP.dbo.tb_pgto_solicitacao_detalhe a 
-                join (
-                    select distinct cod_solicitacao, max(data_detalhe) as data_detalhe 
-                    from PGTOCORSP.dbo.tb_pgto_solicitacao_detalhe 
-                    group by cod_solicitacao
-                ) b on b.cod_solicitacao = a.cod_solicitacao and b.data_detalhe = a.data_detalhe
-            ) detalhe on detalhe.cod_solicitacao = soli.cod_solicitacao 
-            left join PGTOCORSP.dbo.tb_pgto_acao_solicitacao acao on acao.cod_acao = soli.cod_acao 
-            left join PGTOCORSP.dbo.tb_pgto_tipo_pagamento ti_pagam on ti_pagam.cod_tipo_pagamento = soli.cod_tipo_pagamento 
-            left join mesu.dbo.tb_lojas loja on loja.chave_loja = soli.chave_loja 
-            left join mesu.dbo.funcionarios funcionarios on funcionarios.cod_func = soli.cod_usu
-            left join (
-                select chave_loja, cod_ibge, nome_munic, uf 
-                from mesu..tb_lojas lojas 
-                join mesu..munic_presenca munic on cd_munic = cod_ibge
-            ) munici on munici.chave_loja = soli.chave_loja
-            where cod_status = 3 and detalhe.cod_etapa in(1) and exclusao = 0 and not ti_pagam.cod_tipo_pagamento = 3";
+        // Obter chaves autorizadas
+        $chaves = $this->getChaveCadastro($filter);
+        error_log("getTableDataByFilter - chaves returned: " . count($chaves));
         
-        // Adicionar filtro específico baseado no parâmetro
-        $finalQuery = $baseQuery;
+        if (empty($chaves)) {
+            error_log("getTableDataByFilter - No authorized chaves found for filter: " . $filter);
+            return array();
+        }
+        
+        // Construir WHERE clause
+        $whereClause = "chave_loja IN ('" . implode("','", $chaves) . "')";
+        error_log("getTableDataByFilter - WHERE clause: " . substr($whereClause, 0, 100) . "...");
+        
+        // SOLUÇÃO ALTERNATIVA: Usar uma tabela principal com campo tipo
+        // Ao invés de tabelas separadas, vamos usar uma query unificada
+        
+        $query = "";
         
         switch($filter) {
             case 'cadastramento':
-                $finalQuery .= " and desc_acao = 'Cadastramento'";
-                error_log("getChaveCadastro - Using CADASTRAMENTO filter");
+                // Buscar dados de cadastramento da tabela principal
+                $query = "
+                    SELECT 
+                        soli.chave_loja as id,
+                        loja.nome_loja as nome,
+                        loja.email_loja as email, 
+                        loja.telefone_loja as telefone,
+                        loja.endereco_loja as endereco,
+                        munici.nome_munic as cidade,
+                        munici.uf as estado,
+                        soli.chave_loja,
+                        soli.data_solicitacao as data_cadastro,
+                        'cadastramento' as tipo
+                    FROM PGTOCORSP.dbo.tb_pgto_solicitacao soli
+                    LEFT JOIN PGTOCORSP.dbo.tb_pgto_acao_solicitacao acao ON acao.cod_acao = soli.cod_acao
+                    LEFT JOIN mesu.dbo.tb_lojas loja ON loja.chave_loja = soli.chave_loja
+                    LEFT JOIN (
+                        SELECT chave_loja, cod_ibge, nome_munic, uf 
+                        FROM mesu..tb_lojas lojas 
+                        JOIN mesu..munic_presenca munic ON cd_munic = cod_ibge
+                    ) munici ON munici.chave_loja = soli.chave_loja
+                    WHERE " . $whereClause . " 
+                    AND desc_acao = 'Cadastramento'
+                    ORDER BY soli.data_solicitacao DESC";
                 break;
                 
             case 'descadastramento':
-                $finalQuery .= " and desc_acao = 'Descadastramento'";
-                error_log("getChaveCadastro - Using DESCADASTRAMENTO filter");
+                $query = "
+                    SELECT 
+                        soli.chave_loja as id,
+                        loja.nome_loja as nome,
+                        loja.email_loja as email,
+                        loja.telefone_loja as telefone,
+                        loja.endereco_loja as endereco,
+                        munici.nome_munic as cidade,
+                        munici.uf as estado,
+                        soli.chave_loja,
+                        soli.data_solicitacao as data_cadastro,
+                        'descadastramento' as tipo
+                    FROM PGTOCORSP.dbo.tb_pgto_solicitacao soli
+                    LEFT JOIN PGTOCORSP.dbo.tb_pgto_acao_solicitacao acao ON acao.cod_acao = soli.cod_acao
+                    LEFT JOIN mesu.dbo.tb_lojas loja ON loja.chave_loja = soli.chave_loja
+                    LEFT JOIN (
+                        SELECT chave_loja, cod_ibge, nome_munic, uf 
+                        FROM mesu..tb_lojas lojas 
+                        JOIN mesu..munic_presenca munic ON cd_munic = cod_ibge
+                    ) munici ON munici.chave_loja = soli.chave_loja
+                    WHERE " . $whereClause . " 
+                    AND desc_acao = 'Descadastramento'
+                    ORDER BY soli.data_solicitacao DESC";
                 break;
                 
             case 'historico':
-                $finalQuery .= " and desc_acao IN ('Cadastramento', 'Descadastramento')";
-                error_log("getChaveCadastro - Using HISTORICO filter");
+                // Verificar se tabela lojas_historico existe
+                try {
+                    $testQuery = "SELECT TOP 1 * FROM lojas_historico WHERE " . $whereClause;
+                    $testResult = $this->sql->select($testQuery);
+                    
+                    if ($this->sql->qtdRows() > 0) {
+                        // Tabela existe, usar ela
+                        $query = "SELECT id, nome, email, telefone, endereco, cidade, estado, 
+                                         chave_loja, data_cadastro, 'historico' as tipo
+                                  FROM lojas_historico 
+                                  WHERE " . $whereClause . "
+                                  ORDER BY data_cadastro DESC";
+                    } else {
+                        // Tabela não existe ou está vazia, usar solução alternativa
+                        throw new Exception("Tabela lojas_historico vazia");
+                    }
+                } catch (Exception $e) {
+                    error_log("getTableDataByFilter - lojas_historico not accessible, using alternative");
+                    // Usar dados da tabela principal
+                    $query = "
+                        SELECT 
+                            soli.chave_loja as id,
+                            loja.nome_loja as nome,
+                            loja.email_loja as email,
+                            loja.telefone_loja as telefone,
+                            loja.endereco_loja as endereco,
+                            munici.nome_munic as cidade,
+                            munici.uf as estado,
+                            soli.chave_loja,
+                            soli.data_solicitacao as data_cadastro,
+                            'historico' as tipo
+                        FROM PGTOCORSP.dbo.tb_pgto_solicitacao soli
+                        LEFT JOIN PGTOCORSP.dbo.tb_pgto_acao_solicitacao acao ON acao.cod_acao = soli.cod_acao
+                        LEFT JOIN mesu.dbo.tb_lojas loja ON loja.chave_loja = soli.chave_loja
+                        LEFT JOIN (
+                            SELECT chave_loja, cod_ibge, nome_munic, uf 
+                            FROM mesu..tb_lojas lojas 
+                            JOIN mesu..munic_presenca munic ON cd_munic = cod_ibge
+                        ) munici ON munici.chave_loja = soli.chave_loja
+                        WHERE " . $whereClause . " 
+                        AND desc_acao IN ('Cadastramento', 'Descadastramento')
+                        ORDER BY soli.data_solicitacao DESC";
+                }
                 break;
                 
-            case 'all':
-            default:
-                $finalQuery .= " and desc_acao IN ('Cadastramento', 'Descadastramento')";
-                error_log("getChaveCadastro - Using ALL filter (default)");
+            default: // 'all'
+                // Para 'all', sempre usar a tabela principal
+                $query = "
+                    SELECT 
+                        soli.chave_loja as id,
+                        loja.nome_loja as nome,
+                        loja.email_loja as email,
+                        loja.telefone_loja as telefone,
+                        loja.endereco_loja as endereco,
+                        munici.nome_munic as cidade,
+                        munici.uf as estado,
+                        soli.chave_loja,
+                        soli.data_solicitacao as data_cadastro,
+                        acao.desc_acao as tipo
+                    FROM PGTOCORSP.dbo.tb_pgto_solicitacao soli
+                    LEFT JOIN PGTOCORSP.dbo.tb_pgto_acao_solicitacao acao ON acao.cod_acao = soli.cod_acao
+                    LEFT JOIN mesu.dbo.tb_lojas loja ON loja.chave_loja = soli.chave_loja
+                    LEFT JOIN (
+                        SELECT chave_loja, cod_ibge, nome_munic, uf 
+                        FROM mesu..tb_lojas lojas 
+                        JOIN mesu..munic_presenca munic ON cd_munic = cod_ibge
+                    ) munici ON munici.chave_loja = soli.chave_loja
+                    WHERE " . $whereClause . " 
+                    AND desc_acao IN ('Cadastramento', 'Descadastramento')
+                    ORDER BY soli.data_solicitacao DESC";
                 break;
         }
         
-        error_log("getChaveCadastro - Executing query...");
+        if (empty($query)) {
+            error_log("getTableDataByFilter - No query generated for filter: " . $filter);
+            return array();
+        }
         
-        // Executar query
-        $result = $this->sql->select($finalQuery);
+        error_log("getTableDataByFilter - Query length: " . strlen($query));
+        error_log("getTableDataByFilter - Query preview: " . substr($query, 0, 200) . "...");
+        
+        $result = $this->sql->select($query);
         $rowCount = $this->sql->qtdRows();
         
-        error_log("getChaveCadastro - Query executed, rows returned: " . $rowCount);
+        error_log("getTableDataByFilter - Query returned: " . $rowCount . " rows");
         
-        // CORREÇÃO: Processar resultado corretamente
-        $chaves = array();
-        if ($rowCount > 0 && is_array($result)) {
-            error_log("getChaveCadastro - Processing result array...");
-            error_log("getChaveCadastro - Sample result structure: " . print_r($result[0], true));
-            
-            foreach ($result as $row) {
-                // Tentar diferentes formas de acessar o valor
-                $chave_valor = null;
-                
-                if (isset($row['CHAVE_LOJA']) && !empty($row['CHAVE_LOJA'])) {
-                    $chave_valor = $row['CHAVE_LOJA'];
-                } elseif (isset($row[0]) && !empty($row[0])) {
-                    // Caso retorne por índice numérico
-                    $chave_valor = $row[0];
-                } elseif (is_string($row)) {
-                    // Caso retorne string direta
-                    $chave_valor = $row;
-                }
-                
-                if ($chave_valor !== null) {
-                    // Garantir que é string e não array
-                    $chave_str = is_array($chave_valor) ? 
-                                 (isset($chave_valor[0]) ? $chave_valor[0] : '') : 
-                                 strval($chave_valor);
-                    
-                    if (!empty($chave_str)) {
-                        $chaves[] = $chave_str;
-                    }
-                }
-            }
+        if ($rowCount > 0) {
+            error_log("getTableDataByFilter - Sample first row: " . print_r($result[0], true));
         }
         
-        // Remover duplicatas
-        $uniqueChaves = array_unique($chaves);
-        
-        error_log("getChaveCadastro - Raw chaves count: " . count($chaves));
-        error_log("getChaveCadastro - Unique chaves count: " . count($uniqueChaves));
-        error_log("getChaveCadastro - Sample unique chaves: " . implode(', ', array_slice($uniqueChaves, 0, 5)));
-        
-        return array_values($uniqueChaves); // Reindexar array
+        return $result;
         
     } catch (Exception $e) {
-        error_log("getChaveCadastro - Exception: " . $e->getMessage());
+        error_log("getTableDataByFilter - Exception: " . $e->getMessage());
         return array();
     }
 }
