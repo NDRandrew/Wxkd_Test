@@ -1,148 +1,184 @@
-// Módulo de Exportação - Atualizado para XLS
-var ExportModule = {
-    // Exportar selecionados para XLS
-    exportSelectedXLS: function() {
-        console.log('exportSelectedXLS called');
-        
-        var selectedCheckboxes = document.querySelectorAll('.row-checkbox:checked');
-        
-        if (selectedCheckboxes.length === 0) {
-            alert('Por favor, selecione pelo menos um registro para exportar.');
-            return;
+public function getSelectedRecords($idsArray, $filter = 'all') {
+    error_log("getSelectedRecords called with " . count($idsArray) . " IDs and filter: " . $filter);
+    
+    try {
+        if (empty($idsArray)) {
+            error_log("getSelectedRecords - No IDs provided");
+            return array();
         }
         
-        var selectedIds = [];
-        selectedCheckboxes.forEach(function(checkbox) {
-            selectedIds.push(checkbox.value);
-        });
+        // Obter chaves autorizadas para o filtro
+        $chaves = $this->getChaveCadastro($filter);
+        error_log("getSelectedRecords - Authorized chaves: " . count($chaves));
         
-        console.log('Selected IDs for export:', selectedIds);
-        
-        this.performXLSExport(selectedIds, 'selecionados');
-    },
-    
-    // Exportar todos do filtro atual para XLS
-    exportAllXLS: function() {
-        console.log('exportAllXLS called');
-        
-        var currentFilter = FilterModule.getCurrentFilter();
-        console.log('Current filter for export:', currentFilter);
-        
-        this.performXLSExport([], currentFilter);
-    },
-    
-    // Executar exportação XLS
-    performXLSExport: function(selectedIds, exportType) {
-        console.log('performXLSExport called with:', selectedIds, exportType);
-        
-        try {
-            // Criar formulário para envio via POST
-            var form = document.createElement('form');
-            form.method = 'POST';
-            form.action = 'Wxkd_dashboard.php?action=exportXLS';
-            form.style.display = 'none';
-            
-            // Campo para IDs selecionados
-            var selectedIdsField = document.createElement('input');
-            selectedIdsField.type = 'hidden';
-            selectedIdsField.name = 'selectedIds';
-            selectedIdsField.value = selectedIds.join(',');
-            form.appendChild(selectedIdsField);
-            
-            // Campo para filtro atual
-            var filterField = document.createElement('input');
-            filterField.type = 'hidden';
-            filterField.name = 'filter';
-            filterField.value = FilterModule.getCurrentFilter();
-            form.appendChild(filterField);
-            
-            // Campo para tipo de exportação
-            var typeField = document.createElement('input');
-            typeField.type = 'hidden';
-            typeField.name = 'exportType';
-            typeField.value = exportType;
-            form.appendChild(typeField);
-            
-            // Adicionar ao body e submeter
-            document.body.appendChild(form);
-            
-            console.log('Submitting XLS export form...');
-            form.submit();
-            
-            // Remover formulário após submissão
-            setTimeout(function() {
-                document.body.removeChild(form);
-            }, 1000);
-            
-        } catch (error) {
-            console.error('Error in performXLSExport:', error);
-            alert('Erro ao exportar: ' + error.message);
+        if (empty($chaves)) {
+            error_log("getSelectedRecords - No authorized chaves found");
+            return array();
         }
-    }
-};
-
-// Módulo de Filtros - Adicionar método getCurrentFilter se não existir
-if (typeof FilterModule !== 'undefined') {
-    // Adicionar método para obter filtro atual
-    if (!FilterModule.getCurrentFilter) {
-        FilterModule.getCurrentFilter = function() {
-            // Verificar qual card está ativo
-            var activeCard = document.querySelector('.card.active');
-            if (activeCard) {
-                var cardId = activeCard.id;
-                if (cardId === 'card-cadastramento') return 'cadastramento';
-                if (cardId === 'card-descadastramento') return 'descadastramento';
-                if (cardId === 'card-historico') return 'historico';
-            }
-            return 'all'; // padrão
-        };
-    }
-}
-
-// Função global para exportar selecionados (chamada pelos botões)
-function exportSelectedXLS() {
-    ExportModule.exportSelectedXLS();
-}
-
-// Função global para exportar todos (chamada pelos botões)
-function exportAllXLS() {
-    ExportModule.exportAllXLS();
-}
-
-// Compatibilidade - manter funções antigas mas redirecionando para XLS
-function exportSelectedXML() {
-    console.log('exportSelectedXML redirecting to XLS');
-    ExportModule.exportSelectedXLS();
-}
-
-function exportAllXML() {
-    console.log('exportAllXML redirecting to XLS');
-    ExportModule.exportAllXLS();
-}
-
-// Inicialização quando DOM estiver pronto
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('ExportModule XLS initialized');
-    
-    // Atualizar textos dos botões de XML para XLS
-    var exportButtons = document.querySelectorAll('button[onclick*="XML"]');
-    exportButtons.forEach(function(button) {
-        if (button.textContent.includes('XML')) {
-            button.textContent = button.textContent.replace('XML', 'XLS');
+        
+        // Construir WHERE clause para chaves autorizadas
+        $whereChaves = "chave_loja IN ('" . implode("','", $chaves) . "')";
+        
+        // Construir WHERE clause para IDs selecionados
+        $whereIds = "chave_loja IN ('" . implode("','", $idsArray) . "')";
+        
+        // Combinar ambas as condições (autorização + seleção)
+        $whereClause = "(" . $whereChaves . ") AND (" . $whereIds . ")";
+        
+        error_log("getSelectedRecords - WHERE clause length: " . strlen($whereClause));
+        
+        // Usar a mesma lógica do getTableDataByFilter mas com IDs específicos
+        $query = "";
+        
+        switch($filter) {
+            case 'cadastramento':
+                $query = "
+                    SELECT 
+                        soli.chave_loja as id,
+                        ISNULL(loja.nome_loja, 'N/A') as nome,
+                        ISNULL(loja.email_loja, 'N/A') as email, 
+                        ISNULL(loja.telefone_loja, 'N/A') as telefone,
+                        ISNULL(loja.endereco_loja, 'N/A') as endereco,
+                        ISNULL(munici.nome_munic, 'N/A') as cidade,
+                        ISNULL(munici.uf, 'N/A') as estado,
+                        soli.chave_loja,
+                        CONVERT(varchar, soli.data_solicitacao, 103) as data_cadastro,
+                        'Cadastramento' as tipo
+                    FROM PGTOCORSP.dbo.tb_pgto_solicitacao soli
+                    LEFT JOIN PGTOCORSP.dbo.tb_pgto_acao_solicitacao acao ON acao.cod_acao = soli.cod_acao
+                    LEFT JOIN mesu.dbo.tb_lojas loja ON loja.chave_loja = soli.chave_loja
+                    LEFT JOIN (
+                        SELECT chave_loja, cod_ibge, nome_munic, uf 
+                        FROM mesu..tb_lojas lojas 
+                        JOIN mesu..munic_presenca munic ON cd_munic = cod_ibge
+                    ) munici ON munici.chave_loja = soli.chave_loja
+                    WHERE " . $whereClause . " 
+                    AND acao.desc_acao = 'Cadastramento'
+                    ORDER BY soli.data_solicitacao DESC";
+                break;
+                
+            case 'descadastramento':
+                $query = "
+                    SELECT 
+                        soli.chave_loja as id,
+                        ISNULL(loja.nome_loja, 'N/A') as nome,
+                        ISNULL(loja.email_loja, 'N/A') as email,
+                        ISNULL(loja.telefone_loja, 'N/A') as telefone,
+                        ISNULL(loja.endereco_loja, 'N/A') as endereco,
+                        ISNULL(munici.nome_munic, 'N/A') as cidade,
+                        ISNULL(munici.uf, 'N/A') as estado,
+                        soli.chave_loja,
+                        CONVERT(varchar, soli.data_solicitacao, 103) as data_cadastro,
+                        'Descadastramento' as tipo
+                    FROM PGTOCORSP.dbo.tb_pgto_solicitacao soli
+                    LEFT JOIN PGTOCORSP.dbo.tb_pgto_acao_solicitacao acao ON acao.cod_acao = soli.cod_acao
+                    LEFT JOIN mesu.dbo.tb_lojas loja ON loja.chave_loja = soli.chave_loja
+                    LEFT JOIN (
+                        SELECT chave_loja, cod_ibge, nome_munic, uf 
+                        FROM mesu..tb_lojas lojas 
+                        JOIN mesu..munic_presenca munic ON cd_munic = cod_ibge
+                    ) munici ON munici.chave_loja = soli.chave_loja
+                    WHERE " . $whereClause . " 
+                    AND acao.desc_acao = 'Descadastramento'
+                    ORDER BY soli.data_solicitacao DESC";
+                break;
+                
+            case 'historico':
+                // Tentar tabela lojas_historico primeiro
+                try {
+                    $testQuery = "SELECT TOP 1 * FROM lojas_historico WHERE " . $whereIds;
+                    $testResult = $this->sql->select($testQuery);
+                    
+                    if ($this->sql->qtdRows() > 0) {
+                        $query = "
+                            SELECT 
+                                id, 
+                                ISNULL(nome, 'N/A') as nome,
+                                ISNULL(email, 'N/A') as email, 
+                                ISNULL(telefone, 'N/A') as telefone,
+                                ISNULL(endereco, 'N/A') as endereco,
+                                ISNULL(cidade, 'N/A') as cidade,
+                                ISNULL(estado, 'N/A') as estado,
+                                chave_loja,
+                                CONVERT(varchar, data_cadastro, 103) as data_cadastro,
+                                'Histórico' as tipo
+                            FROM lojas_historico 
+                            WHERE " . $whereClause . "
+                            ORDER BY data_cadastro DESC";
+                    } else {
+                        throw new Exception("Tabela lojas_historico vazia");
+                    }
+                } catch (Exception $e) {
+                    // Usar solução alternativa
+                    $query = "
+                        SELECT 
+                            soli.chave_loja as id,
+                            ISNULL(loja.nome_loja, 'N/A') as nome,
+                            ISNULL(loja.email_loja, 'N/A') as email,
+                            ISNULL(loja.telefone_loja, 'N/A') as telefone,
+                            ISNULL(loja.endereco_loja, 'N/A') as endereco,
+                            ISNULL(munici.nome_munic, 'N/A') as cidade,
+                            ISNULL(munici.uf, 'N/A') as estado,
+                            soli.chave_loja,
+                            CONVERT(varchar, soli.data_solicitacao, 103) as data_cadastro,
+                            'Histórico' as tipo
+                        FROM PGTOCORSP.dbo.tb_pgto_solicitacao soli
+                        LEFT JOIN PGTOCORSP.dbo.tb_pgto_acao_solicitacao acao ON acao.cod_acao = soli.cod_acao
+                        LEFT JOIN mesu.dbo.tb_lojas loja ON loja.chave_loja = soli.chave_loja
+                        LEFT JOIN (
+                            SELECT chave_loja, cod_ibge, nome_munic, uf 
+                            FROM mesu..tb_lojas lojas 
+                            JOIN mesu..munic_presenca munic ON cd_munic = cod_ibge
+                        ) munici ON munici.chave_loja = soli.chave_loja
+                        WHERE " . $whereClause . " 
+                        AND acao.desc_acao IN ('Cadastramento', 'Descadastramento')
+                        ORDER BY soli.data_solicitacao DESC";
+                }
+                break;
+                
+            default: // 'all'
+                $query = "
+                    SELECT 
+                        soli.chave_loja as id,
+                        ISNULL(loja.nome_loja, 'N/A') as nome,
+                        ISNULL(loja.email_loja, 'N/A') as email,
+                        ISNULL(loja.telefone_loja, 'N/A') as telefone,
+                        ISNULL(loja.endereco_loja, 'N/A') as endereco,
+                        ISNULL(munici.nome_munic, 'N/A') as cidade,
+                        ISNULL(munici.uf, 'N/A') as estado,
+                        soli.chave_loja,
+                        CONVERT(varchar, soli.data_solicitacao, 103) as data_cadastro,
+                        ISNULL(acao.desc_acao, 'N/A') as tipo
+                    FROM PGTOCORSP.dbo.tb_pgto_solicitacao soli
+                    LEFT JOIN PGTOCORSP.dbo.tb_pgto_acao_solicitacao acao ON acao.cod_acao = soli.cod_acao
+                    LEFT JOIN mesu.dbo.tb_lojas loja ON loja.chave_loja = soli.chave_loja
+                    LEFT JOIN (
+                        SELECT chave_loja, cod_ibge, nome_munic, uf 
+                        FROM mesu..tb_lojas lojas 
+                        JOIN mesu..munic_presenca munic ON cd_munic = cod_ibge
+                    ) munici ON munici.chave_loja = soli.chave_loja
+                    WHERE " . $whereClause . " 
+                    AND acao.desc_acao IN ('Cadastramento', 'Descadastramento')
+                    ORDER BY soli.data_solicitacao DESC";
+                break;
         }
-        if (button.innerHTML.includes('XML')) {
-            button.innerHTML = button.innerHTML.replace('XML', 'XLS');
+        
+        if (empty($query)) {
+            error_log("getSelectedRecords - No query generated for filter: " . $filter);
+            return array();
         }
-    });
-    
-    // Atualizar onclick dos botões
-    var selectedBtn = document.querySelector('button[onclick="exportSelectedXML()"]');
-    if (selectedBtn) {
-        selectedBtn.setAttribute('onclick', 'exportSelectedXLS()');
+        
+        error_log("getSelectedRecords - Executing query...");
+        
+        $result = $this->sql->select($query);
+        $rowCount = $this->sql->qtdRows();
+        
+        error_log("getSelectedRecords - Query returned: " . $rowCount . " rows");
+        
+        return $result;
+        
+    } catch (Exception $e) {
+        error_log("getSelectedRecords - Exception: " . $e->getMessage());
+        return array();
     }
-    
-    var allBtn = document.querySelector('button[onclick="exportAllXML()"]');
-    if (allBtn) {
-        allBtn.setAttribute('onclick', 'exportAllXLS()');
-    }
-});
+}
