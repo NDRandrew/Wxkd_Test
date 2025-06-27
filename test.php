@@ -1,158 +1,148 @@
-public function exportXLS() {
-    try {
-        // Receber parâmetros
-        $selectedIds = isset($_POST['selectedIds']) ? $_POST['selectedIds'] : '';
-        $filter = isset($_POST['filter']) ? $_POST['filter'] : 'all';
+// Módulo de Exportação - Atualizado para XLS
+var ExportModule = {
+    // Exportar selecionados para XLS
+    exportSelectedXLS: function() {
+        console.log('exportSelectedXLS called');
         
-        error_log("exportXLS - selectedIds: " . $selectedIds);
-        error_log("exportXLS - filter: " . $filter);
+        var selectedCheckboxes = document.querySelectorAll('.row-checkbox:checked');
         
-        // Processar IDs selecionados
-        $idsArray = array();
-        if (!empty($selectedIds)) {
-            $idsArray = explode(',', $selectedIds);
-            $idsArray = array_map('trim', $idsArray);
-            $idsArray = array_filter($idsArray); // Remove empty values
-        }
-        
-        // Buscar dados baseado na seleção
-        if (!empty($idsArray)) {
-            // Exportar apenas selecionados
-            $data = $this->model->getSelectedRecords($idsArray, $filter);
-            $filename = 'dashboard_selecionados_' . date('Y-m-d_H-i-s') . '.xls';
-        } else {
-            // Exportar todos do filtro atual
-            $data = $this->model->getTableDataByFilter($filter);
-            $filename = 'dashboard_' . $filter . '_' . date('Y-m-d_H-i-s') . '.xls';
-        }
-        
-        error_log("exportXLS - Records to export: " . count($data));
-        
-        if (empty($data)) {
-            // Se não há dados, retornar erro
-            echo json_encode(array('success' => false, 'message' => 'Nenhum registro encontrado para exportação.'));
+        if (selectedCheckboxes.length === 0) {
+            alert('Por favor, selecione pelo menos um registro para exportar.');
             return;
         }
         
-        // Gerar conteúdo XLS
-        $xlsContent = $this->generateXLSContent($data, $filter);
+        var selectedIds = [];
+        selectedCheckboxes.forEach(function(checkbox) {
+            selectedIds.push(checkbox.value);
+        });
         
-        // Headers para download
-        header('Content-Type: application/vnd.ms-excel; charset=utf-8');
-        header('Content-Disposition: attachment; filename="' . $filename . '"');
-        header('Expires: 0');
-        header('Cache-Control: must-revalidate');
-        header('Pragma: public');
-        header('Content-Length: ' . strlen($xlsContent));
+        console.log('Selected IDs for export:', selectedIds);
         
-        // Output do conteúdo
-        echo $xlsContent;
-        exit;
+        this.performXLSExport(selectedIds, 'selecionados');
+    },
+    
+    // Exportar todos do filtro atual para XLS
+    exportAllXLS: function() {
+        console.log('exportAllXLS called');
         
-    } catch (Exception $e) {
-        error_log("exportXLS - Exception: " . $e->getMessage());
-        echo json_encode(array('success' => false, 'message' => 'Erro na exportação: ' . $e->getMessage()));
+        var currentFilter = FilterModule.getCurrentFilter();
+        console.log('Current filter for export:', currentFilter);
+        
+        this.performXLSExport([], currentFilter);
+    },
+    
+    // Executar exportação XLS
+    performXLSExport: function(selectedIds, exportType) {
+        console.log('performXLSExport called with:', selectedIds, exportType);
+        
+        try {
+            // Criar formulário para envio via POST
+            var form = document.createElement('form');
+            form.method = 'POST';
+            form.action = 'Wxkd_dashboard.php?action=exportXLS';
+            form.style.display = 'none';
+            
+            // Campo para IDs selecionados
+            var selectedIdsField = document.createElement('input');
+            selectedIdsField.type = 'hidden';
+            selectedIdsField.name = 'selectedIds';
+            selectedIdsField.value = selectedIds.join(',');
+            form.appendChild(selectedIdsField);
+            
+            // Campo para filtro atual
+            var filterField = document.createElement('input');
+            filterField.type = 'hidden';
+            filterField.name = 'filter';
+            filterField.value = FilterModule.getCurrentFilter();
+            form.appendChild(filterField);
+            
+            // Campo para tipo de exportação
+            var typeField = document.createElement('input');
+            typeField.type = 'hidden';
+            typeField.name = 'exportType';
+            typeField.value = exportType;
+            form.appendChild(typeField);
+            
+            // Adicionar ao body e submeter
+            document.body.appendChild(form);
+            
+            console.log('Submitting XLS export form...');
+            form.submit();
+            
+            // Remover formulário após submissão
+            setTimeout(function() {
+                document.body.removeChild(form);
+            }, 1000);
+            
+        } catch (error) {
+            console.error('Error in performXLSExport:', error);
+            alert('Erro ao exportar: ' + error.message);
+        }
+    }
+};
+
+// Módulo de Filtros - Adicionar método getCurrentFilter se não existir
+if (typeof FilterModule !== 'undefined') {
+    // Adicionar método para obter filtro atual
+    if (!FilterModule.getCurrentFilter) {
+        FilterModule.getCurrentFilter = function() {
+            // Verificar qual card está ativo
+            var activeCard = document.querySelector('.card.active');
+            if (activeCard) {
+                var cardId = activeCard.id;
+                if (cardId === 'card-cadastramento') return 'cadastramento';
+                if (cardId === 'card-descadastramento') return 'descadastramento';
+                if (cardId === 'card-historico') return 'historico';
+            }
+            return 'all'; // padrão
+        };
     }
 }
 
-private function generateXLSContent($data, $filter) {
-    // Cabeçalho HTML que o Excel reconhece
-    $xls = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
-    $xls .= '<?mso-application progid="Excel.Sheet"?>' . "\n";
-    $xls .= '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"' . "\n";
-    $xls .= ' xmlns:o="urn:schemas-microsoft-com:office:office"' . "\n";
-    $xls .= ' xmlns:x="urn:schemas-microsoft-com:office:excel"' . "\n";
-    $xls .= ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"' . "\n";
-    $xls .= ' xmlns:html="http://www.w3.org/TR/REC-html40">' . "\n";
-    
-    // Estilos
-    $xls .= '<Styles>' . "\n";
-    $xls .= '<Style ss:ID="header">' . "\n";
-    $xls .= '<Font ss:Bold="1" ss:Size="12"/>' . "\n";
-    $xls .= '<Interior ss:Color="#4472C4" ss:Pattern="Solid"/>' . "\n";
-    $xls .= '<Font ss:Color="#FFFFFF"/>' . "\n";
-    $xls .= '</Style>' . "\n";
-    $xls .= '<Style ss:ID="data">' . "\n";
-    $xls .= '<Font ss:Size="10"/>' . "\n";
-    $xls .= '<Borders>' . "\n";
-    $xls .= '<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>' . "\n";
-    $xls .= '</Borders>' . "\n";
-    $xls .= '</Style>' . "\n";
-    $xls .= '</Styles>' . "\n";
-    
-    // Worksheet
-    $xls .= '<Worksheet ss:Name="Dashboard_' . ucfirst($filter) . '">' . "\n";
-    $xls .= '<Table>' . "\n";
-    
-    // Cabeçalho da tabela
-    $xls .= '<Row>' . "\n";
-    $headers = array('ID', 'Nome', 'Email', 'Telefone', 'Endereço', 'Cidade', 'Estado', 'Chave Loja', 'Data Cadastro', 'Tipo');
-    
-    foreach ($headers as $header) {
-        $xls .= '<Cell ss:StyleID="header"><Data ss:Type="String">' . htmlspecialchars($header, ENT_QUOTES, 'UTF-8') . '</Data></Cell>' . "\n";
-    }
-    $xls .= '</Row>' . "\n";
-    
-    // Dados
-    foreach ($data as $row) {
-        $xls .= '<Row>' . "\n";
-        
-        // ID
-        $xls .= '<Cell ss:StyleID="data"><Data ss:Type="Number">' . 
-                htmlspecialchars(isset($row['id']) ? $row['id'] : '', ENT_QUOTES, 'UTF-8') . 
-                '</Data></Cell>' . "\n";
-        
-        // Nome
-        $xls .= '<Cell ss:StyleID="data"><Data ss:Type="String">' . 
-                htmlspecialchars(isset($row['nome']) ? $row['nome'] : '', ENT_QUOTES, 'UTF-8') . 
-                '</Data></Cell>' . "\n";
-        
-        // Email
-        $xls .= '<Cell ss:StyleID="data"><Data ss:Type="String">' . 
-                htmlspecialchars(isset($row['email']) ? $row['email'] : '', ENT_QUOTES, 'UTF-8') . 
-                '</Data></Cell>' . "\n";
-        
-        // Telefone
-        $xls .= '<Cell ss:StyleID="data"><Data ss:Type="String">' . 
-                htmlspecialchars(isset($row['telefone']) ? $row['telefone'] : '', ENT_QUOTES, 'UTF-8') . 
-                '</Data></Cell>' . "\n";
-        
-        // Endereço
-        $xls .= '<Cell ss:StyleID="data"><Data ss:Type="String">' . 
-                htmlspecialchars(isset($row['endereco']) ? $row['endereco'] : '', ENT_QUOTES, 'UTF-8') . 
-                '</Data></Cell>' . "\n";
-        
-        // Cidade
-        $xls .= '<Cell ss:StyleID="data"><Data ss:Type="String">' . 
-                htmlspecialchars(isset($row['cidade']) ? $row['cidade'] : '', ENT_QUOTES, 'UTF-8') . 
-                '</Data></Cell>' . "\n";
-        
-        // Estado
-        $xls .= '<Cell ss:StyleID="data"><Data ss:Type="String">' . 
-                htmlspecialchars(isset($row['estado']) ? $row['estado'] : '', ENT_QUOTES, 'UTF-8') . 
-                '</Data></Cell>' . "\n";
-        
-        // Chave Loja
-        $xls .= '<Cell ss:StyleID="data"><Data ss:Type="String">' . 
-                htmlspecialchars(isset($row['chave_loja']) ? $row['chave_loja'] : '', ENT_QUOTES, 'UTF-8') . 
-                '</Data></Cell>' . "\n";
-        
-        // Data Cadastro
-        $xls .= '<Cell ss:StyleID="data"><Data ss:Type="String">' . 
-                htmlspecialchars(isset($row['data_cadastro']) ? $row['data_cadastro'] : '', ENT_QUOTES, 'UTF-8') . 
-                '</Data></Cell>' . "\n";
-        
-        // Tipo
-        $xls .= '<Cell ss:StyleID="data"><Data ss:Type="String">' . 
-                htmlspecialchars(isset($row['tipo']) ? $row['tipo'] : '', ENT_QUOTES, 'UTF-8') . 
-                '</Data></Cell>' . "\n";
-        
-        $xls .= '</Row>' . "\n";
-    }
-    
-    $xls .= '</Table>' . "\n";
-    $xls .= '</Worksheet>' . "\n";
-    $xls .= '</Workbook>';
-    
-    return $xls;
+// Função global para exportar selecionados (chamada pelos botões)
+function exportSelectedXLS() {
+    ExportModule.exportSelectedXLS();
 }
+
+// Função global para exportar todos (chamada pelos botões)
+function exportAllXLS() {
+    ExportModule.exportAllXLS();
+}
+
+// Compatibilidade - manter funções antigas mas redirecionando para XLS
+function exportSelectedXML() {
+    console.log('exportSelectedXML redirecting to XLS');
+    ExportModule.exportSelectedXLS();
+}
+
+function exportAllXML() {
+    console.log('exportAllXML redirecting to XLS');
+    ExportModule.exportAllXLS();
+}
+
+// Inicialização quando DOM estiver pronto
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('ExportModule XLS initialized');
+    
+    // Atualizar textos dos botões de XML para XLS
+    var exportButtons = document.querySelectorAll('button[onclick*="XML"]');
+    exportButtons.forEach(function(button) {
+        if (button.textContent.includes('XML')) {
+            button.textContent = button.textContent.replace('XML', 'XLS');
+        }
+        if (button.innerHTML.includes('XML')) {
+            button.innerHTML = button.innerHTML.replace('XML', 'XLS');
+        }
+    });
+    
+    // Atualizar onclick dos botões
+    var selectedBtn = document.querySelector('button[onclick="exportSelectedXML()"]');
+    if (selectedBtn) {
+        selectedBtn.setAttribute('onclick', 'exportSelectedXLS()');
+    }
+    
+    var allBtn = document.querySelector('button[onclick="exportAllXML()"]');
+    if (allBtn) {
+        allBtn.setAttribute('onclick', 'exportAllXLS()');
+    }
+});
