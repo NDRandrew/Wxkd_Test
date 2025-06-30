@@ -1,121 +1,72 @@
-// Correção para checkboxes funcionarem após filtro
-// Adicionar ao final de assets/Wxkd_script.js
+// Versão SUPER SIMPLES - adicionar ao final de Wxkd_script.js
 
-// Função para re-inicializar checkboxes
-function initializeCheckboxes() {
-    console.log('Initializing checkboxes...');
+// Função simples para re-ativar checkboxes
+function reactivateCheckboxes() {
+    console.log('Reactivating checkboxes...');
     
-    // Checkbox "Selecionar Todos"
-    var selectAllCheckbox = document.getElementById('selectAll');
-    if (selectAllCheckbox) {
-        // Remover listeners antigos
-        selectAllCheckbox.removeEventListener('change', handleSelectAll);
-        // Adicionar listener novo
-        selectAllCheckbox.addEventListener('change', handleSelectAll);
+    // Selecionar todos
+    var selectAll = document.getElementById('selectAll');
+    if (selectAll) {
+        selectAll.onclick = function() {
+            var checkboxes = document.querySelectorAll('.row-checkbox');
+            checkboxes.forEach(function(cb) {
+                cb.checked = selectAll.checked;
+            });
+        };
     }
     
     // Checkboxes individuais
-    var rowCheckboxes = document.querySelectorAll('.row-checkbox');
-    rowCheckboxes.forEach(function(checkbox) {
-        // Remover listeners antigos
-        checkbox.removeEventListener('change', handleRowCheckbox);
-        // Adicionar listener novo
-        checkbox.addEventListener('change', handleRowCheckbox);
+    var checkboxes = document.querySelectorAll('.row-checkbox');
+    checkboxes.forEach(function(cb) {
+        cb.onclick = function() {
+            // Apenas para garantir que funciona
+            console.log('Checkbox clicked:', cb.value, cb.checked);
+        };
     });
     
-    console.log('Checkboxes initialized:', rowCheckboxes.length);
+    console.log('Found', checkboxes.length, 'checkboxes');
 }
 
-// Handler para "Selecionar Todos"
-function handleSelectAll(event) {
-    var checked = event.target.checked;
-    var rowCheckboxes = document.querySelectorAll('.row-checkbox');
-    
-    rowCheckboxes.forEach(function(checkbox) {
-        checkbox.checked = checked;
-    });
-    
-    updateSelectionCount();
-}
+// Re-ativar checkboxes sempre que aplicar filtro
+// Adicionar esta linha no final da função que aplica o filtro
+// Se você tiver uma função como FilterModule.applyFilter, adicione lá:
 
-// Handler para checkbox individual
-function handleRowCheckbox() {
-    updateSelectionCount();
-    updateSelectAllState();
-}
-
-// Atualizar contador de selecionados
-function updateSelectionCount() {
-    var selectedCount = document.querySelectorAll('.row-checkbox:checked').length;
-    
-    // Atualizar texto do contador se existir
-    var counterElement = document.getElementById('selectionCounter');
-    if (counterElement) {
-        counterElement.textContent = selectedCount + ' selecionado(s)';
-    }
-    
-    // Habilitar/desabilitar botões de exportação
-    var exportButtons = document.querySelectorAll('button[onclick*="Selected"]');
-    exportButtons.forEach(function(button) {
-        button.disabled = selectedCount === 0;
-    });
-}
-
-// Atualizar estado do "Selecionar Todos"
-function updateSelectAllState() {
-    var selectAllCheckbox = document.getElementById('selectAll');
-    if (!selectAllCheckbox) return;
-    
-    var rowCheckboxes = document.querySelectorAll('.row-checkbox');
-    var checkedCount = document.querySelectorAll('.row-checkbox:checked').length;
-    
-    if (checkedCount === 0) {
-        selectAllCheckbox.checked = false;
-        selectAllCheckbox.indeterminate = false;
-    } else if (checkedCount === rowCheckboxes.length) {
-        selectAllCheckbox.checked = true;
-        selectAllCheckbox.indeterminate = false;
-    } else {
-        selectAllCheckbox.checked = false;
-        selectAllCheckbox.indeterminate = true;
-    }
-}
-
-// IMPORTANTE: Re-inicializar checkboxes após carregar dados da tabela
-// Interceptar a função que carrega dados da tabela
-if (typeof loadTableData !== 'undefined') {
-    // Guardar função original
-    var originalLoadTableData = loadTableData;
-    
-    // Sobrescrever com versão que re-inicializa checkboxes
-    loadTableData = function(filter) {
-        console.log('Loading table data with filter:', filter);
+// INTERCEPTAR a aplicação de filtros
+if (typeof FilterModule !== 'undefined' && FilterModule.applyFilter) {
+    var originalApplyFilter = FilterModule.applyFilter;
+    FilterModule.applyFilter = function(filter) {
+        console.log('Applying filter:', filter);
         
         // Chamar função original
-        var result = originalLoadTableData.call(this, filter);
+        var result = originalApplyFilter.call(this, filter);
         
-        // Re-inicializar checkboxes após um pequeno delay
-        setTimeout(function() {
-            initializeCheckboxes();
-        }, 100);
+        // Re-ativar checkboxes após pequeno delay
+        setTimeout(reactivateCheckboxes, 200);
         
         return result;
     };
 }
 
-// Inicializar checkboxes quando a página carrega
+// Ativar na inicialização
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM loaded, initializing checkboxes...');
-    setTimeout(function() {
-        initializeCheckboxes();
-    }, 500);
+    setTimeout(reactivateCheckboxes, 1000);
 });
 
-// Re-inicializar sempre que a tabela for atualizada
-// (interceptar se existir um callback de sucesso do AJAX)
-if (typeof window.onTableDataLoaded === 'undefined') {
-    window.onTableDataLoaded = function() {
-        console.log('Table data loaded, re-initializing checkboxes...');
-        initializeCheckboxes();
-    };
-}
+// SOLUÇÃO DE EMERGÊNCIA: Re-ativar a cada 3 segundos
+setInterval(function() {
+    var checkboxes = document.querySelectorAll('.row-checkbox');
+    if (checkboxes.length > 0) {
+        // Verificar se algum não tem onclick
+        var needsReactivation = false;
+        checkboxes.forEach(function(cb) {
+            if (!cb.onclick) {
+                needsReactivation = true;
+            }
+        });
+        
+        if (needsReactivation) {
+            console.log('Re-activating checkboxes automatically...');
+            reactivateCheckboxes();
+        }
+    }
+}, 3000);
