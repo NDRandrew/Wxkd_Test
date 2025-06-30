@@ -1,223 +1,205 @@
-// Métodos do Model 100% compatíveis com PHP 5.3
+// JavaScript TXT - IGUAL ao CSV que funciona
 
-/**
- * Gera conteúdo TXT específico (PHP 5.3 seguro)
- */
-public function generateSpecificTXT($tableData) {
-    error_log("generateSpecificTXT called with " . count($tableData) . " records");
+function exportAllTXT() {
+    var filter = getCurrentFilter();
+    exportTXTData('', filter);
+}
+
+function exportSelectedTXT() {
+    var selected = document.querySelectorAll('.row-checkbox:checked');
+    if (selected.length === 0) {
+        alert('Selecione pelo menos um registro');
+        return;
+    }
     
-    try {
-        // CORREÇÃO PHP 5.3: Verificar dados sem usar empty() em função
-        $hasData = (is_array($tableData) && count($tableData) > 0);
-        
-        if (!$hasData) {
-            error_log("generateSpecificTXT - No data provided");
-            return '';
-        }
-        
-        $txtContent = '';
-        $lineCount = 0;
-        
-        // Processar cada linha dos dados
-        foreach ($tableData as $row) {
-            // CORREÇÃO PHP 5.3: Atribuir resultado a variável
-            $formattedLine = $this->converRowToSpecificFormat($row);
-            $lineIsEmpty = empty($formattedLine);
-            
-            if (!$lineIsEmpty) {
-                $txtContent .= $formattedLine . "\r\n";
-                $lineCount++;
+    var ids = [];
+    selected.forEach(function(cb) {
+        ids.push(cb.value);
+    });
+    
+    var filter = getCurrentFilter();
+    exportTXTData(ids.join(','), filter);
+}
+
+function exportTXTData(selectedIds, filter) {
+    var url = 'Wxkd_dashboard.php?action=exportTXT&filter=' + filter;
+    if (selectedIds) {
+        url += '&ids=' + selectedIds;
+    }
+    
+    // Fazer requisição AJAX (igual ao CSV)
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', url, true);
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+            try {
+                // Parsear XML (igual ao CSV)
+                var parser = new DOMParser();
+                var xmlDoc = parser.parseFromString(xhr.responseText, 'text/xml');
+                
+                // Verificar se teve sucesso
+                var success = xmlDoc.getElementsByTagName('success')[0];
+                if (!success || success.textContent !== 'true') {
+                    alert('Erro ao buscar dados para exportação');
+                    return;
+                }
+                
+                // Extrair dados do XML e converter para TXT
+                var txtData = extractTXTFromXML(xmlDoc);
+                
+                // Gerar e fazer download do TXT
+                downloadTXTFile(txtData, 'dashboard_' + filter + '_' + getCurrentTimestamp() + '.txt');
+                
+            } catch (e) {
+                console.error('Erro ao processar XML:', e);
+                alert('Erro ao processar dados');
             }
         }
-        
-        error_log("generateSpecificTXT - Generated $lineCount lines");
-        error_log("generateSpecificTXT - Content length: " . strlen($txtContent));
-        
-        return $txtContent;
-        
-    } catch (Exception $e) {
-        error_log("generateSpecificTXT - Exception: " . $e->getMessage());
-        return '';
-    }
+    };
+    xhr.send();
 }
 
-/**
- * Converte uma linha de dados (PHP 5.3 seguro)
- */
-public function converRowToSpecificFormat($row) {
-    try {
-        // Obter mapa de conversão
-        $conversionMap = $this->getConversionMap();
+function extractTXTFromXML(xmlDoc) {
+    var txtContent = '';
+    
+    // Extrair dados das linhas (igual ao CSV)
+    var rows = xmlDoc.getElementsByTagName('row');
+    for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
         
-        $formattedLine = '';
+        var chave = getXMLNodeValue(row, 'chave_loja');
+        var empresa = getXMLNodeValue(row, 'cod_empresa');
+        var tipo = getXMLNodeValue(row, 'tipo');
+        var dataContrato = getXMLNodeValue(row, 'data_contrato');
+        var tipoContrato = getXMLNodeValue(row, 'tipo_contrato');
         
-        // Processar cada campo conforme o mapa de conversão
-        foreach ($conversionMap as $fieldName => $config) {
-            $value = isset($row[$fieldName]) ? $row[$fieldName] : '';
-            $formattedValue = $this->formatFieldValue($value, $config);
-            $formattedLine .= $formattedValue;
-        }
-        
-        // Garantir que a linha tenha o tamanho correto (117 caracteres)
-        $targetLength = 117;
-        $currentLength = strlen($formattedLine);
-        
-        if ($currentLength > $targetLength) {
-            $formattedLine = substr($formattedLine, 0, $targetLength);
-        } elseif ($currentLength < $targetLength) {
-            $formattedLine = str_pad($formattedLine, $targetLength, ' ');
-        }
-        
-        return $formattedLine;
-        
-    } catch (Exception $e) {
-        error_log("converRowToSpecificFormat - Exception: " . $e->getMessage());
-        return '';
+        // Converter para formato TXT de 117 posições
+        var txtLine = formatToTXTLine(chave, empresa, tipo, dataContrato, tipoContrato);
+        txtContent += txtLine + '\r\n';
     }
+    
+    return txtContent;
 }
 
-/**
- * Formata valor do campo (PHP 5.3 seguro)
- */
-private function formatFieldValue($value, $config) {
-    $type = isset($config['type']) ? $config['type'] : 'text';
-    $length = isset($config['length']) ? $config['length'] : 10;
-    $padChar = isset($config['pad_char']) ? $config['pad_char'] : ' ';
-    $align = isset($config['align']) ? $config['align'] : 'left';
+function formatToTXTLine(chave, empresa, tipo, dataContrato, tipoContrato) {
+    // Formatar campos para TXT (117 posições)
     
-    // Converter valor para string
-    $value = strval($value);
+    // CHAVE_LOJA - 10 posições, numérico, zeros à esquerda
+    var chaveTXT = padLeft(cleanNumeric(chave), 10, '0');
     
-    // Aplicar formatação específica por tipo
-    if ($type === 'numeric') {
-        // Apenas números
-        $value = preg_replace('/[^0-9]/', '', $value);
-        $valueIsEmpty = empty($value);
-        if ($valueIsEmpty) $value = '0';
-    } elseif ($type === 'date') {
-        // Data simples
-        $value = $this->formatDatePHP53($value, $config);
+    // COD_EMPRESA - 8 posições, numérico, zeros à esquerda  
+    var empresaTXT = padLeft(cleanNumeric(empresa), 8, '0');
+    
+    // TIPO - 20 posições, texto, espaços à direita
+    var tipoTXT = padRight(cleanText(tipo), 20, ' ');
+    
+    // DATA_CONTRATO - 10 posições, formato YYYY-MM-DD
+    var dataTXT = formatDate(dataContrato, 10);
+    
+    // TIPO_CONTRATO - 25 posições, texto, espaços à direita
+    var tipoContratoTXT = padRight(cleanText(tipoContrato), 25, ' ');
+    
+    // STATUS - 10 posições, texto, espaços à direita
+    var statusTXT = padRight('ATIVO', 10, ' ');
+    
+    // OBSERVACOES - 34 posições, texto, espaços à direita
+    var obsTXT = padRight('CONTRATO APROVADO', 34, ' ');
+    
+    // Juntar tudo (total: 117 posições)
+    var linha = chaveTXT + empresaTXT + tipoTXT + dataTXT + tipoContratoTXT + statusTXT + obsTXT;
+    
+    // Garantir exatamente 117 caracteres
+    if (linha.length > 117) {
+        linha = linha.substring(0, 117);
+    } else if (linha.length < 117) {
+        linha = padRight(linha, 117, ' ');
+    }
+    
+    return linha;
+}
+
+// Funções auxiliares para formatação
+function cleanNumeric(value) {
+    return String(value).replace(/[^0-9]/g, '') || '0';
+}
+
+function cleanText(value) {
+    return String(value).replace(/[^A-Za-z0-9\s]/g, '').toUpperCase().trim();
+}
+
+function formatDate(dateValue, length) {
+    if (!dateValue) return padLeft('', length, '0');
+    
+    // Tentar extrair ano
+    var year = '';
+    if (dateValue.match(/(\d{4})/)) {
+        year = dateValue.match(/(\d{4})/)[1];
+        return year + '-01-01'; // Data padrão
+    }
+    
+    return padLeft('', length, '0');
+}
+
+function padLeft(str, length, char) {
+    str = String(str);
+    while (str.length < length) {
+        str = char + str;
+    }
+    return str.substring(0, length);
+}
+
+function padRight(str, length, char) {
+    str = String(str);
+    while (str.length < length) {
+        str = str + char;
+    }
+    return str.substring(0, length);
+}
+
+function getXMLNodeValue(parentNode, tagName) {
+    var node = parentNode.getElementsByTagName(tagName)[0];
+    return node ? (node.textContent || node.text || '') : '';
+}
+
+function downloadTXTFile(txtContent, filename) {
+    // Adicionar BOM UTF-8 para compatibilidade
+    var txtWithBOM = '\uFEFF' + txtContent;
+    
+    // Criar Blob (igual ao CSV)
+    var blob = new Blob([txtWithBOM], { type: 'text/plain;charset=utf-8;' });
+    
+    // Criar link de download (igual ao CSV)
+    var link = document.createElement('a');
+    if (link.download !== undefined) {
+        var url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     } else {
-        // Texto limpo
-        $value = $this->cleanTextPHP53($value);
+        // Fallback para navegadores antigos
+        alert('Seu navegador não suporta download automático. Copie o conteúdo:\n\n' + txtContent.substring(0, 500) + '...');
     }
-    
-    // Truncar se necessário
-    $currentLength = strlen($value);
-    if ($currentLength > $length) {
-        $value = substr($value, 0, $length);
-    }
-    
-    // Aplicar padding
-    if ($align === 'right') {
-        $value = str_pad($value, $length, $padChar, STR_PAD_LEFT);
-    } else {
-        $value = str_pad($value, $length, $padChar, STR_PAD_RIGHT);
-    }
-    
-    return $value;
 }
 
-/**
- * Formatar data PHP 5.3 (ultra-simples)
- */
-private function formatDatePHP53($dateValue, $config) {
-    $valueIsEmpty = empty($dateValue);
-    if ($valueIsEmpty) {
-        return '0000-00-00';
+function getCurrentFilter() {
+    var activeCard = document.querySelector('.card.active');
+    if (activeCard) {
+        if (activeCard.id === 'card-cadastramento') return 'cadastramento';
+        if (activeCard.id === 'card-descadastramento') return 'descadastramento';
+        if (activeCard.id === 'card-historico') return 'historico';
     }
-    
-    // Apenas tentar strtotime
-    $timestamp = strtotime($dateValue);
-    
-    if ($timestamp && $timestamp > 0) {
-        return date('Y-m-d', $timestamp);
-    }
-    
-    // Se falhar, tentar extrair ano da string
-    if (preg_match('/(\d{4})/', $dateValue, $matches)) {
-        $year = $matches[1];
-        return $year . '-01-01'; // Data padrão
-    }
-    
-    return '0000-00-00';
+    return 'all';
 }
 
-/**
- * Limpar texto PHP 5.3 (ultra-simples)
- */
-private function cleanTextPHP53($text) {
-    // Converter para string
-    $text = strval($text);
-    
-    // Apenas remover caracteres especiais básicos
-    $text = preg_replace('/[^A-Za-z0-9\s]/', '', $text);
-    $text = preg_replace('/\s+/', ' ', trim($text));
-    return strtoupper($text);
-}
-
-/**
- * Mapa de conversão (igual anterior, mas comentado para clareza)
- */
-private function getConversionMap() {
-    // Array simples sem sintaxe moderna
-    $map = array();
-    
-    $map['CHAVE_LOJA'] = array(
-        'type' => 'numeric',
-        'length' => 10,
-        'position' => 1,
-        'pad_char' => '0',
-        'align' => 'right'
-    );
-    
-    $map['COD_EMPRESA'] = array(
-        'type' => 'numeric', 
-        'length' => 8,
-        'position' => 2,
-        'pad_char' => '0',
-        'align' => 'right'
-    );
-    
-    $map['TIPO'] = array(
-        'type' => 'text',
-        'length' => 20,
-        'position' => 3,
-        'pad_char' => ' ',
-        'align' => 'left'
-    );
-    
-    $map['DATA_CONTRATO'] = array(
-        'type' => 'date',
-        'length' => 10,
-        'position' => 4,
-        'pad_char' => '0',
-        'align' => 'left'
-    );
-    
-    $map['TIPO_CONTRATO'] = array(
-        'type' => 'text',
-        'length' => 25,
-        'position' => 5,
-        'pad_char' => ' ',
-        'align' => 'left'
-    );
-    
-    $map['STATUS'] = array(
-        'type' => 'text',
-        'length' => 10,
-        'position' => 6,
-        'pad_char' => ' ',
-        'align' => 'left'
-    );
-    
-    $map['OBSERVACOES'] = array(
-        'type' => 'text',
-        'length' => 34,
-        'position' => 7,
-        'pad_char' => ' ',
-        'align' => 'left'
-    );
-    
-    return $map;
+function getCurrentTimestamp() {
+    var now = new Date();
+    return now.getFullYear() + '-' + 
+           String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+           String(now.getDate()).padStart(2, '0') + '_' +
+           String(now.getHours()).padStart(2, '0') + '-' +
+           String(now.getMinutes()).padStart(2, '0') + '-' +
+           String(now.getSeconds()).padStart(2, '0');
 }
