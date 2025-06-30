@@ -1,225 +1,223 @@
-// JavaScript TXT - AJAX na mesma página (sem redirecionamento)
+// Métodos do Model 100% compatíveis com PHP 5.3
 
 /**
- * Exportar todos para TXT (AJAX - mesma página)
+ * Gera conteúdo TXT específico (PHP 5.3 seguro)
  */
-function exportAllTXT() {
-    console.log('exportAllTXT called');
-    
-    var filter = getCurrentFilter();
-    console.log('Current filter:', filter);
-    
-    // Mostrar loading
-    showTXTLoading();
-    
-    // AJAX para buscar TXT
-    var url = 'Wxkd_dashboard.php?action=exportTXT&filter=' + filter + '&ajax=1';
-    makeTXTRequest(url, 'dashboard_' + filter + '.txt');
-}
-
-/**
- * Exportar selecionados para TXT (AJAX - mesma página)
- */
-function exportSelectedTXT() {
-    console.log('exportSelectedTXT called');
-    
-    var selected = document.querySelectorAll('.row-checkbox:checked');
-    if (selected.length === 0) {
-        alert('Por favor, selecione pelo menos um registro para exportar.');
-        return;
-    }
-    
-    var ids = [];
-    selected.forEach(function(cb) {
-        ids.push(cb.value);
-    });
-    
-    console.log('Selected IDs:', ids);
-    
-    var filter = getCurrentFilter();
-    
-    // Mostrar loading
-    showTXTLoading();
-    
-    // AJAX para buscar TXT
-    var url = 'Wxkd_dashboard.php?action=exportTXT&filter=' + filter + '&ids=' + ids.join(',') + '&ajax=1';
-    makeTXTRequest(url, 'dashboard_selected_' + filter + '.txt');
-}
-
-/**
- * Fazer requisição AJAX para TXT
- */
-function makeTXTRequest(url, filename) {
-    console.log('Making TXT request to:', url);
-    
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', url, true);
-    
-    xhr.onreadystatechange = function() {
-        if (xhr.readyState === 4) {
-            hideTXTLoading();
-            
-            if (xhr.status === 200) {
-                console.log('TXT response received');
-                
-                try {
-                    // Tentar parsear como XML primeiro
-                    var parser = new DOMParser();
-                    var xmlDoc = parser.parseFromString(xhr.responseText, 'text/xml');
-                    
-                    var success = xmlDoc.getElementsByTagName('success')[0];
-                    if (success && success.textContent === 'true') {
-                        // É XML válido
-                        var contentNode = xmlDoc.getElementsByTagName('txtContent')[0];
-                        if (contentNode) {
-                            var txtContent = contentNode.textContent || contentNode.text || '';
-                            txtContent = txtContent.replace(/\|\|NEWLINE\|\|/g, '\r\n');
-                            downloadTXTContent(txtContent, filename);
-                            return;
-                        }
-                    }
-                    
-                    // Se não é XML válido, usar o texto bruto
-                    var responseText = xhr.responseText;
-                    
-                    // Verificar se é HTML (erro) ou TXT válido
-                    if (responseText.indexOf('<html>') !== -1 || responseText.indexOf('<!DOCTYPE') !== -1) {
-                        alert('Erro: Resposta inválida do servidor');
-                        console.error('HTML response received instead of TXT');
-                        return;
-                    }
-                    
-                    // Assumir que é conteúdo TXT válido
-                    downloadTXTContent(responseText, filename);
-                    
-                } catch (e) {
-                    console.error('Error processing TXT response:', e);
-                    alert('Erro ao processar resposta do servidor');
-                }
-            } else {
-                console.error('TXT request failed:', xhr.status);
-                alert('Erro na requisição: ' + xhr.status);
-            }
-        }
-    };
-    
-    // Prevenir cache
-    xhr.setRequestHeader('Cache-Control', 'no-cache');
-    xhr.send();
-}
-
-/**
- * Fazer download do conteúdo TXT
- */
-function downloadTXTContent(txtContent, filename) {
-    console.log('Downloading TXT content, length:', txtContent.length);
-    console.log('Filename:', filename);
-    console.log('Content preview:', txtContent.substring(0, 200) + '...');
+public function generateSpecificTXT($tableData) {
+    error_log("generateSpecificTXT called with " . count($tableData) . " records");
     
     try {
-        // Criar Blob
-        var blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8' });
+        // CORREÇÃO PHP 5.3: Verificar dados sem usar empty() em função
+        $hasData = (is_array($tableData) && count($tableData) > 0);
         
-        // Criar URL temporária
-        var url = window.URL.createObjectURL(blob);
+        if (!$hasData) {
+            error_log("generateSpecificTXT - No data provided");
+            return '';
+        }
         
-        // Criar link de download
-        var link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        link.style.display = 'none';
+        $txtContent = '';
+        $lineCount = 0;
         
-        // Adicionar ao DOM, clicar e remover
-        document.body.appendChild(link);
-        link.click();
+        // Processar cada linha dos dados
+        foreach ($tableData as $row) {
+            // CORREÇÃO PHP 5.3: Atribuir resultado a variável
+            $formattedLine = $this->converRowToSpecificFormat($row);
+            $lineIsEmpty = empty($formattedLine);
+            
+            if (!$lineIsEmpty) {
+                $txtContent .= $formattedLine . "\r\n";
+                $lineCount++;
+            }
+        }
         
-        // Cleanup
-        setTimeout(function() {
-            document.body.removeChild(link);
-            window.URL.revokeObjectURL(url);
-        }, 100);
+        error_log("generateSpecificTXT - Generated $lineCount lines");
+        error_log("generateSpecificTXT - Content length: " . strlen($txtContent));
         
-        console.log('TXT download completed successfully');
+        return $txtContent;
         
-    } catch (e) {
-        console.error('Error downloading TXT:', e);
-        
-        // Fallback - mostrar em textarea
-        showTXTFallback(txtContent, filename);
+    } catch (Exception $e) {
+        error_log("generateSpecificTXT - Exception: " . $e->getMessage());
+        return '';
     }
 }
 
 /**
- * Fallback - mostrar TXT em textarea
+ * Converte uma linha de dados (PHP 5.3 seguro)
  */
-function showTXTFallback(txtContent, filename) {
-    var overlay = document.createElement('div');
-    overlay.id = 'txt-fallback-overlay';
-    overlay.style.cssText = 
-        'position: fixed; top: 0; left: 0; width: 100%; height: 100%; ' +
-        'background: rgba(0,0,0,0.8); z-index: 9999; display: flex; ' +
-        'align-items: center; justify-content: center;';
-    
-    var modal = document.createElement('div');
-    modal.style.cssText = 
-        'background: white; padding: 30px; border-radius: 10px; ' +
-        'max-width: 90%; max-height: 90%; overflow: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.3);';
-    
-    modal.innerHTML = 
-        '<h3>Conteúdo TXT - ' + filename + '</h3>' +
-        '<p>O download automático falhou. Copie o conteúdo abaixo e salve como arquivo .txt:</p>' +
-        '<textarea id="txt-content" style="width: 600px; height: 400px; font-family: monospace; font-size: 12px;">' + 
-        txtContent + '</textarea><br><br>' +
-        '<button onclick="document.getElementById(\'txt-fallback-overlay\').remove()">Fechar</button> ' +
-        '<button onclick="document.getElementById(\'txt-content\').select(); document.execCommand(\'copy\'); alert(\'Conteúdo copiado!\')">Copiar Tudo</button>';
-    
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-}
-
-/**
- * Mostrar loading
- */
-function showTXTLoading() {
-    var loading = document.createElement('div');
-    loading.id = 'txt-loading';
-    loading.style.cssText = 
-        'position: fixed; top: 0; left: 0; width: 100%; height: 100%; ' +
-        'background: rgba(0,0,0,0.7); z-index: 9998; display: flex; ' +
-        'align-items: center; justify-content: center;';
-    
-    loading.innerHTML = 
-        '<div style="background: white; padding: 30px; border-radius: 10px; text-align: center;">' +
-            '<div style="font-size: 24px; margin-bottom: 10px;">📄</div>' +
-            '<div style="font-weight: bold; margin-bottom: 5px;">Gerando arquivo TXT...</div>' +
-            '<div style="color: #666;">Processando dados, aguarde...</div>' +
-            '<div style="margin-top: 15px; border: 2px solid #f3f3f3; border-top: 2px solid #3498db; ' +
-            'border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 15px auto;"></div>' +
-        '</div>' +
-        '<style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>';
-    
-    document.body.appendChild(loading);
-}
-
-/**
- * Esconder loading
- */
-function hideTXTLoading() {
-    var loading = document.getElementById('txt-loading');
-    if (loading) {
-        document.body.removeChild(loading);
+public function converRowToSpecificFormat($row) {
+    try {
+        // Obter mapa de conversão
+        $conversionMap = $this->getConversionMap();
+        
+        $formattedLine = '';
+        
+        // Processar cada campo conforme o mapa de conversão
+        foreach ($conversionMap as $fieldName => $config) {
+            $value = isset($row[$fieldName]) ? $row[$fieldName] : '';
+            $formattedValue = $this->formatFieldValue($value, $config);
+            $formattedLine .= $formattedValue;
+        }
+        
+        // Garantir que a linha tenha o tamanho correto (117 caracteres)
+        $targetLength = 117;
+        $currentLength = strlen($formattedLine);
+        
+        if ($currentLength > $targetLength) {
+            $formattedLine = substr($formattedLine, 0, $targetLength);
+        } elseif ($currentLength < $targetLength) {
+            $formattedLine = str_pad($formattedLine, $targetLength, ' ');
+        }
+        
+        return $formattedLine;
+        
+    } catch (Exception $e) {
+        error_log("converRowToSpecificFormat - Exception: " . $e->getMessage());
+        return '';
     }
 }
 
 /**
- * Obter filtro atual
+ * Formata valor do campo (PHP 5.3 seguro)
  */
-function getCurrentFilter() {
-    var activeCard = document.querySelector('.card.active');
-    if (activeCard) {
-        if (activeCard.id === 'card-cadastramento') return 'cadastramento';
-        if (activeCard.id === 'card-descadastramento') return 'descadastramento';
-        if (activeCard.id === 'card-historico') return 'historico';
+private function formatFieldValue($value, $config) {
+    $type = isset($config['type']) ? $config['type'] : 'text';
+    $length = isset($config['length']) ? $config['length'] : 10;
+    $padChar = isset($config['pad_char']) ? $config['pad_char'] : ' ';
+    $align = isset($config['align']) ? $config['align'] : 'left';
+    
+    // Converter valor para string
+    $value = strval($value);
+    
+    // Aplicar formatação específica por tipo
+    if ($type === 'numeric') {
+        // Apenas números
+        $value = preg_replace('/[^0-9]/', '', $value);
+        $valueIsEmpty = empty($value);
+        if ($valueIsEmpty) $value = '0';
+    } elseif ($type === 'date') {
+        // Data simples
+        $value = $this->formatDatePHP53($value, $config);
+    } else {
+        // Texto limpo
+        $value = $this->cleanTextPHP53($value);
     }
-    return 'all';
+    
+    // Truncar se necessário
+    $currentLength = strlen($value);
+    if ($currentLength > $length) {
+        $value = substr($value, 0, $length);
+    }
+    
+    // Aplicar padding
+    if ($align === 'right') {
+        $value = str_pad($value, $length, $padChar, STR_PAD_LEFT);
+    } else {
+        $value = str_pad($value, $length, $padChar, STR_PAD_RIGHT);
+    }
+    
+    return $value;
+}
+
+/**
+ * Formatar data PHP 5.3 (ultra-simples)
+ */
+private function formatDatePHP53($dateValue, $config) {
+    $valueIsEmpty = empty($dateValue);
+    if ($valueIsEmpty) {
+        return '0000-00-00';
+    }
+    
+    // Apenas tentar strtotime
+    $timestamp = strtotime($dateValue);
+    
+    if ($timestamp && $timestamp > 0) {
+        return date('Y-m-d', $timestamp);
+    }
+    
+    // Se falhar, tentar extrair ano da string
+    if (preg_match('/(\d{4})/', $dateValue, $matches)) {
+        $year = $matches[1];
+        return $year . '-01-01'; // Data padrão
+    }
+    
+    return '0000-00-00';
+}
+
+/**
+ * Limpar texto PHP 5.3 (ultra-simples)
+ */
+private function cleanTextPHP53($text) {
+    // Converter para string
+    $text = strval($text);
+    
+    // Apenas remover caracteres especiais básicos
+    $text = preg_replace('/[^A-Za-z0-9\s]/', '', $text);
+    $text = preg_replace('/\s+/', ' ', trim($text));
+    return strtoupper($text);
+}
+
+/**
+ * Mapa de conversão (igual anterior, mas comentado para clareza)
+ */
+private function getConversionMap() {
+    // Array simples sem sintaxe moderna
+    $map = array();
+    
+    $map['CHAVE_LOJA'] = array(
+        'type' => 'numeric',
+        'length' => 10,
+        'position' => 1,
+        'pad_char' => '0',
+        'align' => 'right'
+    );
+    
+    $map['COD_EMPRESA'] = array(
+        'type' => 'numeric', 
+        'length' => 8,
+        'position' => 2,
+        'pad_char' => '0',
+        'align' => 'right'
+    );
+    
+    $map['TIPO'] = array(
+        'type' => 'text',
+        'length' => 20,
+        'position' => 3,
+        'pad_char' => ' ',
+        'align' => 'left'
+    );
+    
+    $map['DATA_CONTRATO'] = array(
+        'type' => 'date',
+        'length' => 10,
+        'position' => 4,
+        'pad_char' => '0',
+        'align' => 'left'
+    );
+    
+    $map['TIPO_CONTRATO'] = array(
+        'type' => 'text',
+        'length' => 25,
+        'position' => 5,
+        'pad_char' => ' ',
+        'align' => 'left'
+    );
+    
+    $map['STATUS'] = array(
+        'type' => 'text',
+        'length' => 10,
+        'position' => 6,
+        'pad_char' => ' ',
+        'align' => 'left'
+    );
+    
+    $map['OBSERVACOES'] = array(
+        'type' => 'text',
+        'length' => 34,
+        'position' => 7,
+        'pad_char' => ' ',
+        'align' => 'left'
+    );
+    
+    return $map;
 }
