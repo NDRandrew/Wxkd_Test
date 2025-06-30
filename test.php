@@ -1,22 +1,24 @@
-// JavaScript para forçar download TXT - substituir funções existentes
+// JavaScript TXT - AJAX na mesma página (sem redirecionamento)
 
 /**
- * Exportar todos os registros para TXT
+ * Exportar todos para TXT (AJAX - mesma página)
  */
 function exportAllTXT() {
     console.log('exportAllTXT called');
+    
     var filter = getCurrentFilter();
+    console.log('Current filter:', filter);
     
     // Mostrar loading
-    showExportLoading('TXT');
+    showTXTLoading();
     
-    // Fazer requisição AJAX
-    var url = 'Wxkd_dashboard.php?action=exportTXT&filter=' + filter;
-    makeTextExportRequest(url, 'dashboard_' + filter + '.txt');
+    // AJAX para buscar TXT
+    var url = 'Wxkd_dashboard.php?action=exportTXT&filter=' + filter + '&ajax=1';
+    makeTXTRequest(url, 'dashboard_' + filter + '.txt');
 }
 
 /**
- * Exportar registros selecionados para TXT
+ * Exportar selecionados para TXT (AJAX - mesma página)
  */
 function exportSelectedTXT() {
     console.log('exportSelectedTXT called');
@@ -32,95 +34,100 @@ function exportSelectedTXT() {
         ids.push(cb.value);
     });
     
+    console.log('Selected IDs:', ids);
+    
     var filter = getCurrentFilter();
     
     // Mostrar loading
-    showExportLoading('TXT');
+    showTXTLoading();
     
-    // Fazer requisição AJAX
-    var url = 'Wxkd_dashboard.php?action=exportTXT&filter=' + filter + '&ids=' + ids.join(',');
-    makeTextExportRequest(url, 'dashboard_selected_' + filter + '.txt');
+    // AJAX para buscar TXT
+    var url = 'Wxkd_dashboard.php?action=exportTXT&filter=' + filter + '&ids=' + ids.join(',') + '&ajax=1';
+    makeTXTRequest(url, 'dashboard_selected_' + filter + '.txt');
 }
 
 /**
- * Fazer requisição para exportação TXT
+ * Fazer requisição AJAX para TXT
  */
-function makeTextExportRequest(url, defaultFilename) {
+function makeTXTRequest(url, filename) {
+    console.log('Making TXT request to:', url);
+    
     var xhr = new XMLHttpRequest();
     xhr.open('GET', url, true);
+    
     xhr.onreadystatechange = function() {
         if (xhr.readyState === 4) {
-            hideExportLoading();
+            hideTXTLoading();
             
             if (xhr.status === 200) {
+                console.log('TXT response received');
+                
                 try {
-                    // Parsear XML
+                    // Tentar parsear como XML primeiro
                     var parser = new DOMParser();
                     var xmlDoc = parser.parseFromString(xhr.responseText, 'text/xml');
                     
-                    // Verificar sucesso
                     var success = xmlDoc.getElementsByTagName('success')[0];
-                    if (!success || success.textContent !== 'true') {
-                        var errorNode = xmlDoc.getElementsByTagName('e')[0];
-                        var errorMsg = errorNode ? errorNode.textContent : 'Erro desconhecido';
-                        alert('Erro ao gerar TXT: ' + errorMsg);
+                    if (success && success.textContent === 'true') {
+                        // É XML válido
+                        var contentNode = xmlDoc.getElementsByTagName('txtContent')[0];
+                        if (contentNode) {
+                            var txtContent = contentNode.textContent || contentNode.text || '';
+                            txtContent = txtContent.replace(/\|\|NEWLINE\|\|/g, '\r\n');
+                            downloadTXTContent(txtContent, filename);
+                            return;
+                        }
+                    }
+                    
+                    // Se não é XML válido, usar o texto bruto
+                    var responseText = xhr.responseText;
+                    
+                    // Verificar se é HTML (erro) ou TXT válido
+                    if (responseText.indexOf('<html>') !== -1 || responseText.indexOf('<!DOCTYPE') !== -1) {
+                        alert('Erro: Resposta inválida do servidor');
+                        console.error('HTML response received instead of TXT');
                         return;
                     }
                     
-                    // Extrair dados
-                    var txtContentNode = xmlDoc.getElementsByTagName('txtContent')[0];
-                    var filenameNode = xmlDoc.getElementsByTagName('filename')[0];
-                    var lineCountNode = xmlDoc.getElementsByTagName('lineCount')[0];
-                    
-                    if (!txtContentNode) {
-                        alert('Erro: Conteúdo TXT não encontrado');
-                        return;
-                    }
-                    
-                    var escapedContent = txtContentNode.textContent || txtContentNode.text || '';
-                    var filename = filenameNode ? (filenameNode.textContent || filenameNode.text) : defaultFilename;
-                    var lineCount = lineCountNode ? (lineCountNode.textContent || lineCountNode.text) : '0';
-                    
-                    // Reconstruir conteúdo TXT
-                    var txtContent = escapedContent.replace(/\|\|NEWLINE\|\|/g, '\r\n');
-                    
-                    console.log('TXT content received:', lineCount, 'lines');
-                    console.log('TXT preview:', txtContent.substring(0, 200) + '...');
-                    
-                    // Forçar download
-                    forceTXTDownload(txtContent, filename);
+                    // Assumir que é conteúdo TXT válido
+                    downloadTXTContent(responseText, filename);
                     
                 } catch (e) {
-                    console.error('Erro ao processar XML:', e);
+                    console.error('Error processing TXT response:', e);
                     alert('Erro ao processar resposta do servidor');
                 }
             } else {
+                console.error('TXT request failed:', xhr.status);
                 alert('Erro na requisição: ' + xhr.status);
             }
         }
     };
     
+    // Prevenir cache
+    xhr.setRequestHeader('Cache-Control', 'no-cache');
     xhr.send();
 }
 
 /**
- * Forçar download do arquivo TXT
+ * Fazer download do conteúdo TXT
  */
-function forceTXTDownload(txtContent, filename) {
+function downloadTXTContent(txtContent, filename) {
+    console.log('Downloading TXT content, length:', txtContent.length);
+    console.log('Filename:', filename);
+    console.log('Content preview:', txtContent.substring(0, 200) + '...');
+    
     try {
         // Criar Blob
-        var blob = new Blob([txtContent], { 
-            type: 'text/plain;charset=utf-8' 
-        });
+        var blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8' });
         
         // Criar URL temporária
         var url = window.URL.createObjectURL(blob);
         
-        // Criar link invisível
+        // Criar link de download
         var link = document.createElement('a');
-        link.style.display = 'none';
         link.href = url;
         link.download = filename;
+        link.style.display = 'none';
         
         // Adicionar ao DOM, clicar e remover
         document.body.appendChild(link);
@@ -132,54 +139,62 @@ function forceTXTDownload(txtContent, filename) {
             window.URL.revokeObjectURL(url);
         }, 100);
         
-        console.log('TXT download forced:', filename);
+        console.log('TXT download completed successfully');
         
     } catch (e) {
-        console.error('Erro ao forçar download:', e);
+        console.error('Error downloading TXT:', e);
         
-        // Fallback - mostrar conteúdo em textarea
-        var textarea = document.createElement('textarea');
-        textarea.value = txtContent;
-        textarea.style.width = '100%';
-        textarea.style.height = '400px';
-        
-        var container = document.createElement('div');
-        container.innerHTML = '<h3>Conteúdo TXT (copie e salve manualmente):</h3>';
-        container.appendChild(textarea);
-        
-        // Substituir conteúdo da página temporariamente
-        var originalContent = document.body.innerHTML;
-        document.body.innerHTML = '';
-        document.body.appendChild(container);
-        
-        var backButton = document.createElement('button');
-        backButton.textContent = 'Voltar';
-        backButton.onclick = function() {
-            document.body.innerHTML = originalContent;
-        };
-        container.appendChild(backButton);
+        // Fallback - mostrar em textarea
+        showTXTFallback(txtContent, filename);
     }
 }
 
 /**
- * Mostrar loading durante exportação
+ * Fallback - mostrar TXT em textarea
  */
-function showExportLoading(format) {
+function showTXTFallback(txtContent, filename) {
+    var overlay = document.createElement('div');
+    overlay.id = 'txt-fallback-overlay';
+    overlay.style.cssText = 
+        'position: fixed; top: 0; left: 0; width: 100%; height: 100%; ' +
+        'background: rgba(0,0,0,0.8); z-index: 9999; display: flex; ' +
+        'align-items: center; justify-content: center;';
+    
+    var modal = document.createElement('div');
+    modal.style.cssText = 
+        'background: white; padding: 30px; border-radius: 10px; ' +
+        'max-width: 90%; max-height: 90%; overflow: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.3);';
+    
+    modal.innerHTML = 
+        '<h3>Conteúdo TXT - ' + filename + '</h3>' +
+        '<p>O download automático falhou. Copie o conteúdo abaixo e salve como arquivo .txt:</p>' +
+        '<textarea id="txt-content" style="width: 600px; height: 400px; font-family: monospace; font-size: 12px;">' + 
+        txtContent + '</textarea><br><br>' +
+        '<button onclick="document.getElementById(\'txt-fallback-overlay\').remove()">Fechar</button> ' +
+        '<button onclick="document.getElementById(\'txt-content\').select(); document.execCommand(\'copy\'); alert(\'Conteúdo copiado!\')">Copiar Tudo</button>';
+    
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+}
+
+/**
+ * Mostrar loading
+ */
+function showTXTLoading() {
     var loading = document.createElement('div');
-    loading.id = 'export-loading';
+    loading.id = 'txt-loading';
+    loading.style.cssText = 
+        'position: fixed; top: 0; left: 0; width: 100%; height: 100%; ' +
+        'background: rgba(0,0,0,0.7); z-index: 9998; display: flex; ' +
+        'align-items: center; justify-content: center;';
+    
     loading.innerHTML = 
-        '<div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; ' +
-        'background: rgba(0,0,0,0.7); z-index: 9999; display: flex; ' +
-        'align-items: center; justify-content: center;">' +
-            '<div style="background: white; padding: 30px; border-radius: 10px; ' +
-            'text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">' +
-                '<div style="font-size: 24px; margin-bottom: 10px;">📄</div>' +
-                '<div style="font-weight: bold; margin-bottom: 5px;">Gerando arquivo ' + format + '...</div>' +
-                '<div style="color: #666;">Aguarde, processando dados...</div>' +
-                '<div style="margin-top: 15px; border: 2px solid #f3f3f3; border-top: 2px solid #3498db; ' +
-                'border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; ' +
-                'margin: 15px auto;"></div>' +
-            '</div>' +
+        '<div style="background: white; padding: 30px; border-radius: 10px; text-align: center;">' +
+            '<div style="font-size: 24px; margin-bottom: 10px;">📄</div>' +
+            '<div style="font-weight: bold; margin-bottom: 5px;">Gerando arquivo TXT...</div>' +
+            '<div style="color: #666;">Processando dados, aguarde...</div>' +
+            '<div style="margin-top: 15px; border: 2px solid #f3f3f3; border-top: 2px solid #3498db; ' +
+            'border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 15px auto;"></div>' +
         '</div>' +
         '<style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>';
     
@@ -189,8 +204,8 @@ function showExportLoading(format) {
 /**
  * Esconder loading
  */
-function hideExportLoading() {
-    var loading = document.getElementById('export-loading');
+function hideTXTLoading() {
+    var loading = document.getElementById('txt-loading');
     if (loading) {
         document.body.removeChild(loading);
     }
