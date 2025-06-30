@@ -1,4 +1,4 @@
-// Métodos no Model (models/Wxkd_DashboardModel.php)
+// Métodos corrigidos para PHP 5.3 - substitua no Model
 
 /**
  * Gera conteúdo TXT específico a partir dos dados da tabela
@@ -70,7 +70,7 @@ public function converRowToSpecificFormat($row) {
 }
 
 /**
- * Mapa de conversão dos campos
+ * Mapa de conversão dos campos (compatível PHP 5.3)
  */
 private function getConversionMap() {
     return array(
@@ -101,7 +101,7 @@ private function getConversionMap() {
             'position' => 4,
             'pad_char' => '0',
             'align' => 'left',
-            'format' => 'YYYY-MM-DD'
+            'format' => 'Y-m-d'
         ),
         'TIPO_CONTRATO' => array(
             'type' => 'text',
@@ -128,7 +128,7 @@ private function getConversionMap() {
 }
 
 /**
- * Formata um valor de campo conforme a configuração
+ * Formata um valor de campo conforme a configuração (PHP 5.3)
  */
 private function formatFieldValue($value, $config) {
     $type = isset($config['type']) ? $config['type'] : 'text';
@@ -148,13 +148,13 @@ private function formatFieldValue($value, $config) {
             break;
             
         case 'date':
-            // Formatar data
-            $value = $this->formatDate($value, $config);
+            // Formatar data (PHP 5.3 compatível)
+            $value = $this->formatDatePHP53($value, $config);
             break;
             
         case 'text':
             // Remover caracteres especiais e acentos
-            $value = $this->cleanText($value);
+            $value = $this->cleanTextPHP53($value);
             break;
     }
     
@@ -174,46 +174,102 @@ private function formatFieldValue($value, $config) {
 }
 
 /**
- * Formatar data
+ * Formatar data compatível com PHP 5.3
  */
-private function formatDate($dateValue, $config) {
+private function formatDatePHP53($dateValue, $config) {
     if (empty($dateValue)) {
         return str_repeat('0', $config['length']);
     }
     
-    // Tentar extrair data de diferentes formatos
-    $formats = array('Y-m-d', 'd/m/Y', 'M d Y', 'Y-m-d H:i:s');
-    $timestamp = false;
+    // Tentar converter usando strtotime (mais compatível)
+    $timestamp = strtotime($dateValue);
     
-    foreach ($formats as $format) {
-        $date = DateTime::createFromFormat($format, $dateValue);
-        if ($date !== false) {
-            $timestamp = $date->getTimestamp();
-            break;
-        }
+    if ($timestamp === false || $timestamp === -1) {
+        // Se strtotime falhar, tentar extrair manualmente
+        $timestamp = $this->parseManualDate($dateValue);
     }
     
-    if ($timestamp === false) {
-        // Se não conseguir parsear, tentar strtotime
-        $timestamp = strtotime($dateValue);
-    }
-    
-    if ($timestamp !== false) {
+    if ($timestamp !== false && $timestamp !== -1) {
         // Formatar conforme especificado
         $formatOutput = isset($config['format']) ? $config['format'] : 'Y-m-d';
-        $formatOutput = str_replace(array('YYYY', 'MM', 'DD'), array('Y', 'm', 'd'), $formatOutput);
         return date($formatOutput, $timestamp);
     }
     
+    // Se tudo falhar, retornar zeros
     return str_repeat('0', $config['length']);
 }
 
 /**
- * Limpar texto removendo acentos e caracteres especiais
+ * Parser manual de data para casos específicos (PHP 5.3)
  */
-private function cleanText($text) {
-    // Remover acentos
-    $text = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $text);
+private function parseManualDate($dateValue) {
+    // Remover texto extra como "12:00AM"
+    $dateValue = preg_replace('/\s+\d{1,2}:\d{2}(:\d{2})?(AM|PM)?/i', '', $dateValue);
+    
+    // Tentar diferentes padrões
+    $patterns = array(
+        '/(\w{3})\s+(\d{1,2})\s+(\d{4})/',  // "Nov 21 2024"
+        '/(\d{1,2})\/(\d{1,2})\/(\d{4})/',  // "21/11/2024"
+        '/(\d{4})-(\d{1,2})-(\d{1,2})/',    // "2024-11-21"
+    );
+    
+    foreach ($patterns as $pattern) {
+        if (preg_match($pattern, $dateValue, $matches)) {
+            if (count($matches) >= 4) {
+                if (strpos($pattern, '\w{3}') !== false) {
+                    // Formato "Nov 21 2024"
+                    $months = array(
+                        'jan' => 1, 'feb' => 2, 'mar' => 3, 'apr' => 4,
+                        'may' => 5, 'jun' => 6, 'jul' => 7, 'aug' => 8,
+                        'sep' => 9, 'oct' => 10, 'nov' => 11, 'dec' => 12
+                    );
+                    $month = isset($months[strtolower($matches[1])]) ? $months[strtolower($matches[1])] : 1;
+                    $day = intval($matches[2]);
+                    $year = intval($matches[3]);
+                } elseif (strpos($pattern, '(\d{4})') === 0) {
+                    // Formato "2024-11-21"
+                    $year = intval($matches[1]);
+                    $month = intval($matches[2]);
+                    $day = intval($matches[3]);
+                } else {
+                    // Formato "21/11/2024"
+                    $day = intval($matches[1]);
+                    $month = intval($matches[2]);
+                    $year = intval($matches[3]);
+                }
+                
+                return mktime(0, 0, 0, $month, $day, $year);
+            }
+        }
+    }
+    
+    return false;
+}
+
+/**
+ * Limpar texto compatível com PHP 5.3
+ */
+private function cleanTextPHP53($text) {
+    // Converter para string
+    $text = strval($text);
+    
+    // Remover acentos de forma manual (mais compatível)
+    $acentos = array(
+        'á' => 'a', 'à' => 'a', 'ã' => 'a', 'â' => 'a', 'ä' => 'a',
+        'é' => 'e', 'è' => 'e', 'ê' => 'e', 'ë' => 'e',
+        'í' => 'i', 'ì' => 'i', 'î' => 'i', 'ï' => 'i',
+        'ó' => 'o', 'ò' => 'o', 'õ' => 'o', 'ô' => 'o', 'ö' => 'o',
+        'ú' => 'u', 'ù' => 'u', 'û' => 'u', 'ü' => 'u',
+        'ç' => 'c', 'ñ' => 'n',
+        'Á' => 'A', 'À' => 'A', 'Ã' => 'A', 'Â' => 'A', 'Ä' => 'A',
+        'É' => 'E', 'È' => 'E', 'Ê' => 'E', 'Ë' => 'E',
+        'Í' => 'I', 'Ì' => 'I', 'Î' => 'I', 'Ï' => 'I',
+        'Ó' => 'O', 'Ò' => 'O', 'Õ' => 'O', 'Ô' => 'O', 'Ö' => 'O',
+        'Ú' => 'U', 'Ù' => 'U', 'Û' => 'U', 'Ü' => 'U',
+        'Ç' => 'C', 'Ñ' => 'N'
+    );
+    
+    $text = strtr($text, $acentos);
     
     // Remover caracteres especiais, manter apenas alfanuméricos e espaços
     $text = preg_replace('/[^A-Za-z0-9\s]/', '', $text);
