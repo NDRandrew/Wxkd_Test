@@ -1,172 +1,173 @@
-function extractTXTFromXML(xmlDoc) {
-    console.log('=== extractTXTFromXML DEBUG START ===');
+function exportSelectedTXT() {
+    console.log('=== exportSelectedTXT FIXED VERSION ===');
     
-    var txtContent = '';
+    var selected = document.querySelectorAll('.row-checkbox:checked');
+    console.log('Selected checkboxes found:', selected.length);
     
-    // Debug: verificar estrutura do XML
-    var response = xmlDoc.getElementsByTagName('response')[0];
-    if (!response) {
-        console.error('No response element found in XML');
-        return '';
+    if (selected.length === 0) {
+        alert('Selecione pelo menos um registro');
+        return;
     }
     
-    var txtData = xmlDoc.getElementsByTagName('txtData')[0];
-    if (!txtData) {
-        console.error('No txtData element found in XML');
-        return '';
-    }
-    
-    // Debug: verificar informações de debug
-    var debugElement = xmlDoc.getElementsByTagName('debug')[0];
-    if (debugElement) {
-        var totalRecords = getXMLNodeValue(debugElement, 'totalRecords');
-        var filter = getXMLNodeValue(debugElement, 'filter');
-        var selectedIds = getXMLNodeValue(debugElement, 'selectedIds');
+    var ids = [];
+    selected.forEach(function(cb, index) {
+        // CORREÇÃO: Limpar espaços extras do valor
+        var cleanId = cb.value.toString().trim().replace(/\s+/g, '');
+        console.log('Checkbox', index, '- raw value:', "'" + cb.value + "'", 'cleaned:', "'" + cleanId + "'");
         
-        console.log('Debug info from server:');
-        console.log('  totalRecords:', totalRecords);
-        console.log('  filter:', filter);
-        console.log('  selectedIds:', selectedIds);
-    }
-    
-    // Extrair dados das linhas
-    var rows = xmlDoc.getElementsByTagName('row');
-    console.log('Total rows found in XML:', rows.length);
-    
-    if (rows.length === 0) {
-        console.warn('No rows found in txtData element');
-        return '';
-    }
-    
-    for (var i = 0; i < rows.length; i++) {
-        var row = rows[i];
-        
-        var chave = getXMLNodeValue(row, 'chave_loja');
-        var empresa = getXMLNodeValue(row, 'cod_empresa');
-        var tipo = getXMLNodeValue(row, 'tipo');
-        var dataContrato = getXMLNodeValue(row, 'data_contrato');
-        var tipoContrato = getXMLNodeValue(row, 'tipo_contrato');
-        
-        // Debug para primeira linha
-        if (i === 0) {
-            console.log('First row data:');
-            console.log('  chave_loja:', chave);
-            console.log('  cod_empresa:', empresa);
-            console.log('  tipo:', tipo);
-            console.log('  data_contrato:', dataContrato);
-            console.log('  tipo_contrato:', tipoContrato);
+        if (cleanId && cleanId !== '') {
+            ids.push(cleanId);
         }
-        
-        // Verificar se há dados válidos
-        if (!chave && !empresa && !tipo) {
-            console.warn('Row', i, 'has no valid data, skipping');
-            continue;
-        }
-        
-        // Converter para formato TXT de 117 posições
-        var txtLine = formatToTXTLineDebug(chave, empresa, tipo, dataContrato, tipoContrato, i);
-        
-        if (txtLine && txtLine.length > 0) {
-            txtContent += txtLine + '\r\n';
-        } else {
-            console.warn('Row', i, 'generated empty TXT line');
-        }
+    });
+    
+    console.log('IDs collected (cleaned):', ids);
+    console.log('IDs joined:', ids.join(','));
+    
+    if (ids.length === 0) {
+        alert('Nenhum ID válido encontrado nos checkboxes selecionados');
+        return;
     }
     
-    console.log('=== extractTXTFromXML RESULT ===');
-    console.log('Total content length:', txtContent.length);
-    console.log('Total lines:', txtContent.split('\r\n').length - 1); // -1 porque última linha é vazia
+    var filter = getCurrentFilter();
+    console.log('Current filter:', filter);
     
-    if (txtContent.length > 0) {
-        var lines = txtContent.split('\r\n');
-        console.log('First line preview:', lines[0]);
-        console.log('First line length:', lines[0].length);
-        if (lines.length > 1) {
-            console.log('Second line preview:', lines[1]);
-        }
-    }
-    
-    return txtContent;
+    // Chamar função de exportação
+    exportTXTDataFixed(ids.join(','), filter);
 }
 
-function formatToTXTLineDebug(chave, empresa, tipo, dataContrato, tipoContrato, rowIndex) {
-    console.log('formatToTXTLineDebug - Row', rowIndex, 'input:');
-    console.log('  chave:', chave);
-    console.log('  empresa:', empresa);
-    console.log('  tipo:', tipo);
-    console.log('  dataContrato:', dataContrato);
-    console.log('  tipoContrato:', tipoContrato);
+function exportTXTDataFixed(selectedIds, filter) {
+    console.log('=== exportTXTDataFixed START ===');
+    console.log('selectedIds (clean):', selectedIds);
+    console.log('filter:', filter);
     
-    // Formatar campos para TXT (117 posições)
-    
-    // CHAVE_LOJA - 10 posições, numérico, zeros à esquerda
-    var chaveTXT = padLeft(cleanNumeric(chave), 10, '0');
-    console.log('  chaveTXT formatted:', chaveTXT, '(length:', chaveTXT.length + ')');
-    
-    // COD_EMPRESA - 8 posições, numérico, zeros à esquerda  
-    var empresaTXT = padLeft(cleanNumeric(empresa), 8, '0');
-    console.log('  empresaTXT formatted:', empresaTXT, '(length:', empresaTXT.length + ')');
-    
-    // TIPO - 20 posições, texto, espaços à direita
-    var tipoTXT = padRight(cleanText(tipo), 20, ' ');
-    console.log('  tipoTXT formatted:', "'" + tipoTXT + "'", '(length:', tipoTXT.length + ')');
-    
-    // DATA_CONTRATO - 10 posições, formato YYYY-MM-DD
-    var dataTXT = formatDateDebug(dataContrato, 10);
-    console.log('  dataTXT formatted:', dataTXT, '(length:', dataTXT.length + ')');
-    
-    // TIPO_CONTRATO - 25 posições, texto, espaços à direita
-    var tipoContratoTXT = padRight(cleanText(tipoContrato), 25, ' ');
-    console.log('  tipoContratoTXT formatted:', "'" + tipoContratoTXT + "'", '(length:', tipoContratoTXT.length + ')');
-    
-    // STATUS - 10 posições, texto, espaços à direita
-    var statusTXT = padRight('ATIVO', 10, ' ');
-    console.log('  statusTXT formatted:', "'" + statusTXT + "'", '(length:', statusTXT.length + ')');
-    
-    // OBSERVACOES - 34 posições, texto, espaços à direita
-    var obsTXT = padRight('CONTRATO APROVADO', 34, ' ');
-    console.log('  obsTXT formatted:', "'" + obsTXT + "'", '(length:', obsTXT.length + ')');
-    
-    // Juntar tudo (total: 117 posições)
-    var linha = chaveTXT + empresaTXT + tipoTXT + dataTXT + tipoContratoTXT + statusTXT + obsTXT;
-    
-    console.log('  linha before padding:', linha.length, 'chars');
-    
-    // Garantir exatamente 117 caracteres
-    if (linha.length > 117) {
-        linha = linha.substring(0, 117);
-        console.log('  linha truncated to 117 chars');
-    } else if (linha.length < 117) {
-        linha = padRight(linha, 117, ' ');
-        console.log('  linha padded to 117 chars');
+    // CORREÇÃO: Adicionar parâmetro para forçar apenas XML
+    var url = 'wxkd.php?action=exportTXT&ajax=1&filter=' + filter;
+    if (selectedIds) {
+        url += '&ids=' + encodeURIComponent(selectedIds);
     }
     
-    console.log('  final linha length:', linha.length);
-    console.log('  final linha preview:', linha.substring(0, 50) + '...');
+    console.log('Final URL:', url);
     
-    return linha;
+    // Fazer requisição AJAX
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', url, true);
+    
+    xhr.onreadystatechange = function() {
+        console.log('XHR readyState:', xhr.readyState, 'status:', xhr.status);
+        
+        if (xhr.readyState === 4) {
+            if (xhr.status === 200) {
+                console.log('=== XHR RESPONSE RECEIVED ===');
+                console.log('Response length:', xhr.responseText.length);
+                console.log('Response preview (first 200 chars):', xhr.responseText.substring(0, 200));
+                
+                // CORREÇÃO: Extrair apenas a parte XML
+                var xmlContent = extractXMLFromResponse(xhr.responseText);
+                
+                if (!xmlContent) {
+                    console.error('No valid XML found in response');
+                    alert('Erro: resposta do servidor não contém XML válido');
+                    return;
+                }
+                
+                try {
+                    // Parsear XML limpo
+                    var parser = new DOMParser();
+                    var xmlDoc = parser.parseFromString(xmlContent, 'text/xml');
+                    
+                    console.log('XML parsed successfully');
+                    
+                    // Verificar se há erros de parsing
+                    var parserError = xmlDoc.getElementsByTagName('parsererror')[0];
+                    if (parserError) {
+                        console.error('XML Parser Error:', parserError.textContent);
+                        alert('Erro ao parsear XML: ' + parserError.textContent);
+                        return;
+                    }
+                    
+                    // Verificar success
+                    var success = xmlDoc.getElementsByTagName('success')[0];
+                    console.log('Success element found:', !!success);
+                    if (success) {
+                        console.log('Success value:', success.textContent);
+                    }
+                    
+                    if (!success || success.textContent !== 'true') {
+                        console.error('Server returned success = false');
+                        var errorElement = xmlDoc.getElementsByTagName('e')[0];
+                        var errorMsg = errorElement ? errorElement.textContent : 'Erro desconhecido';
+                        console.error('Error message:', errorMsg);
+                        alert('Erro do servidor: ' + errorMsg);
+                        return;
+                    }
+                    
+                    // Debug: verificar dados
+                    var rows = xmlDoc.getElementsByTagName('row');
+                    console.log('Rows found in XML:', rows.length);
+                    
+                    if (rows.length === 0) {
+                        console.warn('No rows found in XML response');
+                        alert('Nenhum dado foi retornado pelo servidor para os IDs selecionados');
+                        return;
+                    }
+                    
+                    // Extrair dados do XML e converter para TXT
+                    console.log('Converting XML to TXT...');
+                    var txtData = extractTXTFromXML(xmlDoc);
+                    
+                    console.log('TXT data generated:');
+                    console.log('  Length:', txtData.length);
+                    console.log('  Lines:', txtData.split('\r\n').length);
+                    console.log('  First line:', txtData.split('\r\n')[0]);
+                    
+                    if (txtData.length === 0) {
+                        console.error('Generated TXT data is empty!');
+                        alert('Erro: dados TXT gerados estão vazios');
+                        return;
+                    }
+                    
+                    // Download do arquivo
+                    var filename = 'dashboard_selected_' + filter + '_' + getCurrentTimestamp() + '.txt';
+                    console.log('Downloading file:', filename);
+                    downloadTXTFile(txtData, filename);
+                    
+                } catch (e) {
+                    console.error('Exception during processing:', e);
+                    alert('Erro ao processar dados: ' + e.message);
+                }
+            } else {
+                console.error('XHR failed with status:', xhr.status);
+                alert('Erro na requisição: ' + xhr.status);
+            }
+        }
+    };
+    
+    console.log('Sending XHR request...');
+    xhr.send();
 }
 
-function formatDateDebug(dateValue, length) {
-    console.log('formatDateDebug input:', dateValue);
+// CORREÇÃO: Função para extrair XML limpo da resposta
+function extractXMLFromResponse(responseText) {
+    console.log('Extracting XML from response...');
     
-    if (!dateValue) {
-        var result = padLeft('', length, '0');
-        console.log('formatDateDebug empty input, returning:', result);
-        return result;
+    // Procurar pelo início do XML
+    var xmlStart = responseText.indexOf('<response>');
+    if (xmlStart === -1) {
+        console.error('No <response> tag found in response');
+        return null;
     }
     
-    // Tentar extrair ano
-    var year = '';
-    var match = dateValue.match(/(\d{4})/);
-    if (match) {
-        year = match[1];
-        var result = year + '-01-01';
-        console.log('formatDateDebug found year:', year, 'returning:', result);
-        return result;
+    // Procurar pelo fim do XML
+    var xmlEnd = responseText.indexOf('</response>');
+    if (xmlEnd === -1) {
+        console.error('No </response> tag found in response');
+        return null;
     }
     
-    var result = padLeft('', length, '0');
-    console.log('formatDateDebug no year found, returning:', result);
-    return result;
+    // Extrair apenas a parte XML
+    var xmlContent = responseText.substring(xmlStart, xmlEnd + 11); // +11 para incluir </response>
+    
+    console.log('Extracted XML content:', xmlContent.substring(0, 200) + '...');
+    
+    return xmlContent;
 }
