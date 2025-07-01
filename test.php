@@ -1,52 +1,211 @@
-// COMPLETE FIXED SOLUTION FOR CHECKBOX MODULE
+// COMPREHENSIVE FIX: PaginationModule.replaceTableData function
+replaceTableData: function(newData) {
+    // Converter novos dados para formato da tabela
+    this.allData = [];
+    const self = this;
+    newData.forEach(function(row) {
+        const rowData = [];
+        
+        // FIXED: Keep span but make it non-interfering
+        const checkboxCell = $('<td class="checkbox-column">')
+            .css({
+                'padding': '8px',
+                'text-align': 'center',
+                'vertical-align': 'middle'
+            });
+        
+        // Create checkbox with span (keeping your original structure)
+        const checkbox = $('<input>')
+            .attr({
+                'type': 'checkbox',
+                'class': 'form-check-input row-checkbox',
+                'data-row-id': row.CHAVE_LOJA,
+                'value': row.CHAVE_LOJA,
+                'id': 'checkbox_' + row.CHAVE_LOJA
+            })
+            .css({
+                'cursor': 'pointer',
+                'position': 'relative',
+                'z-index': '10'
+            });
+        
+        // Create span but make it non-interfering
+        const span = $('<span class="text">')
+            .css({
+                'pointer-events': 'none',
+                'display': 'inline-block',
+                'margin-left': '5px'
+            });
+        
+        checkboxCell.append(checkbox).append(span);
+        rowData.push(checkboxCell);
+        
+        // Rest of your existing code for other columns...
+        rowData.push($('<td>').text(row.CHAVE_LOJA));
+        rowData.push($('<td>').text(row.NOME_LOJA));
+        rowData.push($('<td>').text(row.COD_EMPRESA));
+        rowData.push($('<td>').text(row.COD_LOJA));
+        rowData.push($('<td>').text(row.DESC_ACAO));
+        rowData.push($('<td>').text(row.TIPO));
+        
+        function formatDateKeepTime(dateStr) {
+            var parts = dateStr.match(/^([A-Za-z]+) (\d{1,2}) (\d{4}) (.+)$/);
+            if (!parts) return dateStr; 
 
-// Fixed CheckboxModule with better event handling
+            var months = {
+                Jan: '01', Feb: '02', Mar: '03', Apr: '04',
+                May: '05', Jun: '06', Jul: '07', Aug: '08',
+                Sep: '09', Oct: '10', Nov: '11', Dec: '12'
+            };
+
+            var month = months[parts[1]];
+            var day = ('0' + parts[2]).slice(-2);
+            var year = parts[3];
+            var time = parts[4];
+
+            return `${day}/${month}/${year} ${time}`;
+        }
+
+        var formattedDate = formatDateKeepTime(row.DATA_APROVACAO);
+        rowData.push($('<td>').text(formattedDate));
+
+        let depDinheiroValue = '';
+        if (row.TIPO === 'Presenca') {
+            depDinheiroValue = 'R$ 3.000,00'; 
+        } else if (row.TIPO === 'Avancado') {
+            depDinheiroValue = 'R$ 10.000,000'; 
+        } else {
+            depDinheiroValue = '0'; 
+        }
+        rowData.push($('<td>').text(depDinheiroValue));
+        
+        let depChequeValue = '';
+        if (row.TIPO === 'Presenca') {
+            depChequeValue = 'R$ 5.000,00'; 
+        } else if (row.TIPO === 'Avancado') {
+            depChequeValue = 'R$ 10.000,000'; 
+        } else {
+            depChequeValue = '0'; 
+        }
+        rowData.push($('<td>').text(depChequeValue));
+
+        let recRetiradaValue = '';
+        if (row.TIPO === 'Presenca') {
+            recRetiradaValue = 'R$ 2.000,00'; 
+        } else if (row.TIPO === 'Avancado') {
+            recRetiradaValue = 'R$ 3.500,000'; 
+        } else {
+            recRetiradaValue = '0'; 
+        }
+        rowData.push($('<td>').text(recRetiradaValue));
+
+        let saqChequeValue = '';
+        if (row.TIPO === 'Presenca') {
+            saqChequeValue  = 'R$ 2.000,00'; 
+        } else if (row.TIPO === 'Avancado') {
+            saqChequeValue  = 'R$ 3.500,000'; 
+        } else {
+            saqChequeValue  = '0'; 
+        }
+        rowData.push($('<td>').text(saqChequeValue));
+
+        let saqSegundaViaValue = '';
+        if (row.SEGUNDA_VIA_CARTAO_VALID === '1') {
+            saqSegundaViaValue = 'Aprovado';
+        } else { 
+            saqSegundaViaValue = 'Não Aprovado';
+        }
+        rowData.push($('<td>').text(saqSegundaViaValue));
+
+        let saqHoleriteINSSValue = '';
+        if (row.HOLERITE_INSS_VALID === '1') {
+            saqHoleriteINSSValue = 'Aprovado';
+        } else { 
+            saqHoleriteINSSValue = 'Não Aprovado';
+        }
+        rowData.push($('<td>').text(saqHoleriteINSSValue));
+
+        let saqConsINSSValue = '';
+        if (row.CONSULTA_INSS_VALID === '1') {
+            saqConsINSSValue = 'Aprovado';
+        } else { 
+            saqConsINSSValue = 'Não Aprovado';
+        }
+        rowData.push($('<td>').text(saqConsINSSValue));
+
+        if (!row.DATA_CONTRATO) {
+            const warningCell = $('<td style="text-align: center; vertical-align: middle;">')
+                .html('<i><strong><span class="glyphicon glyphicon-warning-sign" aria-hidden="true"></span> NULL</strong></i>')
+                .css({
+                    'background-color': '#fb6e52',
+                    'text-align': 'center',
+                    'vertical-align': 'middle'
+                });
+            rowData.push(warningCell);
+        } else {
+            const formattedDate = formatDateKeepTime(row.DATA_CONTRATO);
+            rowData.push($('<td>').text(formattedDate));
+        }
+
+        if (!row.TIPO_CONTRATO) {
+            const warningCell = $('<td style="text-align: center; vertical-align: middle;">')
+                .html('<i><strong><span class="glyphicon glyphicon-warning-sign" aria-hidden="true"></span> NULL</strong></i>')
+                .css({
+                    'background-color': '#fb6e52',
+                    'text-align': 'center',
+                    'vertical-align': 'middle'
+                });
+            rowData.push(warningCell);
+        } else {
+            rowData.push($('<td>').text(row.TIPO_CONTRATO));
+        }
+        
+        self.allData.push(rowData);
+    });
+},
+
+// COMPLETELY REWRITTEN CheckboxModule
 const CheckboxModule = {
     init: function() {
         console.log('CheckboxModule.init() called');
         
-        // Checkbox "Selecionar Todos" - direct binding
-        $('#selectAll').off('change').on('change', this.toggleSelectAll.bind(this));
+        // Clear any existing event handlers
+        $(document).off('change.checkboxModule');
+        $('#selectAll').off('change.checkboxModule');
         
-        // Use body for event delegation to ensure it always works
-        $('body').off('change', '.row-checkbox');
-        $('body').off('click', '.row-checkbox');
+        // Checkbox "Selecionar Todos" with namespace
+        $('#selectAll').on('change.checkboxModule', this.toggleSelectAll.bind(this));
         
-        // Bind both click and change events for maximum compatibility
-        $('body').on('click', '.row-checkbox', this.handleRowCheckboxClick.bind(this));
-        $('body').on('change', '.row-checkbox', this.handleRowCheckboxChange.bind(this));
+        // Individual checkboxes with namespace and multiple event types
+        $(document).on('change.checkboxModule click.checkboxModule', '.row-checkbox', this.handleRowCheckboxChange.bind(this));
         
-        // Initial state
+        // Debug: Add click handler to detect if clicks are being registered
+        $(document).on('click.checkboxModule', '.row-checkbox', function(e) {
+            console.log('Checkbox clicked:', $(this).val(), 'Checked:', $(this).is(':checked'));
+        });
+        
+        // Atualizar estado inicial
         this.updateExportButton();
-        
-        console.log('CheckboxModule initialized');
     },
     
-    // Handle click events (for older browsers/jQuery versions)
-    handleRowCheckboxClick: function(e) {
-        console.log('Checkbox clicked:', e.target);
-        
-        // Ensure the checkbox state is toggled
-        var checkbox = $(e.target);
-        
-        // Small delay to ensure the checkbox state has changed
-        setTimeout(function() {
-            CheckboxModule.updateSelectAllState();
-            CheckboxModule.updateExportButton();
-        }, 10);
-    },
-    
-    // Handle change events
     handleRowCheckboxChange: function(e) {
-        console.log('Checkbox changed:', e.target, 'checked:', e.target.checked);
+        console.log('Row checkbox changed:', $(e.target).val(), 'Checked:', $(e.target).is(':checked'));
+        
+        // Force the checkbox state (in case CSS is interfering)
+        var checkbox = $(e.target);
+        var isChecked = checkbox.is(':checked');
+        
+        // Update other states
         this.updateSelectAllState();
         this.updateExportButton();
+        
+        // Prevent event bubbling
+        e.stopPropagation();
     },
     
-    toggleSelectAll: function() {
-        console.log('toggleSelectAll called');
+    toggleSelectAll: function(e) {
+        console.log('Select all toggled');
         const isChecked = $('#selectAll').is(':checked');
-        console.log('Select all checked:', isChecked);
         
         $('.row-checkbox:visible').each(function() {
             $(this).prop('checked', isChecked);
@@ -59,11 +218,11 @@ const CheckboxModule = {
         const totalCheckboxes = $('.row-checkbox:visible').length;
         const checkedCheckboxes = $('.row-checkbox:visible:checked').length;
         
-        console.log('Updating select all state - Total:', totalCheckboxes, 'Checked:', checkedCheckboxes);
+        console.log('Update select all state - Total:', totalCheckboxes, 'Checked:', checkedCheckboxes);
         
         if (checkedCheckboxes === 0) {
             $('#selectAll').prop('indeterminate', false).prop('checked', false);
-        } else if (checkedCheckboxes === totalCheckboxes && totalCheckboxes > 0) {
+        } else if (checkedCheckboxes === totalCheckboxes) {
             $('#selectAll').prop('indeterminate', false).prop('checked', true);
         } else {
             $('#selectAll').prop('indeterminate', true).prop('checked', false);
@@ -72,20 +231,20 @@ const CheckboxModule = {
     
     updateExportButton: function() {
         const checkedCount = $('.row-checkbox:checked').length;
-        $('#selectedCount').text(checkedCount);
+        console.log('Update export button - Checked count:', checkedCount);
         
-        console.log('Updating export button - Checked count:', checkedCount);
+        $('#selectedCount').text(checkedCount);
         
         const isDisabled = checkedCount === 0;
         $('#exportTxtBtn').prop('disabled', isDisabled);
         
-        // Update button text based on filter
+        // Atualizar texto do botão baseado no filtro
         let buttonText = 'Exportar TXT';
         if (FilterModule.currentFilter === 'cadastramento' || FilterModule.currentFilter === 'descadastramento') {
             buttonText = 'Converter para TXT';
         }
         
-        // Update button text
+        // Atualizar o texto do botão
         const btnContent = $('#exportTxtBtn').html();
         if (btnContent) {
             const newContent = btnContent.replace(/^[^(]+/, buttonText + ' ');
@@ -103,192 +262,47 @@ const CheckboxModule = {
     getSelectedIds: function() {
         const selectedIds = [];
         $('.row-checkbox:checked').each(function() {
-            var id = $(this).val() || $(this).data('row-id');
-            if (id) {
-                selectedIds.push(id);
-            }
+            selectedIds.push($(this).val());
         });
         console.log('Selected IDs:', selectedIds);
         return selectedIds;
     },
     
-    // New method to reinitialize after table updates
-    reinitialize: function() {
-        console.log('Reinitializing checkbox module');
-        this.updateSelectAllState();
-        this.updateExportButton();
+    // DEBUG: Add method to test checkbox functionality
+    debugCheckboxes: function() {
+        console.log('=== CHECKBOX DEBUG ===');
+        console.log('Total checkboxes found:', $('.row-checkbox').length);
+        console.log('Visible checkboxes:', $('.row-checkbox:visible').length);
+        console.log('Checked checkboxes:', $('.row-checkbox:checked').length);
         
-        // Ensure all checkboxes are properly initialized
-        $('.row-checkbox').each(function() {
-            var checkbox = $(this);
-            console.log('Checkbox found:', checkbox.val() || checkbox.data('row-id'), 'checked:', checkbox.is(':checked'));
+        $('.row-checkbox').each(function(index) {
+            console.log(`Checkbox ${index}:`, {
+                id: $(this).attr('id'),
+                value: $(this).val(),
+                checked: $(this).is(':checked'),
+                visible: $(this).is(':visible'),
+                disabled: $(this).is(':disabled')
+            });
         });
+        console.log('=== END DEBUG ===');
     }
 };
 
-// Fixed PaginationModule.replaceTableData
-PaginationModule.replaceTableData = function(newData) {
-    console.log('replaceTableData called with', newData.length, 'rows');
-    
-    // Convert new data to table format
-    this.allData = [];
-    const self = this;
-    
-    newData.forEach(function(row, index) {
-        console.log('Processing row', index, ':', row.CHAVE_LOJA);
-        const rowData = [];
-        
-        // Create checkbox with both value and data-row-id for compatibility
-        const checkboxHtml = '<input type="checkbox" class="form-check-input row-checkbox" ' +
-                            'value="' + row.CHAVE_LOJA + '" ' +
-                            'data-row-id="' + row.CHAVE_LOJA + '">' +
-                            '<span class="text"></span>';
-        
-        const checkboxCell = $('<td class="checkbox-column">').html(checkboxHtml);
-        rowData.push(checkboxCell);
-        
-        // Add other columns
-        rowData.push($('<td>').text(row.CHAVE_LOJA));
-        rowData.push($('<td>').text(row.NOME_LOJA));
-        rowData.push($('<td>').text(row.COD_EMPRESA));
-        rowData.push($('<td>').text(row.COD_LOJA));
-        rowData.push($('<td>').text(row.DESC_ACAO));
-        rowData.push($('<td>').text(row.TIPO));
-        
-        // Format date
-        function formatDateKeepTime(dateStr) {
-            var parts = dateStr.match(/^([A-Za-z]+) (\d{1,2}) (\d{4}) (.+)$/);
-            if (!parts) return dateStr;
-
-            var months = {
-                Jan: '01', Feb: '02', Mar: '03', Apr: '04',
-                May: '05', Jun: '06', Jul: '07', Aug: '08',
-                Sep: '09', Oct: '10', Nov: '11', Dec: '12'
-            };
-
-            var month = months[parts[1]];
-            var day = ('0' + parts[2]).slice(-2);
-            var year = parts[3];
-            var time = parts[4];
-
-            return day + '/' + month + '/' + year + ' ' + time;
-        }
-
-        var formattedDate = formatDateKeepTime(row.DATA_APROVACAO);
-        rowData.push($('<td>').text(formattedDate));
-
-        // Add calculated columns
-        let depDinheiroValue = row.TIPO === 'Presenca' ? 'R$ 3.000,00' : 
-                              row.TIPO === 'Avancado' ? 'R$ 10.000,00' : '0';
-        rowData.push($('<td>').text(depDinheiroValue));
-
-        let depChequeValue = row.TIPO === 'Presenca' ? 'R$ 5.000,00' : 
-                            row.TIPO === 'Avancado' ? 'R$ 10.000,00' : '0';
-        rowData.push($('<td>').text(depChequeValue));
-
-        let recRetiradaValue = row.TIPO === 'Presenca' ? 'R$ 2.000,00' : 
-                              row.TIPO === 'Avancado' ? 'R$ 3.500,00' : '0';
-        rowData.push($('<td>').text(recRetiradaValue));
-
-        let saqChequeValue = row.TIPO === 'Presenca' ? 'R$ 2.000,00' : 
-                            row.TIPO === 'Avancado' ? 'R$ 3.500,00' : '0';
-        rowData.push($('<td>').text(saqChequeValue));
-
-        let saqSegundaViaValue = row.SEGUNDA_VIA_CARTAO_VALID === '1' ? 'Aprovado' : 'Não Aprovado';
-        rowData.push($('<td>').text(saqSegundaViaValue));
-
-        let saqHoleriteINSSValue = row.HOLERITE_INSS_VALID === '1' ? 'Aprovado' : 'Não Aprovado';
-        rowData.push($('<td>').text(saqHoleriteINSSValue));
-
-        let saqConsINSSValue = row.CONSULTA_INSS_VALID === '1' ? 'Aprovado' : 'Não Aprovado';
-        rowData.push($('<td>').text(saqConsINSSValue));
-
-        // Handle contract date
-        if (!row.DATA_CONTRATO) {
-            const warningCell = $('<td>')
-                .html('<i><strong><span class="glyphicon glyphicon-warning-sign"></span> NULL</strong></i>')
-                .css({
-                    'background-color': '#fb6e52',
-                    'text-align': 'center',
-                    'vertical-align': 'middle'
-                });
-            rowData.push(warningCell);
-        } else {
-            const formattedContractDate = formatDateKeepTime(row.DATA_CONTRATO);
-            rowData.push($('<td>').text(formattedContractDate));
-        }
-
-        // Handle contract type
-        if (!row.TIPO_CONTRATO) {
-            const warningCell = $('<td>')
-                .html('<i><strong><span class="glyphicon glyphicon-warning-sign"></span> NULL</strong></i>')
-                .css({
-                    'background-color': '#fb6e52',
-                    'text-align': 'center',
-                    'vertical-align': 'middle'
-                });
-            rowData.push(warningCell);
-        } else {
-            rowData.push($('<td>').text(row.TIPO_CONTRATO));
-        }
-
-        self.allData.push(rowData);
-    });
-    
-    console.log('Data replacement complete. Total rows:', this.allData.length);
-};
-
-// Fixed PaginationModule.updateTable - add checkbox reinitialization
-PaginationModule.updateTable = function() {
-    // Filter data
-    this.filterData();
-    
-    // Sort data if necessary
-    this.sortData();
-    
-    // Calculate pagination
-    const totalItems = this.filteredData.length;
-    const totalPages = Math.ceil(totalItems / this.itemsPerPage);
-    const startIndex = (this.currentPage - 1) * this.itemsPerPage;
-    const endIndex = Math.min(startIndex + this.itemsPerPage, totalItems);
-    
-    // Clear table
-    $('#dataTable tbody').empty();
-    
-    // Add rows for current page
-    for (let i = startIndex; i < endIndex; i++) {
-        const row = $('<tr>');
-        this.filteredData[i].forEach(function(cell) {
-            row.append(cell.clone(true)); // Clone with events
-        });
-        $('#dataTable tbody').append(row);
-    }
-    
-    // Update pagination info
-    $('#showingStart').text(totalItems > 0 ? startIndex + 1 : 0);
-    $('#showingEnd').text(endIndex);
-    $('#totalItems').text(totalItems);
-    
-    // Update pagination controls
-    this.updatePaginationControls(totalPages);
-    
-    // IMPORTANT: Reinitialize checkboxes after table update
-    setTimeout(function() {
-        console.log('Reinitializing checkboxes after table update');
-        CheckboxModule.reinitialize();
-    }, 200);
-};
-
-// Fixed FilterModule.loadTableData - better checkbox handling
-FilterModule.loadTableData = function(filter) {
+// UPDATED: FilterModule.loadTableData with better debugging
+loadTableData: function(filter) {
     console.log('loadTableData called with filter: ', filter);
 
-    // Show loading
-    $('#dataTable tbody').html('<tr><td colspan="16" class="text-center">Carregando...</td></tr>');
+    // Mostrar loading
+    $('#dataTable tbody').html('<tr><td colspan="12" class="text-center">Carregando...</td></tr>');
     
+    var url = 'wxkd.php?action=ajaxGetTableData&filter=' + filter;
+    console.log('AJAX URL:', url);
+    
+    // Fazer requisição AJAX para XML ao invés de JSON
     $.get('wxkd.php?action=ajaxGetTableData&filter=' + filter)
         .done(function(xmlData) {
             try {
+                // Parse XML response
                 var $xml = $(xmlData);
                 var success = $xml.find('success').text() === 'true';
                 
@@ -309,48 +323,63 @@ FilterModule.loadTableData = function(filter) {
                         });
                         tableData.push(row);
                     });
-                    
+
                     console.log('Table data extracted: ', tableData.length, 'rows');
 
-                    // Update card counts
+                    // Atualizar dados dos cards
                     FilterModule.updateCardCounts(cardData);
                     
-                    // Replace table data
+                    // Recriar dados da tabela
                     PaginationModule.replaceTableData(tableData);
                     PaginationModule.currentPage = 1;
                     PaginationModule.updateTable();
                     
-                    // Clear selections and reinitialize
+                    // Clear selections
                     CheckboxModule.clearSelections();
                     
-                    // Extra delay for older browsers
+                    // Reinitialize checkbox module after DOM update
                     setTimeout(function() {
-                        console.log('Final checkbox reinitialization');
-                        CheckboxModule.reinitialize();
-                    }, 300);
+                        console.log('Reinitializing checkbox events after filter');
+                        CheckboxModule.init();
+                        CheckboxModule.updateSelectAllState();
+                        CheckboxModule.updateExportButton();
+                        
+                        // Debug checkboxes
+                        CheckboxModule.debugCheckboxes();
+                    }, 200);
                 }
             } catch (e) {
                 console.error('Error parsing XML: ', e);
-                $('#dataTable tbody').html('<tr><td colspan="16" class="text-center text-danger">Erro ao processar dados</td></tr>');
+                console.log('Failed XML content:', xmlData);
+                $('#dataTable tbody').html('<tr><td colspan="12" class="text-center text-danger">Erro ao processar dados</td></tr>');
             }
         })
         .fail(function(jqXHR, textStatus, errorThrown) {
-            console.error('AJAX failed:', textStatus, errorThrown);
-            $('#dataTable tbody').html('<tr><td colspan="16" class="text-center text-danger">Erro ao carregar dados</td></tr>');
+            console.error('AJAX failed:' , textStatus, errorThrown);
+            console.log('Response: ', jqXHR.responseText);
+            $('#dataTable tbody').html('<tr><td colspan="12" class="text-center text-danger">Erro ao carregar dados</td></tr>');
         });
-};
+},
 
-// Make sure to initialize properly
-$(document).ready(function() {
-    console.log('Document ready - initializing modules');
-    
-    // Initialize modules in correct order
-    SearchModule.init();
-    SortModule.init();
-    PaginationModule.init();
-    CheckboxModule.init(); // This should be after PaginationModule
-    FilterModule.init();
-    ExportModule.init();
-    
-    console.log('All modules initialized');
-});
+// ADD THIS CSS TO FIX POTENTIAL STYLING ISSUES
+// Add this to your CSS file or in a <style> tag:
+/*
+.checkbox-column {
+    text-align: center !important;
+    vertical-align: middle !important;
+    padding: 8px !important;
+}
+
+.row-checkbox {
+    cursor: pointer !important;
+    width: 16px !important;
+    height: 16px !important;
+    margin: 0 !important;
+    position: relative !important;
+    z-index: 1 !important;
+}
+
+.row-checkbox:hover {
+    transform: scale(1.1);
+}
+*/
