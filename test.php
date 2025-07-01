@@ -1,205 +1,163 @@
-// JavaScript TXT - IGUAL ao CSV que funciona
-
-function exportAllTXT() {
-    var filter = getCurrentFilter();
-    exportTXTData('', filter);
-}
-
-function exportSelectedTXT() {
-    var selected = document.querySelectorAll('.row-checkbox:checked');
-    if (selected.length === 0) {
-        alert('Selecione pelo menos um registro');
-        return;
-    }
-    
-    var ids = [];
-    selected.forEach(function(cb) {
-        ids.push(cb.value);
+// FIXED: PaginationModule.replaceTableData function
+replaceTableData: function(newData) {
+    // Converter novos dados para formato da tabela
+    this.allData = [];
+    const self = this;
+    newData.forEach(function(row) {
+        const rowData = [];
+        
+        // FIXED: Checkbox with proper value attribute
+        const checkboxCell = $('<td class="checkbox-column">').html(
+            `<input type="checkbox" class="form-check-input row-checkbox" 
+                    data-row-id="${row.CHAVE_LOJA}" 
+                    value="${row.CHAVE_LOJA}">
+            <span class="text"></span>`
+        );
+        rowData.push(checkboxCell);
+        
+        // Rest of the code remains the same...
+        rowData.push($('<td>').text(row.CHAVE_LOJA));
+        rowData.push($('<td>').text(row.NOME_LOJA));
+        // ... other columns
+        
+        self.allData.push(rowData);
     });
-    
-    var filter = getCurrentFilter();
-    exportTXTData(ids.join(','), filter);
-}
+},
 
-function exportTXTData(selectedIds, filter) {
-    var url = 'Wxkd_dashboard.php?action=exportTXT&filter=' + filter;
-    if (selectedIds) {
-        url += '&ids=' + selectedIds;
-    }
+// FIXED: CheckboxModule with consistent event handling
+const CheckboxModule = {
+    init: function() {
+        // Checkbox "Selecionar Todos"
+        $('#selectAll').on('change', this.toggleSelectAll.bind(this));
+        
+        // FIXED: Use event delegation properly and ensure events are bound correctly
+        $(document).off('change', '.row-checkbox'); // Remove any existing handlers
+        $(document).on('change', '.row-checkbox', this.handleRowCheckboxChange.bind(this));
+        
+        // Atualizar estado inicial
+        this.updateExportButton();
+    },
     
-    // Fazer requisição AJAX (igual ao CSV)
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', url, true);
-    xhr.onreadystatechange = function() {
-        if (xhr.readyState === 4 && xhr.status === 200) {
-            try {
-                // Parsear XML (igual ao CSV)
-                var parser = new DOMParser();
-                var xmlDoc = parser.parseFromString(xhr.responseText, 'text/xml');
-                
-                // Verificar se teve sucesso
-                var success = xmlDoc.getElementsByTagName('success')[0];
-                if (!success || success.textContent !== 'true') {
-                    alert('Erro ao buscar dados para exportação');
-                    return;
-                }
-                
-                // Extrair dados do XML e converter para TXT
-                var txtData = extractTXTFromXML(xmlDoc);
-                
-                // Gerar e fazer download do TXT
-                downloadTXTFile(txtData, 'dashboard_' + filter + '_' + getCurrentTimestamp() + '.txt');
-                
-            } catch (e) {
-                console.error('Erro ao processar XML:', e);
-                alert('Erro ao processar dados');
-            }
+    // NEW: Single handler for row checkbox changes
+    handleRowCheckboxChange: function(e) {
+        this.updateSelectAllState();
+        this.updateExportButton();
+    },
+    
+    toggleSelectAll: function() {
+        const isChecked = $('#selectAll').is(':checked');
+        $('.row-checkbox:visible').prop('checked', isChecked);
+        this.updateExportButton();
+    },
+    
+    updateSelectAllState: function() {
+        const totalCheckboxes = $('.row-checkbox:visible').length;
+        const checkedCheckboxes = $('.row-checkbox:visible:checked').length;
+        
+        if (checkedCheckboxes === 0) {
+            $('#selectAll').prop('indeterminate', false).prop('checked', false);
+        } else if (checkedCheckboxes === totalCheckboxes) {
+            $('#selectAll').prop('indeterminate', false).prop('checked', true);
+        } else {
+            $('#selectAll').prop('indeterminate', true).prop('checked', false);
         }
-    };
-    xhr.send();
-}
-
-function extractTXTFromXML(xmlDoc) {
-    var txtContent = '';
+    },
     
-    // Extrair dados das linhas (igual ao CSV)
-    var rows = xmlDoc.getElementsByTagName('row');
-    for (var i = 0; i < rows.length; i++) {
-        var row = rows[i];
+    updateExportButton: function() {
+        const checkedCount = $('.row-checkbox:checked').length;
+        $('#selectedCount').text(checkedCount);
         
-        var chave = getXMLNodeValue(row, 'chave_loja');
-        var empresa = getXMLNodeValue(row, 'cod_empresa');
-        var tipo = getXMLNodeValue(row, 'tipo');
-        var dataContrato = getXMLNodeValue(row, 'data_contrato');
-        var tipoContrato = getXMLNodeValue(row, 'tipo_contrato');
+        const isDisabled = checkedCount === 0;
+        $('#exportTxtBtn').prop('disabled', isDisabled);
         
-        // Converter para formato TXT de 117 posições
-        var txtLine = formatToTXTLine(chave, empresa, tipo, dataContrato, tipoContrato);
-        txtContent += txtLine + '\r\n';
+        // Atualizar texto do botão baseado no filtro
+        let buttonText = 'Exportar TXT';
+        if (FilterModule.currentFilter === 'cadastramento' || FilterModule.currentFilter === 'descadastramento') {
+            buttonText = 'Converter para TXT';
+        }
+        
+        // Atualizar o texto do botão
+        const btnContent = $('#exportTxtBtn').html();
+        const newContent = btnContent.replace(/^[^(]+/, buttonText + ' ');
+        $('#exportTxtBtn').html(newContent);
+    },
+    
+    clearSelections: function() {
+        $('.row-checkbox').prop('checked', false);
+        $('#selectAll').prop('checked', false).prop('indeterminate', false);
+        this.updateExportButton();
+    },
+    
+    getSelectedIds: function() {
+        const selectedIds = [];
+        $('.row-checkbox:checked').each(function() {
+            // FIXED: Use consistent method to get ID
+            selectedIds.push($(this).val()); // Use .val() instead of .data('row-id')
+        });
+        return selectedIds;
     }
-    
-    return txtContent;
-}
+};
 
-function formatToTXTLine(chave, empresa, tipo, dataContrato, tipoContrato) {
-    // Formatar campos para TXT (117 posições)
-    
-    // CHAVE_LOJA - 10 posições, numérico, zeros à esquerda
-    var chaveTXT = padLeft(cleanNumeric(chave), 10, '0');
-    
-    // COD_EMPRESA - 8 posições, numérico, zeros à esquerda  
-    var empresaTXT = padLeft(cleanNumeric(empresa), 8, '0');
-    
-    // TIPO - 20 posições, texto, espaços à direita
-    var tipoTXT = padRight(cleanText(tipo), 20, ' ');
-    
-    // DATA_CONTRATO - 10 posições, formato YYYY-MM-DD
-    var dataTXT = formatDate(dataContrato, 10);
-    
-    // TIPO_CONTRATO - 25 posições, texto, espaços à direita
-    var tipoContratoTXT = padRight(cleanText(tipoContrato), 25, ' ');
-    
-    // STATUS - 10 posições, texto, espaços à direita
-    var statusTXT = padRight('ATIVO', 10, ' ');
-    
-    // OBSERVACOES - 34 posições, texto, espaços à direita
-    var obsTXT = padRight('CONTRATO APROVADO', 34, ' ');
-    
-    // Juntar tudo (total: 117 posições)
-    var linha = chaveTXT + empresaTXT + tipoTXT + dataTXT + tipoContratoTXT + statusTXT + obsTXT;
-    
-    // Garantir exatamente 117 caracteres
-    if (linha.length > 117) {
-        linha = linha.substring(0, 117);
-    } else if (linha.length < 117) {
-        linha = padRight(linha, 117, ' ');
-    }
-    
-    return linha;
-}
+// FIXED: Update the FilterModule.loadTableData function
+loadTableData: function(filter) {
+    console.log('loadTableData called with filter: ', filter);
 
-// Funções auxiliares para formatação
-function cleanNumeric(value) {
-    return String(value).replace(/[^0-9]/g, '') || '0';
-}
-
-function cleanText(value) {
-    return String(value).replace(/[^A-Za-z0-9\s]/g, '').toUpperCase().trim();
-}
-
-function formatDate(dateValue, length) {
-    if (!dateValue) return padLeft('', length, '0');
+    // Mostrar loading
+    $('#dataTable tbody').html('<tr><td colspan="12" class="text-center">Carregando...</td></tr>');
     
-    // Tentar extrair ano
-    var year = '';
-    if (dateValue.match(/(\d{4})/)) {
-        year = dateValue.match(/(\d{4})/)[1];
-        return year + '-01-01'; // Data padrão
-    }
+    var url = 'wxkd.php?action=ajaxGetTableData&filter=' + filter;
+    console.log('AJAX URL:', url);
     
-    return padLeft('', length, '0');
-}
+    // Fazer requisição AJAX para XML ao invés de JSON
+    $.get('wxkd.php?action=ajaxGetTableData&filter=' + filter)
+        .done(function(xmlData) {
+            try {
+                // Parse XML response
+                var $xml = $(xmlData);
+                var success = $xml.find('success').text() === 'true';
+                
+                if (success) {
+                    var cardData = {
+                        cadastramento: $xml.find('cardData cadastramento').text(),
+                        descadastramento: $xml.find('cardData descadastramento').text(),
+                        historico: $xml.find('cardData historico').text()
+                    };
+                    
+                    var tableData = [];
+                    $xml.find('tableData row').each(function() {
+                        var row = {};
+                        $(this).children().each(function() {
+                            row[this.tagName] = $(this).text();
+                        });
+                        tableData.push(row);
+                    });
 
-function padLeft(str, length, char) {
-    str = String(str);
-    while (str.length < length) {
-        str = char + str;
-    }
-    return str.substring(0, length);
-}
-
-function padRight(str, length, char) {
-    str = String(str);
-    while (str.length < length) {
-        str = str + char;
-    }
-    return str.substring(0, length);
-}
-
-function getXMLNodeValue(parentNode, tagName) {
-    var node = parentNode.getElementsByTagName(tagName)[0];
-    return node ? (node.textContent || node.text || '') : '';
-}
-
-function downloadTXTFile(txtContent, filename) {
-    // Adicionar BOM UTF-8 para compatibilidade
-    var txtWithBOM = '\uFEFF' + txtContent;
-    
-    // Criar Blob (igual ao CSV)
-    var blob = new Blob([txtWithBOM], { type: 'text/plain;charset=utf-8;' });
-    
-    // Criar link de download (igual ao CSV)
-    var link = document.createElement('a');
-    if (link.download !== undefined) {
-        var url = URL.createObjectURL(blob);
-        link.setAttribute('href', url);
-        link.setAttribute('download', filename);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    } else {
-        // Fallback para navegadores antigos
-        alert('Seu navegador não suporta download automático. Copie o conteúdo:\n\n' + txtContent.substring(0, 500) + '...');
-    }
-}
-
-function getCurrentFilter() {
-    var activeCard = document.querySelector('.card.active');
-    if (activeCard) {
-        if (activeCard.id === 'card-cadastramento') return 'cadastramento';
-        if (activeCard.id === 'card-descadastramento') return 'descadastramento';
-        if (activeCard.id === 'card-historico') return 'historico';
-    }
-    return 'all';
-}
-
-function getCurrentTimestamp() {
-    var now = new Date();
-    return now.getFullYear() + '-' + 
-           String(now.getMonth() + 1).padStart(2, '0') + '-' + 
-           String(now.getDate()).padStart(2, '0') + '_' +
-           String(now.getHours()).padStart(2, '0') + '-' +
-           String(now.getMinutes()).padStart(2, '0') + '-' +
-           String(now.getSeconds()).padStart(2, '0');
-}
+                    // Atualizar dados dos cards
+                    FilterModule.updateCardCounts(cardData);
+                    
+                    // Recriar dados da tabela
+                    PaginationModule.replaceTableData(tableData);
+                    PaginationModule.currentPage = 1;
+                    PaginationModule.updateTable();
+                    
+                    // FIXED: Clear selections and reinitialize checkbox events
+                    CheckboxModule.clearSelections();
+                    
+                    // FIXED: Ensure checkbox events are working after table update
+                    setTimeout(function() {
+                        CheckboxModule.updateSelectAllState();
+                        CheckboxModule.updateExportButton();
+                    }, 150); // Slightly longer timeout to ensure DOM is ready
+                }
+            } catch (e) {
+                console.error('Error parsing XML: ', e);
+                console.log('Failed XML content:', xmlData);
+                $('#dataTable tbody').html('<tr><td colspan="12" class="text-center text-danger">Erro ao processar dados</td></tr>');
+            }
+        })
+        .fail(function(jqXHR, textStatus, errorThrown) {
+            console.error('AJAX failed:' , textStatus, errorThrown);
+            console.log('Response: ', jqXHR.responseText);
+            $('#dataTable tbody').html('<tr><td colspan="12" class="text-center text-danger">Erro ao carregar dados</td></tr>');
+        });
+},
