@@ -1,464 +1,288 @@
-// Add this new StatusFilterModule to your existing JavaScript file
+const { exec, spawn } = require('child_process');
+const { promisify } = require('util');
+const execAsync = promisify(exec);
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 
-const StatusFilterModule = {
-    activeStatusFilters: {},
-    
-    init: function() {
-        console.log('StatusFilterModule: Initializing');
-        this.activeStatusFilters = {};
-        this.attachEventListeners();
-    },
-    
-    attachEventListeners: function() {
-        // Attach click handlers to status filter buttons
-        $('.status-filter-btn').off('click.statusFilter').on('click.statusFilter', this.handleStatusFilterClick.bind(this));
-        $('#clearStatusFilters').off('click.statusFilter').on('click.statusFilter', this.clearAllStatusFilters.bind(this));
-    },
-    
-    handleStatusFilterClick: function(e) {
-        const button = $(e.currentTarget);
-        const fieldName = button.data('field');
-        
-        console.log('StatusFilterModule: Toggle filter for', fieldName);
-        
-        // Toggle the filter state
-        if (this.activeStatusFilters[fieldName]) {
-            delete this.activeStatusFilters[fieldName];
-            button.removeClass('active');
-        } else {
-            this.activeStatusFilters[fieldName] = true;
-            button.addClass('active');
-        }
-        
-        // Update the UI and apply filters
-        this.updateFilterIndicator();
-        this.applyStatusFilters();
-    },
-    
-    clearAllStatusFilters: function() {
-        console.log('StatusFilterModule: Clearing all status filters');
-        
-        this.activeStatusFilters = {};
-        $('.status-filter-btn').removeClass('active');
-        this.updateFilterIndicator();
-        this.applyStatusFilters();
-    },
-    
-    updateFilterIndicator: function() {
-        const activeCount = Object.keys(this.activeStatusFilters).length;
-        const indicator = $('#statusFilterIndicator');
-        
-        if (activeCount > 0) {
-            const filterNames = {
-                'AVANCADO': 'Avançado',
-                'ORGAO_PAGADOR': 'Órgão Pagador', 
-                'PRESENCA': 'Presença',
-                'UNIDADE_NEGOCIO': 'Unidade Negócio'
-            };
-            
-            const activeFilterNames = Object.keys(this.activeStatusFilters)
-                .map(field => filterNames[field])
-                .join(', ');
-                
-            indicator.find('#activeStatusFilters').text(activeFilterNames);
-            indicator.show();
-        } else {
-            indicator.hide();
-        }
-    },
-    
-    applyStatusFilters: function() {
-        console.log('StatusFilterModule: Applying status filters', this.activeStatusFilters);
-        
-        // Trigger the pagination module to update with new filters
-        PaginationModule.currentPage = 1;
-        PaginationModule.updateTable();
-        
-        // Update checkbox state after filtering
-        setTimeout(function() {
-            CheckboxModule.updateSelectAllState();
-            CheckboxModule.updateExportButton();
-        }, 100);
-    },
-    
-    // Method to be called after main filter data is loaded
-    reapplyAfterDataLoad: function() {
-        console.log('StatusFilterModule: Reapplying filters after data load');
-        if (Object.keys(this.activeStatusFilters).length > 0) {
-            // Small delay to ensure data is fully loaded
-            setTimeout(() => {
-                this.applyStatusFilters();
-            }, 300);
-        }
-    },
-    
-    // This function will be called by PaginationModule to filter data
-    filterRowData: function(rowData) {
-        // If no status filters are active, show all rows
-        if (Object.keys(this.activeStatusFilters).length === 0) {
-            return true;
-        }
-        
-        // Get the status cell (index 5 based on your table structure)
-        const statusCell = rowData[5];
-        if (!statusCell) return false;
-        
-        // Check each active filter
-        for (const fieldName in this.activeStatusFilters) {
-            if (!this.isFieldActive(statusCell, fieldName)) {
-                return false; // Row doesn't match this filter
-            }
-        }
-        
-        return true; // Row matches all active filters
-    },
-    
-    // Check if a specific field is active (green) in the status cell
-    isFieldActive: function(statusCell, fieldName) {
-        const cellHtml = statusCell.html();
-        
-        // Map field names to their labels
-        const fieldLabels = {
-            'AVANCADO': 'AV',
-            'ORGAO_PAGADOR': 'OP',
-            'PRESENCA': 'PR', 
-            'UNIDADE_NEGOCIO': 'UN'
-        };
-        
-        const label = fieldLabels[fieldName];
-        if (!label) return false;
-        
-        // Look for the specific label with green background
-        const regex = new RegExp(`background-color:\\s*green[^>]*>${label}<`, 'i');
-        return regex.test(cellHtml);
-    },
-    
-    // Get current active filters (for debugging)
-    getActiveFilters: function() {
-        return this.activeStatusFilters;
+class WorkingJavaScriptRPA {
+    constructor() {
+        this.delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     }
-};
 
-// Modify the existing PaginationModule.filterData method
-// Replace the existing filterData method with this enhanced version:
-
-PaginationModule.filterData = function() {
-    if (this.searchTerm === '' && Object.keys(StatusFilterModule.activeStatusFilters).length === 0) {
-        this.filteredData = [...this.allData];
-    } else {
-        const self = this;
-        this.filteredData = this.allData.filter(function(row) {
-            // First apply search filter
-            let matchesSearch = true;
-            if (self.searchTerm !== '') {
-                matchesSearch = row.some(function(cell) {
-                    return $(cell).text().toLowerCase().includes(self.searchTerm);
-                });
-            }
+    async sendKey(key) {
+        try {
+            // Use a simpler, more reliable method for sending keys
+            const vbsScript = `
+Set WshShell = WScript.CreateObject("WScript.Shell")
+WshShell.SendKeys "${key}"
+            `;
             
-            // Then apply status filters
-            let matchesStatusFilter = StatusFilterModule.filterRowData(row);
+            const tempVbs = path.join(os.tmpdir(), 'sendkey.vbs');
+            fs.writeFileSync(tempVbs, vbsScript);
             
-            return matchesSearch && matchesStatusFilter;
-        });
+            await execAsync(`cscript //nologo "${tempVbs}"`);
+            fs.unlinkSync(tempVbs); // Clean up
+        } catch (error) {
+            console.log(`Key send failed: ${error.message}`);
+        }
     }
-};
 
-// Modify the existing PaginationModule.replaceTableData method to add data attributes
-// Add this code after line where squaresHtml is generated:
+    async mouseClick(x, y) {
+        try {
+            // Use VBScript for more reliable mouse clicking
+            const vbsScript = `
+Set WshShell = WScript.CreateObject("WScript.Shell")
+WshShell.Run "powershell -command ""Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${x}, ${y}); Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class Mouse { [DllImport(\""user32.dll\"")] public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, IntPtr dwExtraInfo); public const uint MOUSEEVENTF_LEFTDOWN = 0x02; public const uint MOUSEEVENTF_LEFTUP = 0x04; }'; [Mouse]::mouse_event(2, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 100; [Mouse]::mouse_event(4, 0, 0, 0, [IntPtr]::Zero)""", 0, True
+            `;
+            
+            const tempVbs = path.join(os.tmpdir(), 'click.vbs');
+            fs.writeFileSync(tempVbs, vbsScript);
+            
+            await execAsync(`cscript //nologo "${tempVbs}"`);
+            fs.unlinkSync(tempVbs);
+        } catch (error) {
+            console.log(`Mouse click failed: ${error.message}`);
+        }
+    }
 
-// MODIFIED FilterModule.loadTableData method
-// Replace your existing FilterModule.loadTableData method with this enhanced version:
+    async runWorkingRPA() {
+        try {
+            console.log("🟨 Starting WORKING JavaScript RPA...");
+            console.log("====================================");
 
-FilterModule.loadTableData = function(filter) {
-    $('#dataTableAndre tbody').html('<tr><td colspan="12" class="text-center">Carregando...</td></tr>');
-    
-    var url = 'wxkd.php?action=ajaxGetTableData&filter=' + filter;
-    
-    $.get('wxkd.php?action=ajaxGetTableData&filter=' + filter)
-        .done(function(xmlData) {
-            try {
-                var $xml = $(xmlData);
-                var success = $xml.find('success').text() === 'true';
-                
-                if (success) {
-                    var cardData = {
-                        cadastramento: $xml.find('cardData cadastramento').text(),
-                        descadastramento: $xml.find('cardData descadastramento').text(),
-                        historico: $xml.find('cardData historico').text()
-                    };
-                    
-                    var tableData = [];
-                    $xml.find('tableData row').each(function() {
-                        var row = {};
-                        $(this).children().each(function() {
-                            row[this.tagName] = $(this).text();
-                        });
-                        tableData.push(row);
-                    });
+            // Step 1: Open CMD using simple method
+            console.log("Step 1: Opening CMD...");
+            await this.sendKey("%{F4}"); // Close any existing windows
+            await this.delay(500);
+            
+            await this.sendKey("^{ESC}"); // Windows key
+            await this.delay(1000);
+            await this.sendKey("cmd{ENTER}");
+            await this.delay(3000); // Wait for CMD to open
 
-                    FilterModule.updateCardCounts(cardData);
-                    
-                    // Use the enhanced replaceTableData method
-                    PaginationModule.replaceTableDataEnhanced(tableData);
-                    PaginationModule.currentPage = 1;
-                    PaginationModule.updateTable();
-                    
-                    CheckboxModule.clearSelections();
-                    
-                    setTimeout(function() {
-                        CheckboxModule.init();
-                        CheckboxModule.updateSelectAllState();
-                        CheckboxModule.updateExportButton();
-                        
-                        CheckboxModule.debugCheckboxes();
-                    }, 200);
-                    
-                    // IMPORTANT: Reapply status filters after data is loaded
-                    setTimeout(function() {
-                        StatusFilterModule.reapplyAfterDataLoad();
-                    }, 400);
-                }
-            } catch (e) {
-                console.error('Error parsing XML: ', e);
-                $('#dataTableAndre tbody').html('<tr><td colspan="12" class="text-center text-danger">Erro ao processar dados</td></tr>');
+            // Step 2: Execute commands
+            console.log("Step 2: Executing commands...");
+            const commands = [
+                "cls{ENTER}",
+                "echo === RPA Test ==={ENTER}",
+                "echo Current dir:{ENTER}",
+                "cd{ENTER}",
+                "echo After cd ..:{ENTER}",
+                "cd ..{ENTER}",
+                "cd{ENTER}",
+                "echo === Done ==={ENTER}"
+            ];
+
+            for (const cmd of commands) {
+                await this.sendKey(cmd);
+                await this.delay(800);
             }
-        })
-        .fail(function(jqXHR, textStatus, errorThrown) {
-            console.error('AJAX failed:' , textStatus, errorThrown);
-            $('#dataTableAndre tbody').html('<tr><td colspan="12" class="text-center text-danger">Erro ao carregar dados</td></tr>');
-        });
-},
-PaginationModule.replaceTableDataEnhanced = function(newData) {
-    this.allData = [];
-    const self = this;
-    newData.forEach(function(row, index) {
-        const rowData = [];
-        
-        // Checkbox cell
-        const checkboxCell = $('<td class="checkbox-column">');
-        const label = $('<label>');
-        const sequentialId = index + 1;
-        const checkbox = $('<input>')
-            .attr({
-                'type': 'checkbox',
-                'class': 'form-check-input row-checkbox',
-                'data-row-id': sequentialId,
-                'value': sequentialId,
-                'id': sequentialId
+
+            await this.delay(2000);
+
+            // Step 3: Select text using right-click method
+            console.log("Step 3: Selecting text...");
+            
+            // Right-click in center of screen
+            await this.mouseClick(640, 350);
+            await this.delay(500);
+            
+            // Use VBScript to right-click
+            const rightClickScript = `
+Set WshShell = WScript.CreateObject("WScript.Shell")
+WshShell.Run "powershell -command ""Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class Mouse { [DllImport(\""user32.dll\"")] public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, IntPtr dwExtraInfo); public const uint MOUSEEVENTF_RIGHTDOWN = 0x08; public const uint MOUSEEVENTF_RIGHTUP = 0x10; }'; [Mouse]::mouse_event(8, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 100; [Mouse]::mouse_event(16, 0, 0, 0, [IntPtr]::Zero)""", 0, True
+            `;
+            
+            const tempRightClick = path.join(os.tmpdir(), 'rightclick.vbs');
+            fs.writeFileSync(tempRightClick, rightClickScript);
+            await execAsync(`cscript //nologo "${tempRightClick}"`);
+            fs.unlinkSync(tempRightClick);
+            
+            await this.delay(500);
+            
+            // Press S for Select All
+            await this.sendKey("s");
+            await this.delay(500);
+
+            // Step 4: Copy
+            console.log("Step 4: Copying...");
+            await this.sendKey("^c");
+            await this.delay(1000);
+
+            // Step 5: Open Notepad
+            console.log("Step 5: Opening Notepad...");
+            await this.sendKey("^{ESC}");
+            await this.delay(1000);
+            await this.sendKey("notepad{ENTER}");
+            await this.delay(3000);
+
+            // Step 6: Paste
+            console.log("Step 6: Pasting...");
+            await this.sendKey("^v");
+            await this.delay(1000);
+
+            console.log("✅ JavaScript RPA completed successfully!");
+
+        } catch (error) {
+            console.error("❌ RPA failed:", error.message);
+        }
+    }
+
+    async runSimpleMethod() {
+        try {
+            console.log("Starting simple reliable method...");
+            
+            // Method: Create batch file, execute it, and open result in notepad
+            const batchContent = `@echo off
+echo === RPA Automation Results ===
+echo Current directory:
+cd
+echo.
+echo Executing cd ..
+cd ..
+echo New directory:
+cd
+echo === Automation Complete ===
+echo.
+echo Timestamp: %date% %time%
+pause
+`;
+
+            const batchFile = path.join(__dirname, 'rpa_automation.bat');
+            const outputFile = path.join(__dirname, 'rpa_output.txt');
+
+            // Write batch file
+            fs.writeFileSync(batchFile, batchContent);
+
+            console.log("Executing batch file...");
+            
+            // Execute batch and capture output
+            await execAsync(`"${batchFile}" > "${outputFile}"`);
+
+            console.log("Opening result in Notepad...");
+            
+            // Open notepad with the output file
+            const notepadProcess = spawn('notepad', [outputFile], {
+                detached: true,
+                stdio: 'ignore'
             });
-        const span = $('<span class="text">');
-        label.append(checkbox).append(span);
-        checkboxCell.append(label);
-        rowData.push(checkboxCell);
-        
-        // Other basic cells
-        rowData.push($('<td>').text(row.CHAVE_LOJA));
-        rowData.push($('<td>').text(row.NOME_LOJA));
-        rowData.push($('<td>').text(row.COD_EMPRESA));
-        rowData.push($('<td>').text(row.COD_LOJA));
-        
-        // Enhanced status squares generation with data attributes
-        var fields = {
-            'AVANCADO': 'AV',
-            'ORGAO_PAGADOR': 'OP', 
-            'PRESENCA': 'PR',
-            'UNIDADE_NEGOCIO': 'UN'
-        };
+            notepadProcess.unref();
 
-        var cutoff = new Date(2025, 5, 1);
+            console.log("✅ Simple method completed!");
+            console.log(`📁 Batch file: ${batchFile}`);
+            console.log(`📄 Output file: ${outputFile}`);
 
-        function parseDate(dateString) {
-            if (!dateString || typeof dateString !== 'string') {
-                return null;
-            }
+        } catch (error) {
+            console.error("❌ Simple method failed:", error.message);
+        }
+    }
+
+    async runHybridMethod() {
+        try {
+            console.log("Starting hybrid method (most reliable)...");
+
+            // Get directory information
+            const currentDir = process.cwd();
+            const parentDir = path.dirname(currentDir);
+
+            // Create content
+            const content = `=== JavaScript RPA Results ===
+Current directory: ${currentDir}
+Executing cd ..
+New directory: ${parentDir}
+=== Automation Complete ===
+
+Generated at: ${new Date().toLocaleString()}
+Method: JavaScript Hybrid Approach
+Platform: ${os.platform()} ${os.arch()}`;
+
+            // Write to temp file
+            const tempFile = path.join(os.tmpdir(), 'rpa_js_output.txt');
+            fs.writeFileSync(tempFile, content);
+
+            // Copy to clipboard using Windows clip command
+            console.log("Copying to clipboard...");
+            await execAsync(`type "${tempFile}" | clip`);
+
+            // Open Notepad using VBScript
+            console.log("Opening Notepad...");
+            const openNotepadScript = `
+Set WshShell = WScript.CreateObject("WScript.Shell")
+WshShell.Run "notepad", 1, False
+WScript.Sleep 2000
+WshShell.SendKeys "^v"
+            `;
+
+            const tempNotepadVbs = path.join(os.tmpdir(), 'notepad.vbs');
+            fs.writeFileSync(tempNotepadVbs, openNotepadScript);
             
-            var parts = dateString.trim().split('/');
-            if (parts.length !== 3) {
-                return null;
-            }
+            await execAsync(`cscript //nologo "${tempNotepadVbs}"`);
             
-            var day = parseInt(parts[0], 10);
-            var month = parseInt(parts[1], 10) - 1; 
-            var year = parseInt(parts[2], 10);
-            
-            if (isNaN(day) || isNaN(month) || isNaN(year)) {
-                return null;
-            }
-            
-            var date = new Date(year, month, day);
-            
-            if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) {
-                return null;
-            }
-            
-            return date;
+            // Clean up
+            fs.unlinkSync(tempNotepadVbs);
+
+            console.log("✅ Hybrid method completed successfully!");
+
+        } catch (error) {
+            console.error("❌ Hybrid method failed:", error.message);
+        }
+    }
+}
+
+async function main() {
+    console.log("🟨 FIXED JavaScript RPA - Multiple Methods");
+    console.log("==========================================");
+    console.log("No external dependencies required!");
+    console.log("Uses VBScript + PowerShell for reliability");
+    console.log("");
+
+    const method = process.argv[2] || '1';
+
+    console.log("Available methods:");
+    console.log("1. Mouse selection with VBScript automation");
+    console.log("2. Simple batch file method (most reliable)");
+    console.log("3. Hybrid method (programmatic + GUI)");
+    console.log("");
+    console.log(`Running method ${method}...`);
+
+    // Wait 3 seconds
+    console.log("Starting in 3 seconds...");
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    try {
+        const rpa = new WorkingJavaScriptRPA();
+
+        switch (method) {
+            case '1':
+                await rpa.runWorkingRPA();
+                break;
+            case '2':
+                await rpa.runSimpleMethod();
+                break;
+            case '3':
+                await rpa.runHybridMethod();
+                break;
+            default:
+                console.log("Invalid method, using method 2 (most reliable)");
+                await rpa.runSimpleMethod();
+                break;
         }
 
-        var squaresHtml = '<div class="status-container">';
-        for (var field in fields) {
-            if (fields.hasOwnProperty(field)) {
-                var label = fields[field];
-                var raw = row[field] ? row[field].toString().trim() : '';
-                
-                var dateObj = parseDate(raw);
-                var isOn = dateObj !== null && dateObj > cutoff;
-                var color = isOn ? 'green' : 'gray';
-                var status = isOn ? 'active' : 'inactive';
-                
-                squaresHtml += '<div style="display:inline-block;width:30px;height:30px;' +
-                            'margin-right:5px;text-align:center;line-height:30px;' +
-                            'font-size:10px;font-weight:bold;color:white;' +
-                            'background-color:' + color + ';border-radius:4px;" ' +
-                            'data-field="' + field + '" data-status="' + status + '">' + 
-                            label + '</div>';
-            }
-        }
-        squaresHtml += '</div>';
-
-        rowData.push($('<td>').html(squaresHtml));
-
-        // Continue with existing logic for other columns...
-        // (Copy the rest of your existing replaceTableData method here)
-        // For brevity, I'm showing just the key changes - you'll need to add the rest of your columns
-        
-        // Example of continuing with remaining columns (adapt from your existing code):
-        var matchingDates = [];
-        for (var field in fields) {
-            if (fields.hasOwnProperty(field)) {
-                var raw = row[field] ? row[field].toString().trim() : '';
-                var dateObj = parseDate(raw);
-                if (dateObj && dateObj > cutoff) {
-                    matchingDates.push(raw);
-                }
-            }
-        }
-        var displayHtml = matchingDates.length > 0 ? matchingDates.join(' / ') : '—';
-        rowData.push($('<td>').html(displayHtml));
-        
-        // Add the rest of your existing column generation logic here...
-        // (DEP_DINHEIRO, DEP_CHEQUE, REC_RETIRADA, etc.)
-        
-        self.allData.push(rowData);
-    });
-};
-
-// HTML structure to add to your page (add this to your existing filter section):
-
-const statusFilterHTML = `
-    <!-- Status Filter Section - Add this after your existing filter buttons -->
-    <div style="margin-top: 15px; margin-bottom: 10px; border-top: 1px solid #ddd; padding-top: 15px;">
-        <label class="me-2 text-sm">Filtros de Status:</label>
-        <button type="button" class="btn btn-sm status-filter-btn" id="filterAV" data-field="AVANCADO">
-            <span class="status-indicator" style="background-color: green;">AV</span> Avançado
-        </button>
-        <button type="button" class="btn btn-sm status-filter-btn" id="filterOP" data-field="ORGAO_PAGADOR">
-            <span class="status-indicator" style="background-color: green;">OP</span> Órgão Pagador
-        </button>
-        <button type="button" class="btn btn-sm status-filter-btn" id="filterPR" data-field="PRESENCA">
-            <span class="status-indicator" style="background-color: green;">PR</span> Presença
-        </button>
-        <button type="button" class="btn btn-sm status-filter-btn" id="filterUN" data-field="UNIDADE_NEGOCIO">
-            <span class="status-indicator" style="background-color: green;">UN</span> Unidade Negócio
-        </button>
-        <button type="button" class="btn btn-outline-secondary btn-sm" id="clearStatusFilters" style="margin-left: 10px;">
-            Limpar Status
-        </button>
-    </div>
-    
-    <!-- Status Filter Indicator -->
-    <div id="statusFilterIndicator" style="display: none; margin-bottom: 10px; padding: 8px; background-color: #e7f3ff; border: 1px solid #b3d7ff; border-radius: 4px;">
-        <small><strong>Filtros de Status Ativos:</strong> <span id="activeStatusFilters"></span></small>
-    </div>
-`;
-
-// CSS for the status filter buttons - add this to your CSS:
-const statusFilterCSS = `
-    .status-filter-btn {
-        margin-right: 8px;
-        margin-bottom: 5px;
-        border: 2px solid #ddd;
-        background-color: #f8f9fa;
-        color: #6c757d;
-        transition: all 0.3s ease;
+    } catch (error) {
+        console.error("Main execution failed:", error.message);
+        console.log("\n🔧 Troubleshooting tips:");
+        console.log("1. Run as administrator");
+        console.log("2. Make sure Windows Script Host is enabled");
+        console.log("3. Try method 2 (simplest): node script.js 2");
+        console.log("4. Check if antivirus is blocking scripts");
     }
-    
-    .status-filter-btn.active {
-        border-color: #28a745;
-        background-color: #28a745;
-        color: white;
-    }
-    
-    .status-filter-btn:hover {
-        border-color: #28a745;
-        color: #28a745;
-    }
-    
-    .status-filter-btn.active:hover {
-        background-color: #218838;
-        border-color: #218838;
-        color: white;
-    }
-    
-    .status-indicator {
-        display: inline-block;
-        width: 20px;
-        height: 20px;
-        margin-right: 3px;
-        text-align: center;
-        line-height: 20px;
-        font-size: 8px;
-        font-weight: bold;
-        color: white;
-        border-radius: 3px;
-        vertical-align: middle;
-    }
-`;
+}
 
-// STEP-BY-STEP INTEGRATION INSTRUCTIONS:
+// Export for module usage
+module.exports = WorkingJavaScriptRPA;
 
-// 1. ADD StatusFilterModule to your existing JS file (complete module above)
-
-// 2. REPLACE your existing PaginationModule.filterData method with this:
-PaginationModule.filterData = function() {
-    if (this.searchTerm === '' && Object.keys(StatusFilterModule.activeStatusFilters).length === 0) {
-        this.filteredData = [...this.allData];
-    } else {
-        const self = this;
-        this.filteredData = this.allData.filter(function(row) {
-            // First apply search filter
-            let matchesSearch = true;
-            if (self.searchTerm !== '') {
-                matchesSearch = row.some(function(cell) {
-                    return $(cell).text().toLowerCase().includes(self.searchTerm);
-                });
-            }
-            
-            // Then apply status filters
-            let matchesStatusFilter = StatusFilterModule.filterRowData(row);
-            
-            return matchesSearch && matchesStatusFilter;
-        });
-    }
-};
-
-// 3. MODIFY your existing FilterModule.loadTableData method:
-// Find this line in your existing FilterModule.loadTableData:
-// PaginationModule.replaceTableData(tableData);
-// 
-// REPLACE IT WITH:
-// PaginationModule.replaceTableDataEnhanced(tableData);
-
-// 4. ADD this timeout block at the end of your FilterModule.loadTableData success block:
-// (After the existing setTimeout that calls CheckboxModule.init())
-/*
-setTimeout(function() {
-    StatusFilterModule.reapplyAfterDataLoad();
-}, 400);
-*/
-
-// 5. UPDATE your document ready section to include StatusFilterModule.init()
-
-// 6. ADD the HTML filter buttons to your page (see HTML section below)
-
-// 7. ADD the CSS styles (see CSS section below)
+// Run if called directly
+if (require.main === module) {
+    main();
+}
