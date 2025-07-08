@@ -81,6 +81,17 @@ const StatusFilterModule = {
         }, 100);
     },
     
+    // Method to be called after main filter data is loaded
+    reapplyAfterDataLoad: function() {
+        console.log('StatusFilterModule: Reapplying filters after data load');
+        if (Object.keys(this.activeStatusFilters).length > 0) {
+            // Small delay to ensure data is fully loaded
+            setTimeout(() => {
+                this.applyStatusFilters();
+            }, 300);
+        }
+    },
+    
     // This function will be called by PaginationModule to filter data
     filterRowData: function(rowData) {
         // If no status filters are active, show all rows
@@ -156,14 +167,75 @@ PaginationModule.filterData = function() {
 // Modify the existing PaginationModule.replaceTableData method to add data attributes
 // Add this code after line where squaresHtml is generated:
 
-// Enhanced replaceTableData method - add this after the existing squaresHtml generation
+// MODIFIED FilterModule.loadTableData method
+// Replace your existing FilterModule.loadTableData method with this enhanced version:
+
+FilterModule.loadTableData = function(filter) {
+    $('#dataTableAndre tbody').html('<tr><td colspan="12" class="text-center">Carregando...</td></tr>');
+    
+    var url = 'wxkd.php?action=ajaxGetTableData&filter=' + filter;
+    
+    $.get('wxkd.php?action=ajaxGetTableData&filter=' + filter)
+        .done(function(xmlData) {
+            try {
+                var $xml = $(xmlData);
+                var success = $xml.find('success').text() === 'true';
+                
+                if (success) {
+                    var cardData = {
+                        cadastramento: $xml.find('cardData cadastramento').text(),
+                        descadastramento: $xml.find('cardData descadastramento').text(),
+                        historico: $xml.find('cardData historico').text()
+                    };
+                    
+                    var tableData = [];
+                    $xml.find('tableData row').each(function() {
+                        var row = {};
+                        $(this).children().each(function() {
+                            row[this.tagName] = $(this).text();
+                        });
+                        tableData.push(row);
+                    });
+
+                    FilterModule.updateCardCounts(cardData);
+                    
+                    // Use the enhanced replaceTableData method
+                    PaginationModule.replaceTableDataEnhanced(tableData);
+                    PaginationModule.currentPage = 1;
+                    PaginationModule.updateTable();
+                    
+                    CheckboxModule.clearSelections();
+                    
+                    setTimeout(function() {
+                        CheckboxModule.init();
+                        CheckboxModule.updateSelectAllState();
+                        CheckboxModule.updateExportButton();
+                        
+                        CheckboxModule.debugCheckboxes();
+                    }, 200);
+                    
+                    // IMPORTANT: Reapply status filters after data is loaded
+                    setTimeout(function() {
+                        StatusFilterModule.reapplyAfterDataLoad();
+                    }, 400);
+                }
+            } catch (e) {
+                console.error('Error parsing XML: ', e);
+                $('#dataTableAndre tbody').html('<tr><td colspan="12" class="text-center text-danger">Erro ao processar dados</td></tr>');
+            }
+        })
+        .fail(function(jqXHR, textStatus, errorThrown) {
+            console.error('AJAX failed:' , textStatus, errorThrown);
+            $('#dataTableAndre tbody').html('<tr><td colspan="12" class="text-center text-danger">Erro ao carregar dados</td></tr>');
+        });
+},
 PaginationModule.replaceTableDataEnhanced = function(newData) {
     this.allData = [];
     const self = this;
     newData.forEach(function(row, index) {
         const rowData = [];
         
-        // Checkbox cell (same as before)
+        // Checkbox cell
         const checkboxCell = $('<td class="checkbox-column">');
         const label = $('<label>');
         const sequentialId = index + 1;
@@ -180,7 +252,7 @@ PaginationModule.replaceTableDataEnhanced = function(newData) {
         checkboxCell.append(label);
         rowData.push(checkboxCell);
         
-        // Other cells (same as before)
+        // Other basic cells
         rowData.push($('<td>').text(row.CHAVE_LOJA));
         rowData.push($('<td>').text(row.NOME_LOJA));
         rowData.push($('<td>').text(row.COD_EMPRESA));
@@ -245,12 +317,27 @@ PaginationModule.replaceTableDataEnhanced = function(newData) {
         squaresHtml += '</div>';
 
         rowData.push($('<td>').html(squaresHtml));
+
+        // Continue with existing logic for other columns...
+        // (Copy the rest of your existing replaceTableData method here)
+        // For brevity, I'm showing just the key changes - you'll need to add the rest of your columns
         
-        // Continue with the rest of your existing code for other columns...
-        // (All the other column generation code remains the same)
+        // Example of continuing with remaining columns (adapt from your existing code):
+        var matchingDates = [];
+        for (var field in fields) {
+            if (fields.hasOwnProperty(field)) {
+                var raw = row[field] ? row[field].toString().trim() : '';
+                var dateObj = parseDate(raw);
+                if (dateObj && dateObj > cutoff) {
+                    matchingDates.push(raw);
+                }
+            }
+        }
+        var displayHtml = matchingDates.length > 0 ? matchingDates.join(' / ') : '—';
+        rowData.push($('<td>').html(displayHtml));
         
-        // For brevity, I'm not repeating all the other column generation code
-        // Just continue with your existing logic for the remaining columns
+        // Add the rest of your existing column generation logic here...
+        // (DEP_DINHEIRO, DEP_CHEQUE, REC_RETIRADA, etc.)
         
         self.allData.push(rowData);
     });
@@ -328,17 +415,50 @@ const statusFilterCSS = `
     }
 `;
 
-// Update your document ready section to include the new module:
-$(document).ready(function() {
-    console.log('Document ready - initializing modules');
-    
-    SearchModule.init();
-    SortModule.init();
-    PaginationModule.init();
-    CheckboxModule.init(); 
-    FilterModule.init();
-    StatusFilterModule.init(); // Add this line
-    ExportModule.init();
-    
-    console.log('All modules initialized');
-});
+// STEP-BY-STEP INTEGRATION INSTRUCTIONS:
+
+// 1. ADD StatusFilterModule to your existing JS file (complete module above)
+
+// 2. REPLACE your existing PaginationModule.filterData method with this:
+PaginationModule.filterData = function() {
+    if (this.searchTerm === '' && Object.keys(StatusFilterModule.activeStatusFilters).length === 0) {
+        this.filteredData = [...this.allData];
+    } else {
+        const self = this;
+        this.filteredData = this.allData.filter(function(row) {
+            // First apply search filter
+            let matchesSearch = true;
+            if (self.searchTerm !== '') {
+                matchesSearch = row.some(function(cell) {
+                    return $(cell).text().toLowerCase().includes(self.searchTerm);
+                });
+            }
+            
+            // Then apply status filters
+            let matchesStatusFilter = StatusFilterModule.filterRowData(row);
+            
+            return matchesSearch && matchesStatusFilter;
+        });
+    }
+};
+
+// 3. MODIFY your existing FilterModule.loadTableData method:
+// Find this line in your existing FilterModule.loadTableData:
+// PaginationModule.replaceTableData(tableData);
+// 
+// REPLACE IT WITH:
+// PaginationModule.replaceTableDataEnhanced(tableData);
+
+// 4. ADD this timeout block at the end of your FilterModule.loadTableData success block:
+// (After the existing setTimeout that calls CheckboxModule.init())
+/*
+setTimeout(function() {
+    StatusFilterModule.reapplyAfterDataLoad();
+}, 400);
+*/
+
+// 5. UPDATE your document ready section to include StatusFilterModule.init()
+
+// 6. ADD the HTML filter buttons to your page (see HTML section below)
+
+// 7. ADD the CSS styles (see CSS section below)
