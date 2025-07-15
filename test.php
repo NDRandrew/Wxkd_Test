@@ -1,203 +1,170 @@
-// Add these functions to TestAc - 2.js following the same pattern as exportTXT
+<?php
+// Add this method to Wxkd_DashboardController class, following the same pattern as exportTXT()
 
-function exportSelectedAccess() {
-    console.log('=== exportSelectedAccess INITIATED ===');
-    
-    var selected = document.querySelectorAll('.row-checkbox:checked');
-    console.log('Selected checkboxes found:', selected.length);
-    
-    if (selected.length === 0) {
-        alert('Selecione pelo menos um registro');
-        return;
-    }
-    
-    var ids = [];
-    selected.forEach(function(cb, index) {
-        var rawValue = cb.value || '';
-        var cleanId = rawValue.toString()
-                             .replace(/\s+/g, '')  
-                             .replace(/[^\w]/g, '') 
-                             .trim();
-        
-        console.log('Checkbox', index, '- raw:', "'" + rawValue + "'", 'clean:', "'" + cleanId + "'");
-        
-        if (cleanId && cleanId.length > 0) {
-            ids.push(cleanId);
-        }
-    });
-    
-    console.log('Clean IDs collected:', ids);
-    
-    if (ids.length === 0) {
-        alert('Nenhum ID válido encontrado nos checkboxes selecionados');
-        return;
-    }
-    
-    var filter = getCurrentFilter();
-    console.log('Current filter:', filter);
-    
-    exportAccessDataProcessed(ids.join(','), filter);
-}
+public function exportAccess() {
+    $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
+    $selectedIds = isset($_GET['ids']) ? $_GET['ids'] : '';
 
-function exportAccessDataProcessed(selectedIds, filter) {
-    console.log('=== exportAccessDataProcessed START ===');
-    console.log('Clean selectedIds:', selectedIds);
-    console.log('Filter:', filter);
-    
-    var url = 'wxkd.php?action=exportAccess&filter=' + filter;
-    if (selectedIds) {
-        url += '&ids=' + encodeURIComponent(selectedIds);
-    }
-    
-    console.log('Request URL:', url);
-    
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', url, true);
-    
-    xhr.onreadystatechange = function() {
-        if (xhr.readyState === 4 && xhr.status === 200) {
-            console.log('=== RESPONSE RECEIVED ===');
-            console.log('Response length:', xhr.responseText.length);
-            console.log('Response preview:', xhr.responseText.substring(0, 300));
+    error_log("=== EXPORTAR ACCESS INITIATED ===");
+    error_log("exportAccess - filter: " . $filter);
+    error_log("exportAccess - selectedIds raw: " . $selectedIds);
+
+    try {
+        if (!empty($selectedIds)) {
+            error_log("exportAccess - Processing selected IDs");
             
-            try {
-                var xmlContent = extractXMLFromMixedResponse(xhr.responseText);
-                
-                if (!xmlContent) {
-                    console.error('No XML found in response');
-                    alert('Erro: Nenhum XML válido encontrado na resposta');
-                    return;
+            $allData = $this->model->getTableDataByFilter($filter);
+            error_log("exportAccess - All data count: " . count($allData));
+            
+            $idsArray = explode(',', $selectedIds);
+            $cleanIds = array();
+            foreach ($idsArray as $id) {
+                $cleanId = trim($id);
+                $cleanId = preg_replace('/\s+/', '', $cleanId); // Remove todos os espaços
+                if (!empty($cleanId) && is_numeric($cleanId)) {
+                    $cleanIds[] = intval($cleanId); 
                 }
-                
-                console.log('XML extracted:', xmlContent.substring(0, 200));
-                
-                var parser = new DOMParser();
-                var xmlDoc = parser.parseFromString(xmlContent, 'text/xml');
-                
-                var parserError = xmlDoc.getElementsByTagName('parsererror')[0];
-                if (parserError) {
-                    console.error('XML Parser Error:', parserError.textContent);
-                    alert('Erro ao parsear XML');
-                    return;
-                }
-                
-                var success = xmlDoc.getElementsByTagName('success')[0];
-                if (!success || success.textContent !== 'true') {
-                    var errorElement = xmlDoc.getElementsByTagName('e')[0];
-                    var errorMsg = errorElement ? errorElement.textContent : 'Erro desconhecido';
-                    console.error('Server error:', errorMsg);
-                    alert('Erro do servidor: ' + errorMsg);
-                    return;
-                }
-                
-                console.log('XML parsed successfully');
-                
-                // Extract and download CSV files
-                var csvFiles = extractAccessCSVFromXML(xmlDoc);
-                
-                console.log('CSV files generated - Count:', csvFiles.length);
-                
-                if (csvFiles.length === 0) {
-                    alert('Erro: Nenhum arquivo CSV gerado');
-                    return;
-                }
-                
-                // Download first file immediately
-                if (csvFiles[0]) {
-                    downloadAccessCSVFile(csvFiles[0].content, csvFiles[0].filename);
-                }
-                
-                // Download second file after delay if it exists
-                if (csvFiles[1]) {
-                    setTimeout(function() {
-                        downloadAccessCSVFile(csvFiles[1].content, csvFiles[1].filename);
-                    }, 1500);
-                }
-                
-            } catch (e) {
-                console.error('Processing error:', e);
-                alert('Erro ao processar resposta: ' + e.message);
             }
-        }
-    };
-    
-    xhr.send();
-}
-
-function extractAccessCSVFromXML(xmlDoc) {
-    console.log('=== Converting XML to CSV files ===');
-    
-    var csvFiles = [];
-    var timestamp = getCurrentTimestamp();
-    var filter = getCurrentFilter();
-    
-    // Extract first file data (AV/UN/PR)
-    var file1Data = xmlDoc.getElementsByTagName('avUnPrData')[0];
-    if (file1Data) {
-        var csvContent1 = 'COD_EMPRESA\r\n';
-        var empresas1 = file1Data.getElementsByTagName('empresa');
-        
-        for (var i = 0; i < empresas1.length; i++) {
-            var empresa = empresas1[i].textContent || empresas1[i].text || '';
-            if (empresa) {
-                csvContent1 += empresa + '\r\n';
+            
+            error_log("exportAccess - Clean IDs: " . implode('|', $cleanIds));
+            
+            $data = array();
+            foreach ($cleanIds as $sequentialId) {
+                $arrayIndex = $sequentialId - 1; 
+                
+                if (isset($allData[$arrayIndex])) {
+                    $data[] = $allData[$arrayIndex];
+                    error_log("exportAccess - MATCH found: sequential ID '$sequentialId' -> array index '$arrayIndex'");
+                } else {
+                    error_log("exportAccess - No data found for sequential ID '$sequentialId' (array index '$arrayIndex')");
+                }
             }
+            
+            error_log("exportAccess - Filtered data count: " . count($data));
+        } else {
+            error_log("exportAccess - Getting all data");
+            $data = $this->model->getTableDataByFilter($filter);
         }
         
-        csvFiles.push({
-            filename: 'access_av_un_pr_' + filter + '_' + timestamp + '.csv',
-            content: csvContent1
-        });
+        // Separate data into two groups based on active tipo correspondente
+        $cutoff = mktime(0, 0, 0, 6, 1, 2025); // June 1, 2025
+        $avUnPrData = array(); // For AV, UN, PR types
+        $opData = array();     // For OP types
         
-        console.log('First CSV file prepared - AV/UN/PR data, records:', empresas1.length);
-    }
-    
-    // Extract second file data (OP) if it exists
-    var file2Data = xmlDoc.getElementsByTagName('opData')[0];
-    if (file2Data) {
-        var csvContent2 = 'COD_EMPRESA\r\n';
-        var empresas2 = file2Data.getElementsByTagName('empresa');
-        
-        for (var i = 0; i < empresas2.length; i++) {
-            var empresa = empresas2[i].textContent || empresas2[i].text || '';
-            if (empresa) {
-                csvContent2 += empresa + '\r\n';
+        foreach ($data as $rowIndex => $row) {
+            error_log("exportAccess - Processing row $rowIndex");
+            
+            $activeTypes = array();
+            
+            // Check which types are active based on dates
+            $fields = array(
+                'AVANCADO' => 'AV',
+                'ORGAO_PAGADOR' => 'OP',
+                'PRESENCA' => 'PR',
+                'UNIDADE_NEGOCIO' => 'UN'
+            );
+            
+            foreach ($fields as $field => $label) {
+                $raw = isset($row[$field]) ? trim($row[$field]) : '';
+                
+                if (!empty($raw)) {
+                    $parts = explode('/', $raw);
+                    if (count($parts) == 3) {
+                        $day = (int)$parts[0];
+                        $month = (int)$parts[1];
+                        $year = (int)$parts[2];
+                        
+                        if (checkdate($month, $day, $year)) {
+                            $timestamp = mktime(0, 0, 0, $month, $day, $year);
+                            if ($timestamp > $cutoff) {
+                                $activeTypes[] = $label;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Classify the record based on active types
+            $hasOP = in_array('OP', $activeTypes);
+            $hasOthers = in_array('AV', $activeTypes) || in_array('PR', $activeTypes) || in_array('UN', $activeTypes);
+            
+            // Find COD_EMPRESA field (checking multiple possible field names)
+            $possibleEmpresaFields = array('COD_EMPRESA', 'cod_empresa', 'Cod_Empresa', 'CODEMPRESA', 'cod_emp');
+            $codEmpresa = '';
+            
+            foreach ($possibleEmpresaFields as $field) {
+                if (isset($row[$field]) && !empty($row[$field])) {
+                    $codEmpresa = $row[$field];
+                    break;
+                }
+            }
+            
+            if (!empty($codEmpresa)) {
+                if ($hasOP) {
+                    $opData[] = $codEmpresa;
+                }
+                if ($hasOthers) {
+                    $avUnPrData[] = $codEmpresa;
+                }
+                
+                error_log("exportAccess - Row with COD_EMPRESA '$codEmpresa', active types: " . implode(',', $activeTypes) . ", hasOP: " . ($hasOP ? 'yes' : 'no') . ", hasOthers: " . ($hasOthers ? 'yes' : 'no'));
+            } else {
+                error_log("exportAccess - No COD_EMPRESA found in row $rowIndex");
             }
         }
         
-        csvFiles.push({
-            filename: 'access_op_' + filter + '_' + timestamp + '.csv',
-            content: csvContent2
-        });
+        // Remove duplicates
+        $avUnPrData = array_unique($avUnPrData);
+        $opData = array_unique($opData);
         
-        console.log('Second CSV file prepared - OP data, records:', empresas2.length);
-    }
-    
-    console.log('CSV conversion completed - Total files:', csvFiles.length);
-    
-    return csvFiles;
-}
-
-function downloadAccessCSVFile(csvContent, filename) {
-    var csvWithBOM = '\uFEFF' + csvContent;
-    
-    var blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8;' });
-    
-    var link = document.createElement('a');
-    if (link.download !== undefined) {
-        var url = URL.createObjectURL(blob);
-        link.setAttribute('href', url);
-        link.setAttribute('download', filename);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        error_log("exportAccess - Final AV/UN/PR data count: " . count($avUnPrData));
+        error_log("exportAccess - Final OP data count: " . count($opData));
         
-        // Clean up the URL object
-        setTimeout(function() {
-            URL.revokeObjectURL(url);
-        }, 1000);
-    } else {
-        alert('Seu navegador não suporta download automático. Copie o conteúdo:\n\n' + csvContent.substring(0, 500) + '...');
+        // Build XML response following the same pattern as exportTXT
+        $xml = '<response>';
+        $xml .= '<success>true</success>';
+        $xml .= '<debug>';
+        $xml .= '<totalRecords>' . count($data) . '</totalRecords>';
+        $xml .= '<filter>' . addcslashes($filter, '"<>&') . '</filter>';
+        $xml .= '<selectedIds>' . addcslashes($selectedIds, '"<>&') . '</selectedIds>';
+        $xml .= '<avUnPrCount>' . count($avUnPrData) . '</avUnPrCount>';
+        $xml .= '<opCount>' . count($opData) . '</opCount>';
+        $xml .= '</debug>';
+        
+        // Add AV/UN/PR data
+        $xml .= '<avUnPrData>';
+        foreach ($avUnPrData as $codEmpresa) {
+            $xml .= '<empresa>' . addcslashes($codEmpresa, '"<>&') . '</empresa>';
+        }
+        $xml .= '</avUnPrData>';
+        
+        // Add OP data (only if exists)
+        if (!empty($opData)) {
+            $xml .= '<opData>';
+            foreach ($opData as $codEmpresa) {
+                $xml .= '<empresa>' . addcslashes($codEmpresa, '"<>&') . '</empresa>';
+            }
+            $xml .= '</opData>';
+        }
+        
+        $xml .= '</response>';
+        
+        error_log("exportAccess - XML generated, length: " . strlen($xml));
+        error_log("=== EXPORTAR ACCESS COMPLETED ===");
+        
+        echo $xml;
+        exit;
+        
+    } catch (Exception $e) {
+        error_log("exportAccess - Exception: " . $e->getMessage());
+        
+        $xml = '<response>';
+        $xml .= '<success>false</success>';
+        $xml .= '<e>' . addcslashes($e->getMessage(), '"<>&') . '</e>';
+        $xml .= '</response>';
+        
+        echo $xml;
+        exit;
     }
 }
+?>
