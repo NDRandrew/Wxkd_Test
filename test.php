@@ -1,21 +1,20 @@
 <?php
-// Replace the exportAccess() method with this PHP 5.3 compatible version
+// Alternative solution - if ZIP is problematic, use this simpler approach
+// This will download files one by one instead of creating a ZIP
 
 public function exportAccess() {
     $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
     $selectedIds = isset($_POST['selectedIds']) ? $_POST['selectedIds'] : (isset($_GET['ids']) ? $_GET['ids'] : '');
+    $fileType = isset($_GET['fileType']) ? $_GET['fileType'] : 'first'; // 'first' or 'second'
     
     error_log("=== EXPORTAR ACCESS INITIATED ===");
     error_log("exportAccess - filter: " . $filter);
     error_log("exportAccess - selectedIds raw: " . $selectedIds);
+    error_log("exportAccess - fileType: " . $fileType);
     
     try {
         if (!empty($selectedIds)) {
-            error_log("exportAccess - Processing selected IDs");
-            
             $allData = $this->model->getTableDataByFilter($filter);
-            error_log("exportAccess - All data count: " . count($allData));
-            
             $idsArray = explode(',', $selectedIds);
             $cleanIds = array();
             foreach ($idsArray as $id) {
@@ -26,23 +25,14 @@ public function exportAccess() {
                 }
             }
             
-            error_log("exportAccess - Clean IDs: " . implode('|', $cleanIds));
-            
             $data = array();
             foreach ($cleanIds as $sequentialId) {
                 $arrayIndex = $sequentialId - 1; 
-                
                 if (isset($allData[$arrayIndex])) {
                     $data[] = $allData[$arrayIndex];
-                    error_log("exportAccess - MATCH found: sequential ID '$sequentialId' -> array index '$arrayIndex'");
-                } else {
-                    error_log("exportAccess - No data found for sequential ID '$sequentialId' (array index '$arrayIndex')");
                 }
             }
-            
-            error_log("exportAccess - Filtered data count: " . count($data));
         } else {
-            error_log("exportAccess - Getting all data");
             $data = $this->model->getTableDataByFilter($filter);
         }
         
@@ -94,85 +84,57 @@ public function exportAccess() {
             if ($hasOthers) {
                 $avUnPrData[] = $codEmpresa;
             }
-            
-            error_log("exportAccess - Row with COD_EMPRESA '$codEmpresa', active types: " . implode(',', $activeTypes) . ", hasOP: " . ($hasOP ? 'yes' : 'no') . ", hasOthers: " . ($hasOthers ? 'yes' : 'no'));
         }
         
         // Remove duplicates
         $avUnPrData = array_unique($avUnPrData);
         $opData = array_unique($opData);
         
-        error_log("exportAccess - AV/UN/PR data count: " . count($avUnPrData));
-        error_log("exportAccess - OP data count: " . count($opData));
-        
-        // Create CSV content
         $timestamp = date('Y-m-d_H-i-s');
         
-        // First file: AV, UN, PR data (always created)
-        $csv1Content = "COD_EMPRESA\r\n";
-        foreach ($avUnPrData as $codEmpresa) {
-            $csv1Content .= $codEmpresa . "\r\n";
+        if ($fileType === 'first' || $fileType === 'both') {
+            // Download first file: AV, UN, PR data
+            $csv1Content = "COD_EMPRESA\r\n";
+            foreach ($avUnPrData as $codEmpresa) {
+                $csv1Content .= $codEmpresa . "\r\n";
+            }
+            
+            $filename1 = 'access_av_un_pr_' . $filter . '_' . $timestamp . '.csv';
+            
+            // If there's no OP data or we're specifically asking for the first file
+            if (empty($opData) || $fileType === 'first') {
+                header('Content-Type: text/csv; charset=utf-8');
+                header('Content-Disposition: attachment; filename="' . $filename1 . '"');
+                echo chr(239) . chr(187) . chr(191); // BOM for UTF-8
+                echo $csv1Content;
+                exit;
+            }
         }
         
-        $filename1 = 'access_av_un_pr_' . $filter . '_' . $timestamp . '.csv';
-        
-        // Check if we need the second file
-        $createSecondFile = !empty($opData);
-        
-        if ($createSecondFile) {
-            // Second file: OP data
+        if ($fileType === 'second' && !empty($opData)) {
+            // Download second file: OP data
             $csv2Content = "COD_EMPRESA\r\n";
             foreach ($opData as $codEmpresa) {
                 $csv2Content .= $codEmpresa . "\r\n";
             }
+            
             $filename2 = 'access_op_' . $filter . '_' . $timestamp . '.csv';
             
-            // Create ZIP file with both CSVs - PHP 5.3 compatible way
-            $zipFilename = 'access_export_' . $filter . '_' . $timestamp . '.zip';
-            
-            // Use current directory or upload directory as temp
-            $tempDir = dirname(__FILE__);
-            if (is_writable($tempDir . '/uploads')) {
-                $tempDir = $tempDir . '/uploads';
-            } elseif (is_writable($tempDir . '/../uploads')) {
-                $tempDir = $tempDir . '/../uploads';
-            } elseif (is_writable($tempDir)) {
-                // Use current directory
-            } else {
-                // Fallback - try to use /tmp if it exists and is writable
-                if (is_dir('/tmp') && is_writable('/tmp')) {
-                    $tempDir = '/tmp';
-                } else {
-                    throw new Exception('No writable temporary directory found');
-                }
-            }
-            
-            $tempZipPath = $tempDir . '/' . $zipFilename;
-            
-            $zip = new ZipArchive();
-            if ($zip->open($tempZipPath, ZipArchive::CREATE) === TRUE) {
-                $zip->addFromString($filename1, chr(239) . chr(187) . chr(191) . $csv1Content); // Add BOM
-                $zip->addFromString($filename2, chr(239) . chr(187) . chr(191) . $csv2Content); // Add BOM
-                $zip->close();
-                
-                // Send ZIP file
-                header('Content-Type: application/zip');
-                header('Content-Disposition: attachment; filename="' . $zipFilename . '"');
-                header('Content-Length: ' . filesize($tempZipPath));
-                readfile($tempZipPath);
-                
-                // Clean up - delete the temporary file
-                unlink($tempZipPath);
-                exit;
-            } else {
-                throw new Exception('Could not create ZIP file. ZipArchive error code: ' . $zip->getStatusString());
-            }
-        } else {
-            // Only first file needed
             header('Content-Type: text/csv; charset=utf-8');
-            header('Content-Disposition: attachment; filename="' . $filename1 . '"');
+            header('Content-Disposition: attachment; filename="' . $filename2 . '"');
             echo chr(239) . chr(187) . chr(191); // BOM for UTF-8
-            echo $csv1Content;
+            echo $csv2Content;
+            exit;
+        }
+        
+        // If we get here, we need to show a page with download links for both files
+        if (!empty($opData) && $fileType === 'both') {
+            echo '<html><head><title>Download Access Files</title></head><body>';
+            echo '<h3>Dois arquivos estão disponíveis para download:</h3>';
+            echo '<p><a href="wxkd.php?action=exportAccess&filter=' . urlencode($filter) . '&ids=' . urlencode($selectedIds) . '&fileType=first" target="_blank">Download: access_av_un_pr_' . $filter . '_' . $timestamp . '.csv (' . count($avUnPrData) . ' registros)</a></p>';
+            echo '<p><a href="wxkd.php?action=exportAccess&filter=' . urlencode($filter) . '&ids=' . urlencode($selectedIds) . '&fileType=second" target="_blank">Download: access_op_' . $filter . '_' . $timestamp . '.csv (' . count($opData) . ' registros)</a></p>';
+            echo '<script>window.close();</script>';
+            echo '</body></html>';
             exit;
         }
         
