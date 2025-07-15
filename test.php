@@ -1,5 +1,5 @@
 <?php
-// Add this method to your Wxkd_DashboardController class in TestAc.txt
+// Replace the exportAccess() method with this PHP 5.3 compatible version
 
 public function exportAccess() {
     $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
@@ -127,9 +127,27 @@ public function exportAccess() {
             }
             $filename2 = 'access_op_' . $filter . '_' . $timestamp . '.csv';
             
-            // Create ZIP file with both CSVs
+            // Create ZIP file with both CSVs - PHP 5.3 compatible way
             $zipFilename = 'access_export_' . $filter . '_' . $timestamp . '.zip';
-            $tempZipPath = sys_get_temp_dir() . '/' . $zipFilename;
+            
+            // Use current directory or upload directory as temp
+            $tempDir = dirname(__FILE__);
+            if (is_writable($tempDir . '/uploads')) {
+                $tempDir = $tempDir . '/uploads';
+            } elseif (is_writable($tempDir . '/../uploads')) {
+                $tempDir = $tempDir . '/../uploads';
+            } elseif (is_writable($tempDir)) {
+                // Use current directory
+            } else {
+                // Fallback - try to use /tmp if it exists and is writable
+                if (is_dir('/tmp') && is_writable('/tmp')) {
+                    $tempDir = '/tmp';
+                } else {
+                    throw new Exception('No writable temporary directory found');
+                }
+            }
+            
+            $tempZipPath = $tempDir . '/' . $zipFilename;
             
             $zip = new ZipArchive();
             if ($zip->open($tempZipPath, ZipArchive::CREATE) === TRUE) {
@@ -142,10 +160,12 @@ public function exportAccess() {
                 header('Content-Disposition: attachment; filename="' . $zipFilename . '"');
                 header('Content-Length: ' . filesize($tempZipPath));
                 readfile($tempZipPath);
-                unlink($tempZipPath); // Clean up
+                
+                // Clean up - delete the temporary file
+                unlink($tempZipPath);
                 exit;
             } else {
-                throw new Exception('Could not create ZIP file');
+                throw new Exception('Could not create ZIP file. ZipArchive error code: ' . $zip->getStatusString());
             }
         } else {
             // Only first file needed
