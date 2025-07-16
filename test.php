@@ -1,267 +1,219 @@
-<?php
-// Add these methods to your Wxkd_DashboardController class
-
-private function validateRecordsForTXTExport($data) {
-	$invalidRecords = array();
-	$cutoff = mktime(0, 0, 0, 6, 1, 2025);
-	
-	foreach ($data as $row) {
-		// Determine active TIPO_CORRESPONDENTE types
-		$activeTypes = array();
-		$fields = array(
-			'AVANCADO' => 'AV',
-			'ORGAO_PAGADOR' => 'OP',
-			'PRESENCA' => 'PR',
-			'UNIDADE_NEGOCIO' => 'UN'
-		);
-		
-		foreach ($fields as $field => $label) {
-			$raw = isset($row[$field]) ? trim($row[$field]) : '';
-			if (!empty($raw)) {
-				$parts = explode('/', $raw);
-				if (count($parts) == 3) {
-					$day = (int)$parts[0];
-					$month = (int)$parts[1];
-					$year = (int)$parts[2];
-					if (checkdate($month, $day, $year)) {
-						$timestamp = mktime(0, 0, 0, $month, $day, $year);
-						if ($timestamp > $cutoff) {
-							$activeTypes[] = $label;
-						}
-					}
-				}
-			}
-		}
-		
-		// Get cod_empresa for error reporting
-		$possibleEmpresaFields = array('COD_EMPRESA', 'cod_empresa', 'Cod_Empresa', 'CODEMPRESA', 'cod_emp');
-		$codEmpresa = '';
-		foreach ($possibleEmpresaFields as $field) {
-			if (isset($row[$field]) && !empty($row[$field])) {
-				$codEmpresa = $row[$field];
-				break;
-			}
-		}
-		
-		// Skip if no cod_empresa found
-		if (empty($codEmpresa)) {
-			continue;
-		}
-		
-		// Skip if no active types
-		if (empty($activeTypes)) {
-			continue;
-		}
-		
-		// Validate each active type
-		$isValid = true;
-		$errorMessage = '';
-		
-		foreach ($activeTypes as $type) {
-			error_log("Validating type: " . $type . " for empresa: " . $codEmpresa);
-			
-			if ($type === 'AV' || $type === 'PR' || $type === 'UN') {
-				$basicValidation = $this->checkBasicValidations($row);
-				error_log("Basic validation result for " . $type . ": " . ($basicValidation === true ? 'SUCCESS' : $basicValidation));
-				
-				if ($basicValidation !== true) {
-					$isValid = false;
-					$errorMessage = 'Tipo ' . $type . ' - ' . $basicValidation;
-					break;
-				}
-			} elseif ($type === 'OP') {
-				$opValidation = $this->checkOPValidations($row);
-				error_log("OP validation result: " . ($opValidation === true ? 'SUCCESS' : $opValidation));
-				
-				if ($opValidation !== true) {
-					$isValid = false;
-					$errorMessage = $opValidation;
-					break;
-				}
-			}
-		}
-		
-		if (!$isValid) {
-			error_log("Adding invalid record: " . $codEmpresa . " - " . $errorMessage);
-			$invalidRecords[] = array(
-				'cod_empresa' => $codEmpresa,
-				'error' => $errorMessage
-			);
-		}
-	}
-	
-	return $invalidRecords;
+// Add this function to handle validation alerts
+function showValidationAlert(invalidRecords) {
+    // Remove any existing validation alerts
+    $('.validation-alert').remove();
+    
+    var detailsHtml = '';
+    for (var i = 0; i < invalidRecords.length; i++) {
+        var record = invalidRecords[i];
+        detailsHtml += '<div style="margin: 5px 0; padding: 5px; background-color: rgba(255,255,255,0.1); border-radius: 3px;">' +
+            '<strong>Empresa:</strong> ' + record.cod_empresa + 
+            '<br><strong>Motivo:</strong> ' + record.error +
+            '</div>';
+    }
+    
+    var alertHtml = '<div class="alert alert-warning validation-alert" style="margin: 10px 0; max-height: 400px; overflow-y: auto;">' +
+        '<button class="close" onclick="$(this).parent().remove()" style="color:rgb(54, 150, 198) !important; opacity:0.3; position:relative; top:5px;">' +
+        '<i class="fa fa-times"></i>' +
+        '</button>' +
+        '<span>' +
+        '<i class="fa-fw fa fa-warning" style="font-size:15px !important; position:relative; top:2px;"></i>' +
+        '<strong>Registros não podem ser exportados como TXT:</strong><br><br>' +
+        detailsHtml +
+        '<br><i><strong>Clique no botão "Exportar Access" para processar estes registros.</strong></i>' +
+        '</span>' +
+        '</div>';
+    
+    // Insert the alert after the status filter indicator or filter indicator
+    if ($('#statusFilterIndicator').is(':visible')) {
+        $('#statusFilterIndicator').after(alertHtml);
+    } else if ($('#filterIndicator').is(':visible')) {
+        $('#filterIndicator').after(alertHtml);
+    } else {
+        // Insert after the cards section
+        $('.row.mb-4').after(alertHtml);
+    }
+    
+    // Scroll to the alert
+    $('html, body').animate({
+        scrollTop: $('.validation-alert').offset().top - 20
+    }, 500);
+    
+    // Auto-remove after 20 seconds (increased time due to more content)
+    setTimeout(function() {
+        $('.validation-alert').fadeOut();
+    }, 20000);
 }
 
-private function checkBasicValidations($row) {
-	$requiredFields = array(
-		'DEP_DINHEIRO_VALID' => 'Depósito Dinheiro',
-		'DEP_CHEQUE_VALID' => 'Depósito Cheque', 
-		'REC_RETIRADA_VALID' => 'Recarga/Retirada',
-		'SAQUE_CHEQUE_VALID' => 'Saque Cheque'
-	);
-	
-	$missingFields = array();
-	foreach ($requiredFields as $field => $name) {
-		if (!isset($row[$field]) || $row[$field] != '1') {
-			$missingFields[] = $name;
-			error_log("Basic validation failed for field: " . $field . " with value: " . (isset($row[$field]) ? $row[$field] : 'NULL'));
-		}
-	}
-	
-	if (!empty($missingFields)) {
-		return 'Validações pendentes: ' . implode(', ', $missingFields);
-	}
-	
-	return true;
+// Update the exportTXTDataCorrected function to handle validation errors
+function exportTXTDataCorrected(selectedIds, filter) {
+    console.log('=== exportTXTDataCorrected START ===');
+    console.log('Clean selectedIds:', selectedIds);
+    console.log('Filter:', filter);
+    var url = 'wxkd.php?action=exportTXT&filter=' + filter;
+    if (selectedIds) {
+        url += '&ids=' + encodeURIComponent(selectedIds);
+    }
+    
+    console.log('Request URL:', url);
+    
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', url, true);
+    
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+            console.log('=== RESPONSE RECEIVED ===');
+            console.log('Response length:', xhr.responseText.length);
+            console.log('Response preview:', xhr.responseText.substring(0, 300));
+            
+            try {
+                var xmlContent = extractXMLFromMixedResponse(xhr.responseText);
+                
+                if (!xmlContent) {
+                    console.error('No XML found in response');
+                    alert('Erro: Nenhum XML válido encontrado na resposta');
+                    return;
+                }
+                
+                console.log('XML extracted:', xmlContent.substring(0, 200));
+                
+                var parser = new DOMParser();
+                var xmlDoc = parser.parseFromString(xmlContent, 'text/xml');
+                
+                var parserError = xmlDoc.getElementsByTagName('parsererror')[0];
+                if (parserError) {
+                    console.error('XML Parser Error:', parserError.textContent);
+                    alert('Erro ao parsear XML');
+                    return;
+                }
+                
+                var success = xmlDoc.getElementsByTagName('success')[0];
+                if (!success || success.textContent !== 'true') {
+                    
+                    // *** CHECK FOR VALIDATION ERROR ***
+                    var validationError = xmlDoc.getElementsByTagName('validation_error')[0];
+                    if (validationError && validationError.textContent === 'true') {
+                        console.log('Validation error detected');
+                        
+                        var invalidRecords = xmlDoc.getElementsByTagName('record');
+                        var invalidList = [];
+                        
+                        console.log('Found', invalidRecords.length, 'invalid records in XML');
+                        
+                        for (var i = 0; i < invalidRecords.length; i++) {
+                            var record = invalidRecords[i];
+                            var codEmpresa = record.getElementsByTagName('cod_empresa')[0];
+                            var errorMsg = record.getElementsByTagName('e')[0];
+                            
+                            var empresaText = codEmpresa ? (codEmpresa.textContent || codEmpresa.text || '') : '';
+                            var errorText = errorMsg ? (errorMsg.textContent || errorMsg.text || '') : '';
+                            
+                            console.log('Record', i, '- Empresa:', empresaText, '- Error:', errorText);
+                            
+                            if (codEmpresa) {
+                                invalidList.push({
+                                    cod_empresa: empresaText,
+                                    error: errorText || 'Erro desconhecido'
+                                });
+                            }
+                        }
+                        
+                        console.log('Invalid records with details:', invalidList);
+                        showValidationAlert(invalidList);
+                        return;
+                    }
+                    
+                    // Handle other types of errors
+                    var errorElement = xmlDoc.getElementsByTagName('e')[0];
+                    var errorMsg = errorElement ? errorElement.textContent : 'Erro desconhecido';
+                    console.error('Server error:', errorMsg);
+                    alert('Erro do servidor: ' + errorMsg);
+                    return;
+                }
+                
+                console.log('XML parsed successfully - proceeding with TXT export');
+                
+                var rows = xmlDoc.getElementsByTagName('row');
+                console.log('Rows found:', rows.length);
+                
+                if (rows.length === 0) {
+                    alert('Nenhum registro encontrado para os IDs selecionados');
+                    return;
+                }
+                
+                var txtData = extractTXTFromXMLCorrected(xmlDoc);
+                
+                console.log('TXT generated - Length:', txtData.length);
+                console.log('TXT preview:', txtData.substring(0, 200));
+                
+                if (txtData.length === 0) {
+                    alert('Erro: Conteúdo TXT vazio');
+                    return;
+                }
+                
+                var filename = 'dashboard_selected_' + filter + '_' + getCurrentTimestamp() + '.txt';
+                downloadTXTFile(txtData, filename);
+                
+            } catch (e) {
+                console.error('Processing error:', e);
+                alert('Erro ao processar resposta: ' + e.message);
+            }
+        }
+    };
+    
+    xhr.send();
 }
 
-private function checkOPValidations($row) {
-	$tipoContrato = isset($row['TIPO_CONTRATO']) ? $row['TIPO_CONTRATO'] : '';
-	
-	// Extract version number from TIPO_CONTRATO
-	$version = $this->extractVersionFromContract($tipoContrato);
-	
-	if ($version === null) {
-		return 'Tipo de contrato não pode ser exportado: ' . $tipoContrato;
-	}
-	
-	$requiredFields = array(
-		'DEP_DINHEIRO_VALID' => 'Depósito Dinheiro',
-		'DEP_CHEQUE_VALID' => 'Depósito Cheque',
-		'REC_RETIRADA_VALID' => 'Recarga/Retirada', 
-		'SAQUE_CHEQUE_VALID' => 'Saque Cheque',
-		'HOLERITE_INSS_VALID' => 'Holerite INSS',
-		'CONSULTA_INSS_VALID' => 'Consulta INSS'
-	);
-	
-	if ($version > 10.1) {
-		$requiredFields['SEGUNDA_VIA_CARTAO_VALID'] = 'Segunda Via Cartão';
-	}
-	
-	$missingFields = array();
-	foreach ($requiredFields as $field => $name) {
-		if (!isset($row[$field]) || $row[$field] != '1') {
-			$missingFields[] = $name;
-			error_log("OP validation failed for field: " . $field . " with value: " . (isset($row[$field]) ? $row[$field] : 'NULL'));
-		}
-	}
-	
-	if (!empty($missingFields)) {
-		return 'Validações OP pendentes (v' . $version . '): ' . implode(', ', $missingFields);
-	}
-	
-	return true;
+// Also update the exportSelectedTXT function to clear any existing validation alerts
+function exportSelectedTXT() {
+    console.log('=== exportSelectedTXT CORRECTED ===');
+    
+    // Clear any existing validation alerts
+    $('.validation-alert').remove();
+    
+    var selected = document.querySelectorAll('.row-checkbox:checked');
+    console.log('Selected checkboxes found:', selected.length);
+    
+    if (selected.length === 0) {
+        alert('Selecione pelo menos um registro');
+        return;
+    }
+    
+    var ids = [];
+    selected.forEach(function(cb, index) {
+        var rawValue = cb.value || '';
+        var cleanId = rawValue.toString()
+                             .replace(/\s+/g, '')  
+                             .replace(/[^\w]/g, '') 
+                             .trim();
+        
+        console.log('Checkbox', index, '- raw:', "'" + rawValue + "'", 'clean:', "'" + cleanId + "'");
+        
+        if (cleanId && cleanId.length > 0) {
+            ids.push(cleanId);
+        }
+    });
+    
+    console.log('Clean IDs collected:', ids);
+    
+    if (ids.length === 0) {
+        alert('Nenhum ID válido encontrado nos checkboxes selecionados');
+        return;
+    }
+    
+    var filter = getCurrentFilter();
+    console.log('Current filter:', filter);
+    
+    exportTXTDataCorrected(ids.join(','), filter);
+
+    setTimeout(() => {
+            fetch(FilterModule.loadTableData(filter)) 
+            .then(response => response.text())
+            .then(html => {
+            document.getElementById('content').innerHTML = html;
+            })
+            .catch(error => {
+                console.error('Error loading content:', error);
+            });
+        }, 3000);
 }
-
-private function extractVersionFromContract($tipoContrato) {
-	// Extract version number from text like "Termo de Adesão 8.4"
-	if (preg_match('/(\d+\.\d+)/', $tipoContrato, $matches)) {
-		$version = (float)$matches[1];
-		if ($version >= 8.1) {
-			return $version;
-		}
-	}
-	
-	return null;
-}
-
-// Update your existing exportTXT method - add this validation right after data retrieval:
-
-public function exportTXT() {
-	$filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
-	$selectedIds = isset($_GET['ids']) ? $_GET['ids'] : '';
-
-	error_log("=== EXPORTAR TXT INITIATED ===");
-	error_log("exportTXT - filter: " . $filter);
-	error_log("exportTXT - selectedIds raw: " . $selectedIds);
-
-	try {
-		if (!empty($selectedIds)) {
-			error_log("exportTXT - Processing selected IDs");
-			
-			$allData = $this->model->getTableDataByFilter($filter);
-			error_log("exportTXT - All data count: " . count($allData));
-			
-			$idsArray = explode(',', $selectedIds);
-			$cleanIds = array();
-			foreach ($idsArray as $id) {
-				$cleanId = trim($id);
-				$cleanId = preg_replace('/\s+/', '', $cleanId); // Remove todos os espaços
-				if (!empty($cleanId) && is_numeric($cleanId)) {
-					$cleanIds[] = intval($cleanId); 
-				}
-			}
-			
-			error_log("exportTXT - Clean IDs: " . implode('|', $cleanIds));
-			
-			$data = array();
-			foreach ($cleanIds as $sequentialId) {
-				$arrayIndex = $sequentialId - 1; 
-				
-				if (isset($allData[$arrayIndex])) {
-					$data[] = $allData[$arrayIndex];
-					error_log("exportTXT - MATCH found: sequential ID '$sequentialId' -> array index '$arrayIndex'");
-				} else {
-					error_log("exportTXT - No data found for sequential ID '$sequentialId' (array index '$arrayIndex')");
-				}
-			}
-			
-			error_log("exportTXT - Filtered data count: " . count($data));
-		} else {
-			error_log("exportTXT - Getting all data");
-			$data = $this->model->getTableDataByFilter($filter);
-		}
-		
-		// *** ADD VALIDATION HERE ***
-		error_log("=== STARTING TXT EXPORT VALIDATION ===");
-		$invalidRecords = $this->validateRecordsForTXTExport($data);
-		
-		if (!empty($invalidRecords)) {
-			error_log("exportTXT - Validation failed for " . count($invalidRecords) . " records");
-			
-			$xml = '<response>';
-			$xml .= '<success>false</success>';
-			$xml .= '<validation_error>true</validation_error>';
-			$xml .= '<invalid_records>';
-			foreach ($invalidRecords as $record) {
-				$xml .= '<record>';
-				$xml .= '<cod_empresa>' . addcslashes($record['cod_empresa'], '"<>&') . '</cod_empresa>';
-				$xml .= '<error>' . addcslashes($record['error'], '"<>&') . '</error>';
-				$xml .= '</record>';
-			}
-			$xml .= '</invalid_records>';
-			$xml .= '<message>Alguns registros não atendem aos critérios para exportação TXT. Use o botão Exportar Access.</message>';
-			$xml .= '</response>';
-			
-			echo $xml;
-			exit;
-		}
-		
-		error_log("exportTXT - All records passed validation");
-		// *** CONTINUE WITH EXISTING EXPORT LOGIC ***
-		
-		$xml = '<response>';
-		$xml .= '<success>true</success>';
-		$xml .= '<debug>';
-		$xml .= '<totalRecords>' . count($data) . '</totalRecords>';
-		$xml .= '<filter>' . addcslashes($filter, '"<>&') . '</filter>';
-		$xml .= '<selectedIds>' . addcslashes($selectedIds, '"<>&') . '</selectedIds>';
-		$xml .= '</debug>';
-		$xml .= '<txtData>';
-		
-		// ... rest of your existing exportTXT logic remains the same ...
-		
-	} catch (Exception $e) {
-		error_log("exportTXT - Exception: " . $e->getMessage());
-		
-		$xml = '<response>';
-		$xml .= '<success>false</success>';
-		$xml .= '<e>' . addcslashes($e->getMessage(), '"<>&') . '</e>';
-		$xml .= '</response>';
-		
-		echo $xml;
-		exit;
-	}
-}
-?>
