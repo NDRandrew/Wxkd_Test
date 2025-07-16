@@ -1,180 +1,574 @@
-hasValidationError: function(row) {
-    var cutoff = new Date(2025, 5, 1); // June 1, 2025
-    var activeTypes = [];
-    var fields = {
-        'AVANCADO': 'AV',
-        'ORGAO_PAGADOR': 'OP',
-        'PRESENCA': 'PR',
-        'UNIDADE_NEGOCIO': 'UN'
-    };
+<?php
+require_once '../model/Wxkd_DashboardModel.php';
+
+class Wxkd_DashboardController {
+    private $model;
     
-    // Get active types
-    for (var field in fields) {
-        if (fields.hasOwnProperty(field)) {
-            var raw = row[field] ? row[field].toString().trim() : '';
-            if (raw) {
-                var parts = raw.split('/');
-                if (parts.length === 3) {
-                    var day = parseInt(parts[0], 10);
-                    var month = parseInt(parts[1], 10) - 1;
-                    var year = parseInt(parts[2], 10);
-                    var date = new Date(year, month, day);
-                    if (date > cutoff) {
-                        activeTypes.push(fields[field]);
+    public function __construct() {
+        $this->model = new Wxkd_DashboardModel();
+        $this->model->Wxkd_Construct(); 
+    }
+    
+    public function index() {
+        $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
+        
+        $cardData = $this->model->getCardData();
+        $tableData = $this->model->getTableDataByFilter($filter);
+        $contractData = $this->model->contractDateCheck();
+        
+        $contractChaves = array();
+        foreach ($contractData as $item) {
+            $contractChaves[] = $item['Chave_Loja'];
+        }
+        $contractChavesLookup = array_flip($contractChaves);
+
+        return array(
+            'cardData' => $cardData, 
+            'tableData' => $tableData, 
+            'activeFilter' => $filter, 
+            'contractChavesLookup' => $contractChavesLookup
+        );
+    }
+    
+    public function ajaxGetTableData() {
+        $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
+        
+        try {
+            $tableData = $this->model->getTableDataByFilter($filter);
+            $cardData = $this->model->getCardData();
+            
+            $xml = '<response>';
+            $xml .= '<success>true</success>';
+            
+            if (is_array($cardData)) {
+                $xml .= '<cardData>';
+                foreach ($cardData as $key => $value) {
+                    $xml .= '<' . $key . '>' . $value . '</' . $key . '>';
+                }
+                $xml .= '</cardData>';
+            }
+            
+            $xml .= '<tableData>';
+            if (is_array($tableData) && count($tableData) > 0) {
+                foreach ($tableData as $row) {
+                    $xml .= '<row>';
+                    foreach ($row as $key => $value) {
+                        $xml .= '<' . $key . '>' . addcslashes($value, '"<>&') . '</' . $key . '>';
+                    }
+                    $xml .= '</row>';
+                }
+            }
+            $xml .= '</tableData>';
+            $xml .= '</response>';
+            
+        } catch (Exception $e) {
+            $xml = '<response>';
+            $xml .= '<success>false</success>';
+            $xml .= '<error>' . addcslashes($e->getMessage(), '"<>&') . '</error>';
+            $xml .= '</response>';
+        }
+
+        echo $xml;
+        exit;
+    }
+    
+    public function exportCSV() {
+        $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
+        $selectedIds = isset($_GET['ids']) ? $_GET['ids'] : '';
+        
+        $data = $this->getFilteredData($filter, $selectedIds);
+        
+        $xml = '<response><success>true</success><csvData>';
+        
+        foreach ($data as $row) {
+            $xml .= '<row>';
+            $xml .= '<chave_loja>' . addcslashes(isset($row['Chave_Loja']) ? $row['Chave_Loja'] : '', '"<>&') . '</chave_loja>';
+            $nome_loja = isset($row['Nome_Loja']) ? $row['Nome_Loja'] : '';
+            $xml .= '<nome_loja><![CDATA[' . $nome_loja . ']]></nome_loja>';
+            $xml .= '<cod_empresa>' . addcslashes(isset($row['Cod_Empresa']) ? $row['Cod_Empresa'] : '', '"<>&') . '</cod_empresa>';
+            
+            $this->addDateFieldsToXML($xml, $row);
+            $this->addStandardFieldsToXML($xml, $row);
+            $this->addValidationFieldsToXML($xml, $row);
+            
+            $xml .= '</row>';
+        }
+        
+        $xml .= '</csvData></response>';
+        echo $xml;
+        exit;
+    }
+    
+    public function exportTXT() {
+        $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
+        $selectedIds = isset($_GET['ids']) ? $_GET['ids'] : '';
+
+        try {
+            $data = $this->getFilteredData($filter, $selectedIds);
+            $invalidRecords = $this->validateRecordsForTXTExport($data);
+            
+            if (!empty($invalidRecords)) {
+                $this->outputValidationError($invalidRecords);
+                return;
+            }
+            
+            $xml = '<response><success>true</success><txtData>';
+            
+            $recordsToUpdate = array();
+            
+            foreach ($data as $row) {
+                $xml .= '<row>';
+                $xml .= '<cod_empresa>' . addcslashes(isset($row['COD_EMPRESA']) ? $row['COD_EMPRESA'] : '', '"<>&') . '</cod_empresa>';
+                $xml .= '<quant_lojas>' . addcslashes(isset($row['QUANT_LOJAS']) ? $row['QUANT_LOJAS'] : '', '"<>&') . '</quant_lojas>';
+                $xml .= '<cod_loja>' . addcslashes(isset($row['Cod_Loja']) ? $row['Cod_Loja'] : '', '"<>&') . '</cod_loja>';
+                $xml .= '<TIPO_CORRESPONDENTE>' . addcslashes(isset($row['TIPO_CORRESPONDENTE']) ? $row['TIPO_CORRESPONDENTE'] : '', '"<>&') . '</TIPO_CORRESPONDENTE>';
+                $xml .= '<data_contrato>' . addcslashes(isset($row['DATA_CONTRATO']) ? $row['DATA_CONTRATO'] : '', '"<>&') . '</data_contrato>';
+                $xml .= '<tipo_contrato>' . addcslashes(isset($row['TIPO_CONTRATO']) ? $row['TIPO_CONTRATO'] : '', '"<>&') . '</tipo_contrato>';
+                $xml .= '</row>';
+                
+                $codEmpresa = (int) (isset($row['COD_EMPRESA']) ? $row['COD_EMPRESA'] : 0);
+                $codLoja = (int) (isset($row['Cod_Loja']) ? $row['Cod_Loja'] : 0);
+                
+                if ($codEmpresa > 0 && $codLoja > 0) {
+                    $recordsToUpdate[] = array(
+                        'COD_EMPRESA' => $codEmpresa,
+                        'COD_LOJA' => $codLoja
+                    );
+                }
+            }
+            
+            if (!empty($recordsToUpdate)) {
+                $updateResult = $this->model->updateWxkdFlag($recordsToUpdate);
+                $xml .= '<flagUpdate>';
+                $xml .= '<success>' . ($updateResult ? 'true' : 'false') . '</success>';
+                $xml .= '<recordsUpdated>' . count($recordsToUpdate) . '</recordsUpdated>';
+                $xml .= '</flagUpdate>';
+            }
+            
+            $xml .= '</txtData></response>';
+            echo $xml;
+            exit;
+            
+        } catch (Exception $e) {
+            $xml = '<response>';
+            $xml .= '<success>false</success>';
+            $xml .= '<e>' . addcslashes($e->getMessage(), '"<>&') . '</e>';
+            $xml .= '</response>';
+            echo $xml;
+            exit;
+        }
+    }
+    
+    public function exportAccess() {
+        $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
+        $selectedIds = isset($_GET['ids']) ? $_GET['ids'] : '';
+
+        try {
+            $data = $this->getFilteredData($filter, $selectedIds);
+            $cutoff = mktime(0, 0, 0, 6, 1, 2025);
+            
+            $avUnPrData = array();
+            $opData = array();
+            
+            foreach ($data as $row) {
+                $activeTypes = $this->getActiveTypes($row, $cutoff);
+                
+                $hasOP = in_array('OP', $activeTypes);
+                $hasOthers = in_array('AV', $activeTypes) || in_array('PR', $activeTypes) || in_array('UN', $activeTypes);
+                
+                $codEmpresa = $this->getEmpresaCode($row);
+                
+                if (!empty($codEmpresa)) {
+                    if ($hasOP) {
+                        $opData[] = $codEmpresa;
+                    }
+                    if ($hasOthers) {
+                        $avUnPrData[] = $codEmpresa;
+                    }
+                }
+            }
+            
+            $avUnPrData = array_unique($avUnPrData);
+            $opData = array_unique($opData);
+            
+            $xml = '<response><success>true</success>';
+            
+            $xml .= '<avUnPrData>';
+            foreach ($avUnPrData as $codEmpresa) {
+                $xml .= '<empresa>' . addcslashes($codEmpresa, '"<>&') . '</empresa>';
+            }
+            $xml .= '</avUnPrData>';
+            
+            if (!empty($opData)) {
+                $xml .= '<opData>';
+                foreach ($opData as $codEmpresa) {
+                    $xml .= '<empresa>' . addcslashes($codEmpresa, '"<>&') . '</empresa>';
+                }
+                $xml .= '</opData>';
+            }
+            
+            $xml .= '</response>';
+            echo $xml;
+            exit;
+            
+        } catch (Exception $e) {
+            $xml = '<response>';
+            $xml .= '<success>false</success>';
+            $xml .= '<e>' . addcslashes($e->getMessage(), '"<>&') . '</e>';
+            $xml .= '</response>';
+            echo $xml;
+            exit;
+        }
+    }
+    
+    public function getValidationError($row) {
+        $cutoff = mktime(0, 0, 0, 6, 1, 2025);
+        $activeTypes = $this->getActiveTypes($row, $cutoff);
+        
+        foreach ($activeTypes as $type) {
+            if ($type === 'AV' || $type === 'PR' || $type === 'UN') {
+                $basicValidation = $this->checkBasicValidations($row);
+                if ($basicValidation !== true) {
+                    return 'Tipo ' . $type . ' - ' . str_replace(array('ç', 'õ', 'ã'), array('c', 'o', 'a'), $basicValidation);
+                }
+            } elseif ($type === 'OP') {
+                $opValidation = $this->checkOPValidations($row);
+                if ($opValidation !== true) {
+                    return str_replace(array('ç', 'õ', 'ã'), array('c', 'o', 'a'), $opValidation);
+                }
+            }
+        }
+        
+        return null; 
+    }
+    
+    // Helper methods
+    private function getFilteredData($filter, $selectedIds) {
+        if (!empty($selectedIds)) {
+            $allData = $this->model->getTableDataByFilter($filter);
+            $idsArray = explode(',', $selectedIds);
+            $data = array();
+            
+            foreach ($allData as $row) {
+                $rowId = isset($row['CHAVE_LOJA']) ? $row['CHAVE_LOJA'] : 
+                        (isset($row['id']) ? $row['id'] : '');
+                if (in_array($rowId, $idsArray)) {
+                    $data[] = $row;
+                }
+            }
+            return $data;
+        } else {
+            return $this->model->getTableDataByFilter($filter);
+        }
+    }
+    
+    private function getActiveTypes($row, $cutoff) {
+        $activeTypes = array();
+        $fields = array(
+            'AVANCADO' => 'AV',
+            'ORGAO_PAGADOR' => 'OP',
+            'PRESENCA' => 'PR',
+            'UNIDADE_NEGOCIO' => 'UN'
+        );
+        
+        foreach ($fields as $field => $label) {
+            $raw = isset($row[$field]) ? trim($row[$field]) : '';
+            if (!empty($raw)) {
+                $parts = explode('/', $raw);
+                if (count($parts) == 3) {
+                    $day = (int)$parts[0];
+                    $month = (int)$parts[1];
+                    $year = (int)$parts[2];
+                    if (checkdate($month, $day, $year)) {
+                        $timestamp = mktime(0, 0, 0, $month, $day, $year);
+                        if ($timestamp > $cutoff) {
+                            $activeTypes[] = $label;
+                        }
+                    }
+                }
+            }
+        }
+        
+        return $activeTypes;
+    }
+    
+    private function getEmpresaCode($row) {
+        $possibleEmpresaFields = array('COD_EMPRESA', 'cod_empresa', 'Cod_Empresa', 'CODEMPRESA', 'cod_emp');
+        foreach ($possibleEmpresaFields as $field) {
+            if (isset($row[$field]) && !empty($row[$field])) {
+                return $row[$field];
+            }
+        }
+        return '';
+    }
+    
+    private function addDateFieldsToXML(&$xml, $row) {
+        $fields = array(
+            'AVANCADO' => 'AV',
+            'ORGAO_PAGADOR' => 'OP',
+            'PRESENCA' => 'PR',
+            'UNIDADE_NEGOCIO' => 'UN'
+        );
+
+        $cutoff = mktime(0, 0, 0, 6, 1, 2025);
+
+        foreach ($fields as $field => $label) {
+            $raw = isset($row[$field]) ? trim($row[$field]) : '';
+
+            if (!empty($raw)) {
+                $parts = explode('/', $raw);
+                if (count($parts) == 3) {
+                    $day = (int)$parts[0];
+                    $month = (int)$parts[1];
+                    $year = (int)$parts[2];
+
+                    if (checkdate($month, $day, $year)) {
+                        $timestamp = mktime(0, 0, 0, $month, $day, $year);
+                        if ($timestamp > $cutoff) {
+                            $formattedDate = sprintf('%04d-%02d-%02d', $year, $month, $day);
+                            $xml .= '<date>' . htmlspecialchars($formattedDate) . '</date>';
+                        }
                     }
                 }
             }
         }
     }
     
-    // Check validation for each active type
-    for (var i = 0; i < activeTypes.length; i++) {
-        var type = activeTypes[i];
-        if (type === 'AV' || type === 'PR' || type === 'UN') {
-            if (!this.checkBasicValidationsJS(row)) {
-                return true;
+    private function addStandardFieldsToXML(&$xml, $row) {
+        $xml .= '<cod_loja>' . addcslashes(isset($row['Cod_Loja']) ? $row['Cod_Loja'] : '', '"<>&') . '</cod_loja>';
+        $xml .= '<quant_lojas>' . addcslashes(isset($row['QUANT_LOJAS']) ? $row['QUANT_LOJAS'] : '', '"<>&') . '</quant_lojas>';
+        $xml .= '<tipo_correspondente>' . addcslashes(isset($row['TIPO_CORRESPONDENTE']) ? $row['TIPO_CORRESPONDENTE'] : '', '"<>&') . '</tipo_correspondente>';
+        $xml .= '<data_conclusao>' . addcslashes(isset($row['DATA_CONCLUSAO']) ? $row['DATA_CONCLUSAO'] : '', '"<>&') . '</data_conclusao>';
+        
+        $xml .= '<data_solicitacao>';
+        $timeAndre = strtotime($row['DATA_SOLICITACAO']);
+        if ($timeAndre !== false && !empty($row['DATA_SOLICITACAO'])) {
+            $xml .= date('d/m/Y', $timeAndre);
+        } else {
+            $xml .= '—';
+        }
+        $xml .= '</data_solicitacao>';
+    }
+    
+    private function addValidationFieldsToXML(&$xml, $row) {
+        $validationFields = array(
+            'dep_dinheiro' => 'DEP_DINHEIRO_VALID',
+            'dep_cheque' => 'DEP_CHEQUE_VALID',
+            'rec_retirada' => 'REC_RETIRADA_VALID',
+            'saque_cheque' => 'SAQUE_CHEQUE_VALID'
+        );
+        
+        foreach ($validationFields as $xmlField => $validField) {
+            $xml .= '<' . $xmlField . '>';
+            if (isset($row[$validField]) && isset($row['TIPO_LIMITES'])) {
+                $isPresencaOrOrgao = (strpos($row['TIPO_LIMITES'], 'PRESENCA') !== false || 
+                                strpos($row['TIPO_LIMITES'], 'ORG_PAGADOR') !== false);
+                $isAvancadoOrApoio = (strpos($row['TIPO_LIMITES'], 'AVANCADO') !== false || 
+                                strpos($row['TIPO_LIMITES'], 'UNIDADE_NEGOCIO') !== false);
+                
+                $limits = $this->getLimitsForField($xmlField, $isPresencaOrOrgao, $isAvancadoOrApoio);
+                
+                if ($row[$validField] == 1) {
+                    $xml .= $limits['valid'];
+                } else {
+                    $xml .= $limits['invalid'];
+                }
+            } else {
+                $xml .= 'Tipo não definido';
             }
-        } else if (type === 'OP') {
-            if (!this.checkOPValidationsJS(row)) {
-                return true;
-            }
+            $xml .= '</' . $xmlField . '>';
+        }
+        
+        // Special fields
+        $xml .= '<segunda_via_cartao>';
+        if (isset($row['SEGUNDA_VIA_CARTAO_VALID'])) {
+            $xml .= ($row['SEGUNDA_VIA_CARTAO_VALID'] === 1) ? 'Apto' : 'Nao Apto';
+        }
+        $xml .= '</segunda_via_cartao>';
+        
+        $xml .= '<holerite_inss>';
+        if (isset($row['HOLERITE_INSS_VALID'])) {
+            $xml .= ($row['HOLERITE_INSS_VALID'] === 1) ? 'Apto' : 'Nao Apto';
+        }
+        $xml .= '</holerite_inss>';
+        
+        $xml .= '<cons_inss>';
+        if (isset($row['CONSULTA_INSS_VALID'])) {
+            $xml .= ($row['CONSULTA_INSS_VALID'] === 1) ? 'Apto' : 'Nao Apto';
+        }
+        $xml .= '</cons_inss>';
+        
+        $xml .= '<data_contrato>' . addcslashes(isset($row['DATA_CONTRATO']) ? $row['DATA_CONTRATO'] : '', '"<>&') . '</data_contrato>';
+        $xml .= '<tipo_contrato>' . addcslashes(isset($row['TIPO_CONTRATO']) ? $row['TIPO_CONTRATO'] : '', '"<>&') . '</tipo_contrato>';
+    }
+    
+    private function getLimitsForField($field, $isPresencaOrOrgao, $isAvancadoOrApoio) {
+        $limits = array(
+            'dep_dinheiro' => array(
+                'presenca' => 'R$ 3.000,00',
+                'avancado' => 'R$ 10.000,00'
+            ),
+            'dep_cheque' => array(
+                'presenca' => 'R$ 5.000,00',
+                'avancado' => 'R$ 10.000,00'
+            ),
+            'rec_retirada' => array(
+                'presenca' => 'R$ 2.000,00',
+                'avancado' => 'R$ 3.500,00'
+            ),
+            'saque_cheque' => array(
+                'presenca' => 'R$ 2.000,00',
+                'avancado' => 'R$ 3.500,00'
+            )
+        );
+        
+        if ($isPresencaOrOrgao) {
+            return array(
+                'valid' => $limits[$field]['presenca'],
+                'invalid' => $limits[$field]['presenca'] . '*'
+            );
+        } elseif ($isAvancadoOrApoio) {
+            return array(
+                'valid' => $limits[$field]['avancado'],
+                'invalid' => $limits[$field]['avancado'] . '*'
+            );
+        } else {
+            return array(
+                'valid' => '0',
+                'invalid' => '0*'
+            );
         }
     }
     
-    return false;
-},
-
-getValidationErrorMessage: function(row) {
-    var cutoff = new Date(2025, 5, 1);
-    var activeTypes = [];
-    var fields = {
-        'AVANCADO': 'AV',
-        'ORGAO_PAGADOR': 'OP',
-        'PRESENCA': 'PR',
-        'UNIDADE_NEGOCIO': 'UN'
-    };
-    
-    // Get active types
-    for (var field in fields) {
-        if (fields.hasOwnProperty(field)) {
-            var raw = row[field] ? row[field].toString().trim() : '';
-            if (raw) {
-                var parts = raw.split('/');
-                if (parts.length === 3) {
-                    var day = parseInt(parts[0], 10);
-                    var month = parseInt(parts[1], 10) - 1;
-                    var year = parseInt(parts[2], 10);
-                    var date = new Date(year, month, day);
-                    if (date > cutoff) {
-                        activeTypes.push(fields[field]);
+    private function validateRecordsForTXTExport($data) {
+        $invalidRecords = array();
+        $cutoff = mktime(0, 0, 0, 6, 1, 2025);
+        
+        foreach ($data as $row) {
+            $activeTypes = $this->getActiveTypes($row, $cutoff);
+            $codEmpresa = $this->getEmpresaCode($row);
+            
+            if (empty($codEmpresa) || empty($activeTypes)) {
+                continue;
+            }
+            
+            $isValid = true;
+            $errorMessage = '';
+            
+            foreach ($activeTypes as $type) {
+                if ($type === 'AV' || $type === 'PR' || $type === 'UN') {
+                    $basicValidation = $this->checkBasicValidations($row);
+                    if ($basicValidation !== true) {
+                        $isValid = false;
+                        $errorMessage = 'Tipo ' . $type . ' - ' . $basicValidation;
+                        break;
+                    }
+                } elseif ($type === 'OP') {
+                    $opValidation = $this->checkOPValidations($row);
+                    if ($opValidation !== true) {
+                        $isValid = false;
+                        $errorMessage = $opValidation;
+                        break;
                     }
                 }
             }
-        }
-    }
-    
-    // Check validation and return error message
-    for (var i = 0; i < activeTypes.length; i++) {
-        var type = activeTypes[i];
-        if (type === 'AV' || type === 'PR' || type === 'UN') {
-            var basicError = this.getBasicValidationErrorJS(row);
-            if (basicError) {
-                return 'Tipo ' + type + ' - ' + basicError;
-            }
-        } else if (type === 'OP') {
-            var opError = this.getOPValidationErrorJS(row);
-            if (opError) {
-                return opError;
+            
+            if (!$isValid) {
+                $invalidRecords[] = array(
+                    'cod_empresa' => $codEmpresa,
+                    'error' => $errorMessage
+                );
             }
         }
+        
+        return $invalidRecords;
     }
     
-    return 'Erro de validacao';
-},
-
-checkBasicValidationsJS: function(row) {
-    var requiredFields = ['DEP_DINHEIRO_VALID', 'DEP_CHEQUE_VALID', 'REC_RETIRADA_VALID', 'SAQUE_CHEQUE_VALID'];
-    for (var i = 0; i < requiredFields.length; i++) {
-        if (!row[requiredFields[i]] || row[requiredFields[i]] != '1') {
-            return false;
-        }
-    }
-    return true;
-},
-
-getBasicValidationErrorJS: function(row) {
-    var requiredFields = {
-        'DEP_DINHEIRO_VALID': 'Deposito Dinheiro',
-        'DEP_CHEQUE_VALID': 'Deposito Cheque',
-        'REC_RETIRADA_VALID': 'Recarga/Retirada',
-        'SAQUE_CHEQUE_VALID': 'Saque Cheque'
-    };
-    
-    var missingFields = [];
-    for (var field in requiredFields) {
-        if (requiredFields.hasOwnProperty(field)) {
-            if (!row[field] || row[field] != '1') {
-                missingFields.push(requiredFields[field]);
+    private function checkBasicValidations($row) {
+        $requiredFields = array(
+            'DEP_DINHEIRO_VALID' => 'Depósito Dinheiro',
+            'DEP_CHEQUE_VALID' => 'Depósito Cheque', 
+            'REC_RETIRADA_VALID' => 'Recibo Retirada',
+            'SAQUE_CHEQUE_VALID' => 'Saque Cheque'
+        );
+        
+        $missingFields = array();
+        foreach ($requiredFields as $field => $name) {
+            if (!isset($row[$field]) || $row[$field] != '1') {
+                $missingFields[] = $name;
             }
         }
-    }
-    
-    return missingFields.length > 0 ? 'Validacoes pendentes: ' + missingFields.join(', ') : null;
-},
-
-checkOPValidationsJS: function(row) {
-    var version = this.extractVersionFromContractJS(row.TIPO_CONTRATO || '');
-    if (version === null) return false;
-    
-    var requiredFields = ['DEP_DINHEIRO_VALID', 'DEP_CHEQUE_VALID', 'REC_RETIRADA_VALID', 'SAQUE_CHEQUE_VALID', 'HOLERITE_INSS_VALID', 'CONSULTA_INSS_VALID'];
-    if (version > 10.1) {
-        requiredFields.push('SEGUNDA_VIA_CARTAO_VALID');
-    }
-    
-    for (var i = 0; i < requiredFields.length; i++) {
-        if (!row[requiredFields[i]] || row[requiredFields[i]] != '1') {
-            return false;
+        
+        if (!empty($missingFields)) {
+            return 'Validações pendentes: ' . implode(', ', $missingFields);
         }
+        
+        return true;
     }
-    return true;
-},
 
-getOPValidationErrorJS: function(row) {
-    var version = this.extractVersionFromContractJS(row.TIPO_CONTRATO || '');
-    if (version === null) {
-        return 'Tipo de contrato nao pode ser exportado: ' + (row.TIPO_CONTRATO || '');
-    }
-    
-    var requiredFields = {
-        'DEP_DINHEIRO_VALID': 'Deposito Dinheiro',
-        'DEP_CHEQUE_VALID': 'Deposito Cheque',
-        'REC_RETIRADA_VALID': 'Recarga/Retirada',
-        'SAQUE_CHEQUE_VALID': 'Saque Cheque',
-        'HOLERITE_INSS_VALID': 'Holerite INSS',
-        'CONSULTA_INSS_VALID': 'Consulta INSS'
-    };
-    
-    if (version > 10.1) {
-        requiredFields['SEGUNDA_VIA_CARTAO_VALID'] = 'Segunda Via Cartao';
-    }
-    
-    var missingFields = [];
-    for (var field in requiredFields) {
-        if (requiredFields.hasOwnProperty(field)) {
-            if (!row[field] || row[field] != '1') {
-                missingFields.push(requiredFields[field]);
+    private function checkOPValidations($row) {
+        $tipoContrato = isset($row['TIPO_CONTRATO']) ? $row['TIPO_CONTRATO'] : '';
+        $version = $this->extractVersionFromContract($tipoContrato);
+        
+        if ($version === null) {
+            return 'Tipo de contrato não pode ser exportado: ' . $tipoContrato;
+        }
+        
+        $requiredFields = array(
+            'DEP_DINHEIRO_VALID' => 'Depósito Dinheiro',
+            'DEP_CHEQUE_VALID' => 'Depósito Cheque',
+            'REC_RETIRADA_VALID' => 'Recibo Retirada', 
+            'SAQUE_CHEQUE_VALID' => 'Saque Cheque',
+            'HOLERITE_INSS_VALID' => 'Holerite INSS',
+            'CONSULTA_INSS_VALID' => 'Consulta INSS'
+        );
+        
+        if ($version > 10.1) {
+            $requiredFields['SEGUNDA_VIA_CARTAO_VALID'] = 'Segunda Via Cartão';
+        }
+        
+        $missingFields = array();
+        foreach ($requiredFields as $field => $name) {
+            if (!isset($row[$field]) || $row[$field] != '1') {
+                $missingFields[] = $name;
             }
         }
+        
+        if (!empty($missingFields)) {
+            return 'Validações OP pendentes (v' . $version . '): ' . implode(', ', $missingFields);
+        }
+        
+        return true;
+    }
+
+    private function extractVersionFromContract($tipoContrato) {
+        if (preg_match('/(\d+\.\d+)/', $tipoContrato, $matches)) {
+            $version = (float)$matches[1];
+            if ($version >= 8.1) {
+                return $version;
+            }
+        }
+        return null;
     }
     
-    return missingFields.length > 0 ? 'Validacoes OP pendentes (v' + version + '): ' + missingFields.join(', ') : null;
-},
-
-extractVersionFromContractJS: function(tipoContrato) {
-    var match = tipoContrato.match(/(\d+\.\d+)/);
-    if (match) {
-        var version = parseFloat(match[1]);
-        return version >= 8.1 ? version : null;
+    private function outputValidationError($invalidRecords) {
+        $xml = '<response>';
+        $xml .= '<success>false</success>';
+        $xml .= '<validation_error>true</validation_error>';
+        $xml .= '<invalid_records>';
+        foreach ($invalidRecords as $record) {
+            $xml .= '<record>';
+            $xml .= '<cod_empresa>' . addcslashes($record['cod_empresa'], '"<>&') . '</cod_empresa>';
+            $xml .= '<error>' . addcslashes($record['error'], '"<>&') . '</error>';
+            $xml .= '<error_msg>' . str_replace(array('ç','õ','ã'),array('c','o','a'), $record['error']) . '</error_msg>';
+            $xml .= '</record>';
+        }
+        $xml .= '</invalid_records>';
+        $xml .= '<message>Alguns registros não atendem aos critérios para exportação TXT. Use o botão Exportar Access.</message>';
+        $xml .= '</response>';
+        
+        echo $xml;
+        exit;
     }
-    return null;
 }
+?>
