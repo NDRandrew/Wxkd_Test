@@ -103,7 +103,7 @@ function exportTXTDataCorrected(selectedIds, filter) {
                         for (var i = 0; i < invalidRecords.length; i++) {
                             var record = invalidRecords[i];
                             var codEmpresa = record.getElementsByTagName('cod_empresa')[0];
-                            var errorMsg = record.getElementsByTagName('e')[0];
+                            var errorMsg = record.getElementsByTagName('error_msg')[0];
                             
                             var empresaText = codEmpresa ? (codEmpresa.textContent || codEmpresa.text || '') : '';
                             var errorText = errorMsg ? (errorMsg.textContent || errorMsg.text || '') : '';
