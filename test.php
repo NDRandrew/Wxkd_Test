@@ -43,13 +43,27 @@ private function validateRecordsForTXTExport($data) {
 			}
 		}
 		
+		// Skip if no cod_empresa found
+		if (empty($codEmpresa)) {
+			continue;
+		}
+		
+		// Skip if no active types
+		if (empty($activeTypes)) {
+			continue;
+		}
+		
 		// Validate each active type
 		$isValid = true;
 		$errorMessage = '';
 		
 		foreach ($activeTypes as $type) {
+			error_log("Validating type: " . $type . " for empresa: " . $codEmpresa);
+			
 			if ($type === 'AV' || $type === 'PR' || $type === 'UN') {
 				$basicValidation = $this->checkBasicValidations($row);
+				error_log("Basic validation result for " . $type . ": " . ($basicValidation === true ? 'SUCCESS' : $basicValidation));
+				
 				if ($basicValidation !== true) {
 					$isValid = false;
 					$errorMessage = 'Tipo ' . $type . ' - ' . $basicValidation;
@@ -57,15 +71,18 @@ private function validateRecordsForTXTExport($data) {
 				}
 			} elseif ($type === 'OP') {
 				$opValidation = $this->checkOPValidations($row);
+				error_log("OP validation result: " . ($opValidation === true ? 'SUCCESS' : $opValidation));
+				
 				if ($opValidation !== true) {
 					$isValid = false;
-					$errorMessage = $opValidation; // This will be the detailed error message
+					$errorMessage = $opValidation;
 					break;
 				}
 			}
 		}
 		
-		if (!$isValid && !empty($codEmpresa)) {
+		if (!$isValid) {
+			error_log("Adding invalid record: " . $codEmpresa . " - " . $errorMessage);
 			$invalidRecords[] = array(
 				'cod_empresa' => $codEmpresa,
 				'error' => $errorMessage
