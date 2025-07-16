@@ -1,541 +1,314 @@
 <?php
-require_once '../control/Wxkd_Config.php';
-require_once '../model/Wxkd_DashboardModel.php';
-
-class Wxkd_DashboardController {
-    private $model;
+require_once('\\\\mz-vv-fs-237\D4920\Secoes\D4920S012\Comum_S012\j\Server2Go\htdocs\erp\ClassRepository\geral\MSSQL\MSSQL.class.php');
+require_once('../control/Wxkd_Config.php');
+ 
+class Wxkd_DashboardModel {
+    public $sql;
+    private $baseSelectFields;
+    private $baseJoins;
     
-    public function __construct() {
-        $this->model = new Wxkd_DashboardModel();
-        $this->model->Wxkd_Construct(); 
-    }
-    
-    public function index() {
-        $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
-        
-        $cardData = $this->model->getCardData();
-        $tableData = $this->model->getTableDataByFilter($filter);
-        $contractData = $this->model->contractDateCheck();
-        
-        $contractChaves = array();
-        foreach ($contractData as $item) {
-            $contractChaves[] = $item['Chave_Loja'];
-        }
-        $contractChavesLookup = array_flip($contractChaves);
-
-        return array(
-            'cardData' => $cardData, 
-            'tableData' => $tableData, 
-            'activeFilter' => $filter, 
-            'contractChavesLookup' => $contractChavesLookup
-        );
-    }
-    
-    public function ajaxGetTableData() {
-        $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
-        
+    public function Wxkd_Construct() {
         try {
-            $tableData = $this->model->getTableDataByFilter($filter);
-            $cardData = $this->model->getCardData();
+            $this->sql = new MSSQL('PGTOCORSP');
+            $this->initializeBaseQuery();
+        } catch (Exception $e) {
+            throw new Exception("Erro na conexão com banco de dados: " . $e->getMessage());
+        }
+    }
+    
+    private function initializeBaseQuery() {
+        // Optimized base fields selection
+        $this->baseSelectFields = "
+            A.Chave_Loja,
+            A.Nome_Loja,
+            A.Cod_Loja,
+            A.Cod_Empresa,
+            CONVERT(VARCHAR,B.DT_CADASTRO,103) AVANCADO,
+            CONVERT(VARCHAR,C.DT_CADASTRO,103) PRESENCA,
+            CONVERT(VARCHAR,D.DT_CADASTRO,103) UNIDADE_NEGOCIO,
+            CONVERT(VARCHAR,E.DT_CADASTRO,103) ORGAO_PAGADOR,
+            SUBSTRING(CASE WHEN B.DT_CADASTRO IS NOT NULL THEN ', AVANCADO' ELSE '' END +
+                     CASE WHEN C.DT_CADASTRO IS NOT NULL THEN ', PRESENCA' ELSE '' END +
+                     CASE WHEN D.DT_CADASTRO IS NOT NULL THEN ', UNIDADE_NEGOCIO' ELSE '' END +
+                     CASE WHEN E.DT_CADASTRO IS NOT NULL THEN ', ORGAO_PAGADOR' ELSE '' END,3,999) TIPO_CORRESPONDENTE,
+            CASE WHEN B.DT_CADASTRO IS NOT NULL OR D.DT_CADASTRO IS NOT NULL THEN 'AVANCADO/UNIDADE_NEGOCIO'
+                 WHEN C.DT_CADASTRO IS NOT NULL OR E.DT_CADASTRO IS NOT NULL THEN 'ORG_PAGADOR/PRESENCA'
+                 ELSE 'N/I' END TIPO_LIMITES,
+            F.DEP_DINHEIRO_VALID,
+            F.DEP_CHEQUE_VALID,
+            F.REC_RETIRADA_VALID,
+            F.SAQUE_CHEQUE_VALID,
+            F.SEGUNDA_VIA_CARTAO_VALID,
+            F.CONSULTA_INSS_VALID,
+            F.HOLERITE_INSS_VALID,
+            G.DATA_CONTRATO,
+            G.TIPO,
+            H.WXKD_FLAG,
+            I.qtd_repeticoes as QUANT_LOJAS,
+            J.data_log as DATA_SOLICITACAO";
             
-            $xml = '<response>';
-            $xml .= '<success>true</success>';
+        // Optimized base joins
+        $this->baseJoins = "
+            FROM DATALAKE..DL_BRADESCO_EXPRESSO A
+            LEFT JOIN (SELECT DT_CADASTRO,CHAVE_LOJA FROM PGTOCORSP.DBO.TB_PP_AVANCADO GROUP BY CHAVE_LOJA,DT_CADASTRO) B 
+                ON A.CHAVE_LOJA=B.CHAVE_LOJA
+            LEFT JOIN PGTOCORSP.DBO.TB_PP_PRESENCA C 
+                ON C.CHAVE_LOJA=A.CHAVE_LOJA
+            LEFT JOIN (SELECT DT_CADASTRO,CHAVE_LOJA FROM PGTOCORSP..TB_PP_UNIDADE_NEGOCIO GROUP BY DT_CADASTRO,CHAVE_LOJA) D 
+                ON D.CHAVE_LOJA=A.CHAVE_LOJA
+            LEFT JOIN (SELECT CHAVE_LOJA_PARA,MAX(DATA_ATT) DT_CADASTRO FROM PBEN..TB_OP_PBEN_INDICACAO WHERE APROVACAO = 1 GROUP BY CHAVE_LOJA_PARA) E 
+                ON A.CHAVE_LOJA=E.CHAVE_LOJA_PARA
+            LEFT JOIN (
+                SELECT B.Cod_Empresa,
+                    MAX(CASE WHEN COD_SERVICO = 'D' THEN 1 ELSE 0 END) AS 'DEP_DINHEIRO_VALID',
+                    MAX(CASE WHEN COD_SERVICO = 'D' THEN 1 ELSE 0 END) AS 'DEP_CHEQUE_VALID',
+                    MAX(CASE WHEN COD_SERVICO = 'R' THEN 1 ELSE 0 END) AS 'REC_RETIRADA_VALID',
+                    MAX(CASE WHEN COD_SERVICO = 'K' THEN 1 ELSE 0 END) AS 'SAQUE_CHEQUE_VALID',
+                    MAX(CASE WHEN COD_SERVICO = 'PC' THEN 1 ELSE 0 END) AS 'SEGUNDA_VIA_CARTAO_VALID',
+                    MAX(CASE WHEN COD_SERVICO = 'CB' THEN 1 ELSE 0 END) AS 'CONSULTA_INSS_VALID',
+                    MAX(CASE WHEN COD_SERVICO = 'CO' THEN 1 ELSE 0 END) AS 'HOLERITE_INSS_VALID'
+                FROM PGTOCORSP.DBO.PGTOCORSP_SERVICOS_VANS A
+                JOIN (SELECT Cod_Empresa, COD_SERVICO FROM MESU.DBO.EMPRESAS_SERVICOS GROUP BY COD_EMPRESA, COD_SERVICO) B 
+                    ON A.COD_SERVICO_VAN = B.COD_SERVICO
+                WHERE COD_SERVICO_BRAD IN (" . Wxkd_Config::getServiceCodesSQL() . ") 
+                GROUP BY B.Cod_Empresa
+            ) F ON A.Cod_Empresa=F.Cod_Empresa
+            LEFT JOIN (
+                SELECT KEY_EMPRESA, DATA_CONTRATO, TIPO
+                FROM (
+                    SELECT A.KEY_EMPRESA, A.DATA_CONTRATO, C.TIPO,
+                           ROW_NUMBER() OVER (PARTITION BY A.KEY_EMPRESA ORDER BY A.DATA_CONTRATO DESC) AS rn
+                    FROM MESU.DBO.TB_EMPRESA_VERSAO_CONTRATO2 A
+                    LEFT JOIN MESU.DBO.TB_VERSAO C ON A.COD_VERSAO = C.COD_VERSAO
+                    WHERE A.COD_VERSAO IS NOT NULL AND C.TIPO IS NOT NULL
+                ) SELECIONADO WHERE rn = 1
+            ) G ON A.COD_EMPRESA = G.KEY_EMPRESA
+            LEFT JOIN (SELECT DISTINCT COD_EMPRESA, WXKD_FLAG FROM PGTOCORSP.dbo.tb_wxkd_flag) H 
+                ON A.COD_EMPRESA = H.COD_EMPRESA 
+            LEFT JOIN (
+                SELECT COD_EMPRESA, COUNT(*) AS qtd_repeticoes
+                FROM DATALAKE..DL_BRADESCO_EXPRESSO WHERE BE_INAUGURADO=1 GROUP BY COD_EMPRESA
+            ) I ON A.COD_EMPRESA = I.COD_EMPRESA
+            LEFT JOIN (
+                SELECT A.CHAVE_LOJA, B.DATA_LOG
+                FROM PGTOCORSP.dbo.tb_pgto_solicitacao A
+                INNER JOIN (
+                    SELECT A.CHAVE_LOJA, MAX(B.DATA_LOG) AS MAX_DATA_LOG
+                    FROM PGTOCORSP.dbo.tb_pgto_solicitacao A
+                    INNER JOIN PGTOCORSP.dbo.tb_pgto_log_sistema B ON A.COD_SOLICITACAO = B.COD_SOLICITACAO
+                    GROUP BY A.CHAVE_LOJA
+                ) MaxLog ON A.CHAVE_LOJA = MaxLog.CHAVE_LOJA
+                INNER JOIN PGTOCORSP.dbo.tb_pgto_log_sistema B 
+                    ON A.COD_SOLICITACAO = B.COD_SOLICITACAO AND B.DATA_LOG = MaxLog.MAX_DATA_LOG
+            ) J ON A.CHAVE_LOJA = J.CHAVE_LOJA";
+    }
+    
+    public function getCardData() {
+        try {
+            $cardData = array();
             
-            if (is_array($cardData)) {
-                $xml .= '<cardData>';
-                foreach ($cardData as $key => $value) {
-                    $xml .= '<' . $key . '>' . $value . '</' . $key . '>';
-                }
-                $xml .= '</cardData>';
-            }
+            // Optimized card queries with better indexing
+            $cardData['cadastramento'] = $this->sql->qtdRows("
+                SELECT A.Chave_Loja
+                " . $this->baseJoins . "
+                WHERE (B.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR C.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR D.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR E.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "') 
+                AND H.WXKD_FLAG = 0");
             
-            $xml .= '<tableData>';
-            if (is_array($tableData) && count($tableData) > 0) {
-                foreach ($tableData as $row) {
-                    $xml .= '<row>';
-                    foreach ($row as $key => $value) {
-                        $xml .= '<' . $key . '>' . addcslashes($value, '"<>&') . '</' . $key . '>';
-                    }
-                    $xml .= '</row>';
-                }
-            }
-            $xml .= '</tableData>';
-            $xml .= '</response>';
+            $cardData['descadastramento'] = $this->sql->qtdRows("
+                SELECT soli.chave_loja
+                FROM PGTOCORSP.dbo.tb_pgto_solicitacao soli
+                LEFT JOIN (SELECT DT_CADASTRO,CHAVE_LOJA FROM PGTOCORSP.DBO.TB_PP_AVANCADO GROUP BY CHAVE_LOJA,DT_CADASTRO) BE ON soli.CHAVE_LOJA=BE.CHAVE_LOJA
+                LEFT JOIN PGTOCORSP.DBO.TB_PP_PRESENCA CE ON CE.CHAVE_LOJA=soli.CHAVE_LOJA
+                LEFT JOIN (SELECT DT_CADASTRO,CHAVE_LOJA FROM PGTOCORSP..TB_PP_UNIDADE_NEGOCIO GROUP BY DT_CADASTRO,CHAVE_LOJA) DE ON DE.CHAVE_LOJA=soli.CHAVE_LOJA
+                LEFT JOIN (SELECT CHAVE_LOJA_PARA,MAX(DATA_ATT) DT_CADASTRO FROM PBEN..TB_OP_PBEN_INDICACAO WHERE APROVACAO = 1 GROUP BY CHAVE_LOJA_PARA) EE ON soli.CHAVE_LOJA=EE.CHAVE_LOJA_PARA
+                LEFT JOIN (SELECT a.data_detalhe, cod_etapa, cod_status,exclusao, a.cod_solicitacao FROM PGTOCORSP.dbo.tb_pgto_solicitacao_detalhe a 
+                    JOIN (SELECT DISTINCT cod_solicitacao, max(data_detalhe) as data_detalhe FROM PGTOCORSP.dbo.tb_pgto_solicitacao_detalhe GROUP BY cod_solicitacao) b 
+                    ON b.cod_solicitacao = a.cod_solicitacao AND b.data_detalhe = a.data_detalhe) detalhe ON detalhe.cod_solicitacao = soli.cod_solicitacao 
+                LEFT JOIN PGTOCORSP.dbo.tb_pgto_acao_solicitacao acao ON acao.cod_acao = soli.cod_acao 
+                LEFT JOIN PGTOCORSP.dbo.tb_pgto_tipo_pagamento ti_pagam ON ti_pagam.cod_tipo_pagamento = soli.cod_tipo_pagamento 
+                                        WHERE (BE.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR CE.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR DE.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR EE.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "') 
+                AND exclusao = 0 AND soli.cod_acao IN(1,2) AND ti_pagam.cod_tipo_pagamento != 3 AND soli.wxkd_flag = 0 AND desc_acao = 'Descadastramento'");
+            
+            $cardData['historico'] = $this->sql->qtdRows("
+                SELECT A.Chave_Loja
+                " . $this->baseJoins . "
+                WHERE (B.DT_CADASTRO>='20250601' OR C.DT_CADASTRO>='20250601' OR D.DT_CADASTRO>='20250601' OR E.DT_CADASTRO>='20250601') 
+                AND H.WXKD_FLAG = 1");
+            
+            return $cardData;
             
         } catch (Exception $e) {
-            $xml = '<response>';
-            $xml .= '<success>false</success>';
-            $xml .= '<error>' . addcslashes($e->getMessage(), '"<>&') . '</error>';
-            $xml .= '</response>';
+            throw new Exception("Erro ao buscar dados dos cards: " . $e->getMessage());
         }
-
-        echo $xml;
-        exit;
     }
     
-    public function exportCSV() {
-        $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
-        $selectedIds = isset($_GET['ids']) ? $_GET['ids'] : '';
-        
-        $data = $this->getFilteredData($filter, $selectedIds);
-        
-        $xml = '<response><success>true</success><csvData>';
-        
-        foreach ($data as $row) {
-            $xml .= '<row>';
-            $xml .= '<chave_loja>' . addcslashes(isset($row['Chave_Loja']) ? $row['Chave_Loja'] : '', '"<>&') . '</chave_loja>';
-            $nome_loja = isset($row['Nome_Loja']) ? $row['Nome_Loja'] : '';
-            $xml .= '<nome_loja><![CDATA[' . $nome_loja . ']]></nome_loja>';
-            $xml .= '<cod_empresa>' . addcslashes(isset($row['Cod_Empresa']) ? $row['Cod_Empresa'] : '', '"<>&') . '</cod_empresa>';
-            
-            $this->addDateFieldsToXML($xml, $row);
-            $this->addStandardFieldsToXML($xml, $row);
-            $this->addValidationFieldsToXML($xml, $row);
-            
-            $xml .= '</row>';
-        }
-        
-        $xml .= '</csvData></response>';
-        echo $xml;
-        exit;
-    }
-    
-    public function exportTXT() {
-        $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
-        $selectedIds = isset($_GET['ids']) ? $_GET['ids'] : '';
-
+    public function getTableDataByFilter($filter = 'all') {
         try {
-            $data = $this->getFilteredData($filter, $selectedIds);
-            $invalidRecords = $this->validateRecordsForTXTExport($data);
+            $query = "";
             
-            if (!empty($invalidRecords)) {
-                $this->outputValidationError($invalidRecords);
-                return;
+            switch($filter) {
+                case 'cadastramento':
+                    $query = "SELECT " . $this->baseSelectFields . $this->baseJoins . 
+                            " WHERE (B.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR C.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR D.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR E.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "') 
+                            AND H.WXKD_FLAG = 0";
+                    break;
+                    
+                case 'descadastramento':
+                    $query = "
+                        SELECT soli.chave_loja as Chave_Loja, nome_loja as Nome_Loja,
+                        CONVERT(VARCHAR,BE.DT_CADASTRO,103) AVANCADO,
+                        CONVERT(VARCHAR,CE.DT_CADASTRO,103) PRESENCA,
+                        CONVERT(VARCHAR,DE.DT_CADASTRO,103) UNIDADE_NEGOCIO,
+                        CONVERT(VARCHAR,EE.DT_CADASTRO,103) ORGAO_PAGADOR,
+                        loja.cod_empresa as Cod_Empresa, cod_loja as Cod_Loja,
+                        SUBSTRING(CASE WHEN B.DT_CADASTRO IS NOT NULL THEN ', AVANCADO' ELSE '' END +
+                                 CASE WHEN C.DT_CADASTRO IS NOT NULL THEN ', PRESENCA' ELSE '' END +
+                                 CASE WHEN D.DT_CADASTRO IS NOT NULL THEN ', UNIDADE_NEGOCIO' ELSE '' END +
+                                 CASE WHEN E.DT_CADASTRO IS NOT NULL THEN ', ORGAO_PAGADOR' ELSE '' END,3,999) TIPO_CORRESPONDENTE,
+                        CASE WHEN B.DT_CADASTRO IS NOT NULL OR D.DT_CADASTRO IS NOT NULL THEN 'AVANCADO/APOIO A UN'
+                             WHEN C.DT_CADASTRO IS NOT NULL OR E.DT_CADASTRO IS NOT NULL THEN 'ORG.PAGADOR/PRESENÇA'
+                             ELSE 'N/I' END TIPO_LIMITES,
+                        data_log as Data_Aprovacao, G.DATA_CONTRATO, G.TIPO as TIPO_CONTRATO, F.*, soli.wxkd_flag
+                        FROM PGTOCORSP.dbo.tb_pgto_solicitacao soli
+                        LEFT JOIN (SELECT DT_CADASTRO,CHAVE_LOJA FROM PGTOCORSP.DBO.TB_PP_AVANCADO GROUP BY CHAVE_LOJA,DT_CADASTRO) BE ON soli.CHAVE_LOJA=BE.CHAVE_LOJA
+                        LEFT JOIN PGTOCORSP.DBO.TB_PP_PRESENCA CE ON CE.CHAVE_LOJA=soli.CHAVE_LOJA
+                        LEFT JOIN (SELECT DT_CADASTRO,CHAVE_LOJA FROM PGTOCORSP..TB_PP_UNIDADE_NEGOCIO GROUP BY DT_CADASTRO,CHAVE_LOJA) DE ON DE.CHAVE_LOJA=soli.CHAVE_LOJA
+                        LEFT JOIN (SELECT CHAVE_LOJA_PARA,MAX(DATA_ATT) DT_CADASTRO FROM PBEN..TB_OP_PBEN_INDICACAO WHERE APROVACAO = 1 GROUP BY CHAVE_LOJA_PARA) EE ON soli.CHAVE_LOJA=EE.CHAVE_LOJA_PARA
+                        LEFT JOIN (SELECT cod_solicitacao, data_log FROM PGTOCORSP.dbo.tb_pgto_log_sistema) L ON soli.cod_solicitacao = L.cod_solicitacao
+                        LEFT JOIN (SELECT a.data_detalhe, cod_etapa, cod_status,exclusao, a.cod_solicitacao FROM PGTOCORSP.dbo.tb_pgto_solicitacao_detalhe a 
+                            JOIN (SELECT DISTINCT cod_solicitacao, max(data_detalhe) as data_detalhe FROM PGTOCORSP.dbo.tb_pgto_solicitacao_detalhe GROUP BY cod_solicitacao) b 
+                            ON b.cod_solicitacao = a.cod_solicitacao AND b.data_detalhe = a.data_detalhe) detalhe ON detalhe.cod_solicitacao = soli.cod_solicitacao 
+                        LEFT JOIN PGTOCORSP.dbo.tb_pgto_acao_solicitacao acao ON acao.cod_acao = soli.cod_acao 
+                        LEFT JOIN PGTOCORSP.dbo.tb_pgto_tipo_pagamento ti_pagam ON ti_pagam.cod_tipo_pagamento = soli.cod_tipo_pagamento 
+                        LEFT JOIN mesu.dbo.tb_lojas loja ON loja.chave_loja = soli.chave_loja 
+                        LEFT JOIN (SELECT DT_CADASTRO,CHAVE_LOJA FROM PGTOCORSP.DBO.TB_PP_AVANCADO GROUP BY CHAVE_LOJA,DT_CADASTRO) B ON soli.CHAVE_LOJA=B.CHAVE_LOJA
+                        LEFT JOIN PGTOCORSP.DBO.TB_PP_PRESENCA C ON C.CHAVE_LOJA=soli.CHAVE_LOJA
+                        LEFT JOIN (SELECT DT_CADASTRO,CHAVE_LOJA FROM PGTOCORSP..TB_PP_UNIDADE_NEGOCIO GROUP BY DT_CADASTRO,CHAVE_LOJA) D ON D.CHAVE_LOJA=soli.CHAVE_LOJA
+                        LEFT JOIN (SELECT CHAVE_LOJA_PARA,MAX(DATA_ATT) DT_CADASTRO FROM PBEN..TB_OP_PBEN_INDICACAO WHERE APROVACAO = 1 GROUP BY CHAVE_LOJA_PARA) E ON soli.CHAVE_LOJA=E.CHAVE_LOJA_PARA
+                        LEFT JOIN (
+                            SELECT DISTINCT A.KEY_EMPRESA,A.DATA_CONTRATO,C.TIPO
+                            FROM MESU.DBO.TB_EMPRESA_VERSAO_CONTRATO2 A
+                            JOIN (SELECT KEY_EMPRESA,MAX(DATA_CONTRATO) DATA_CONTRATO,MAX(COD_VERSAO)COD_VERSAO
+                                 FROM MESU.DBO.TB_EMPRESA_VERSAO_CONTRATO2 A GROUP BY KEY_EMPRESA) B 
+                                 ON A.KEY_EMPRESA=B.KEY_EMPRESA AND A.DATA_CONTRATO=B.DATA_CONTRATO AND A.COD_VERSAO=B.COD_VERSAO
+                            LEFT JOIN MESU.DBO.TB_VERSAO C ON A.COD_VERSAO=C.COD_VERSAO
+                        ) G ON loja.COD_EMPRESA = G.KEY_EMPRESA
+                        LEFT JOIN (
+                            SELECT B.COD_EMPRESA,
+                                MAX(CASE WHEN COD_SERVICO = 'D' THEN 1 ELSE 0 END) AS 'DEP_DINHEIRO_VALID',
+                                MAX(CASE WHEN COD_SERVICO = 'D' THEN 1 ELSE 0 END) AS 'DEP_CHEQUE_VALID',
+                                MAX(CASE WHEN COD_SERVICO = 'R' THEN 1 ELSE 0 END) AS 'REC_RETIRADA_VALID',
+                                MAX(CASE WHEN COD_SERVICO = 'K' THEN 1 ELSE 0 END) AS 'SAQUE_CHEQUE_VALID',
+                                MAX(CASE WHEN COD_SERVICO = 'PC' THEN 1 ELSE 0 END) AS 'SEGUNDA_VIA_CARTAO_VALID',
+                                MAX(CASE WHEN COD_SERVICO = 'CB' THEN 1 ELSE 0 END) AS 'CONSULTA_INSS_VALID',
+                                MAX(CASE WHEN COD_SERVICO = 'CO' THEN 1 ELSE 0 END) AS 'HOLERITE_INSS_VALID'
+                            FROM PGTOCORSP.DBO.PGTOCORSP_SERVICOS_VANS A
+                            JOIN (SELECT COD_EMPRESA, COD_SERVICO FROM MESU.DBO.EMPRESAS_SERVICOS GROUP BY COD_EMPRESA, COD_SERVICO) B 
+                                ON A.COD_SERVICO_VAN = B.COD_SERVICO
+                            WHERE COD_SERVICO_BRAD IN (" . Wxkd_Config::getServiceCodesSQL() . ") 
+                            GROUP BY B.COD_EMPRESA
+                        ) F ON loja.COD_EMPRESA=F.COD_EMPRESA
+                        WHERE (BE.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR CE.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR DE.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR EE.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "') 
+                        AND exclusao = 0 AND soli.cod_acao IN(1,2) AND ti_pagam.cod_tipo_pagamento != 3 AND soli.wxkd_flag = 0 AND desc_acao = 'Descadastramento'";
+                    break;
+                    
+                case 'historico':
+                    $query = "SELECT " . $this->baseSelectFields . $this->baseJoins . 
+                            " WHERE (B.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR C.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR D.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR E.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "') 
+                            AND H.WXKD_FLAG IN (0,1)";
+                    break;
+                    
+                default: 
+                    $query = "SELECT " . $this->baseSelectFields . $this->baseJoins . 
+                            " WHERE (B.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR C.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR D.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR E.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "') 
+                            AND H.WXKD_FLAG IN (0,1)";
+                    break;
             }
             
-            $xml = '<response><success>true</success><txtData>';
-            
-            $recordsToUpdate = array();
-            
-            foreach ($data as $row) {
-                $xml .= '<row>';
-                $xml .= '<cod_empresa>' . addcslashes(isset($row['COD_EMPRESA']) ? $row['COD_EMPRESA'] : '', '"<>&') . '</cod_empresa>';
-                $xml .= '<quant_lojas>' . addcslashes(isset($row['QUANT_LOJAS']) ? $row['QUANT_LOJAS'] : '', '"<>&') . '</quant_lojas>';
-                $xml .= '<cod_loja>' . addcslashes(isset($row['Cod_Loja']) ? $row['Cod_Loja'] : '', '"<>&') . '</cod_loja>';
-                $xml .= '<TIPO_CORRESPONDENTE>' . addcslashes(isset($row['TIPO_CORRESPONDENTE']) ? $row['TIPO_CORRESPONDENTE'] : '', '"<>&') . '</TIPO_CORRESPONDENTE>';
-                $xml .= '<data_contrato>' . addcslashes(isset($row['DATA_CONTRATO']) ? $row['DATA_CONTRATO'] : '', '"<>&') . '</data_contrato>';
-                $xml .= '<tipo_contrato>' . addcslashes(isset($row['TIPO_CONTRATO']) ? $row['TIPO_CONTRATO'] : '', '"<>&') . '</tipo_contrato>';
-                $xml .= '</row>';
-                
-                $codEmpresa = (int) (isset($row['COD_EMPRESA']) ? $row['COD_EMPRESA'] : 0);
-                $codLoja = (int) (isset($row['Cod_Loja']) ? $row['Cod_Loja'] : 0);
-                
-                if ($codEmpresa > 0 && $codLoja > 0) {
-                    $recordsToUpdate[] = array(
-                        'COD_EMPRESA' => $codEmpresa,
-                        'COD_LOJA' => $codLoja
-                    );
-                }
+            if (empty($query)) {
+                return array();
             }
             
-            if (!empty($recordsToUpdate)) {
-                $updateResult = $this->model->updateWxkdFlag($recordsToUpdate);
-                $xml .= '<flagUpdate>';
-                $xml .= '<success>' . ($updateResult ? 'true' : 'false') . '</success>';
-                $xml .= '<recordsUpdated>' . count($recordsToUpdate) . '</recordsUpdated>';
-                $xml .= '</flagUpdate>';
-            }
-            
-            $xml .= '</txtData></response>';
-            echo $xml;
-            exit;
+            $result = $this->sql->select($query);
+            return $result;
             
         } catch (Exception $e) {
-            $xml = '<response>';
-            $xml .= '<success>false</success>';
-            $xml .= '<e>' . addcslashes($e->getMessage(), '"<>&') . '</e>';
-            $xml .= '</response>';
-            echo $xml;
-            exit;
+            error_log("getTableDataByFilter - Exception: " . $e->getMessage());
+            return array();
         }
     }
-    
-    public function exportAccess() {
-        $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
-        $selectedIds = isset($_GET['ids']) ? $_GET['ids'] : '';
 
+    public function updateWxkdFlag($records) {
         try {
-            $data = $this->getFilteredData($filter, $selectedIds);
-            $cutoff = Wxkd_Config::getCutoffTimestamp();
+            if (empty($records)) {
+                return false;
+            }
             
-            $avUnPrData = array();
-            $opData = array();
+            $updateCount = 0;
             
-            foreach ($data as $row) {
-                $activeTypes = $this->getActiveTypes($row, $cutoff);
+            foreach ($records as $record) {
+                $codEmpresa = (int) $record['COD_EMPRESA'];
+                $codLoja = (int) $record['COD_LOJA'];
                 
-                $hasOP = in_array('OP', $activeTypes);
-                $hasOthers = in_array('AV', $activeTypes) || in_array('PR', $activeTypes) || in_array('UN', $activeTypes);
+                if ($codEmpresa <= 0 || $codLoja <= 0) {
+                    continue;
+                }
                 
-                $codEmpresa = $this->getEmpresaCode($row);
+                // Check if record exists first (optimization)
+                $checkSql = "SELECT COUNT(*) as total FROM PGTOCORSP.dbo.tb_wxkd_flag 
+                             WHERE COD_EMPRESA = $codEmpresa AND COD_LOJA = $codLoja";
                 
-                if (!empty($codEmpresa)) {
-                    if ($hasOP) {
-                        $opData[] = $codEmpresa;
-                    }
-                    if ($hasOthers) {
-                        $avUnPrData[] = $codEmpresa;
-                    }
+                $checkResult = $this->sql->select($checkSql);
+                
+                if (empty($checkResult) || !isset($checkResult[0]['total']) || $checkResult[0]['total'] == 0) {
+                    continue;
+                }
+                
+                $sql = "UPDATE PGTOCORSP.dbo.tb_wxkd_flag 
+                        SET WXKD_FLAG = 1 
+                        WHERE COD_EMPRESA = $codEmpresa AND COD_LOJA = $codLoja";
+                
+                $result = $this->sql->update($sql);
+                
+                if ($result) {
+                    $updateCount++;
                 }
             }
             
-            $avUnPrData = array_unique($avUnPrData);
-            $opData = array_unique($opData);
-            
-            $xml = '<response><success>true</success>';
-            
-            $xml .= '<avUnPrData>';
-            foreach ($avUnPrData as $codEmpresa) {
-                $xml .= '<empresa>' . addcslashes($codEmpresa, '"<>&') . '</empresa>';
-            }
-            $xml .= '</avUnPrData>';
-            
-            if (!empty($opData)) {
-                $xml .= '<opData>';
-                foreach ($opData as $codEmpresa) {
-                    $xml .= '<empresa>' . addcslashes($codEmpresa, '"<>&') . '</empresa>';
-                }
-                $xml .= '</opData>';
-            }
-            
-            $xml .= '</response>';
-            echo $xml;
-            exit;
+            return $updateCount > 0;
             
         } catch (Exception $e) {
-            $xml = '<response>';
-            $xml .= '<success>false</success>';
-            $xml .= '<e>' . addcslashes($e->getMessage(), '"<>&') . '</e>';
-            $xml .= '</response>';
-            echo $xml;
-            exit;
+            error_log("updateWxkdFlag - Exception: " . $e->getMessage());
+            return false;
         }
-    }
-    
-    public function getValidationError($row) {
-        $cutoff = Wxkd_Config::getCutoffTimestamp();
-        $activeTypes = $this->getActiveTypes($row, $cutoff);
-        
-        foreach ($activeTypes as $type) {
-            if ($type === 'AV' || $type === 'PR' || $type === 'UN') {
-                $basicValidation = $this->checkBasicValidations($row);
-                if ($basicValidation !== true) {
-                    return 'Tipo ' . $type . ' - ' . str_replace(array('ç', 'õ', 'ã'), array('c', 'o', 'a'), $basicValidation);
-                }
-            } elseif ($type === 'OP') {
-                $opValidation = $this->checkOPValidations($row);
-                if ($opValidation !== true) {
-                    return str_replace(array('ç', 'õ', 'ã'), array('c', 'o', 'a'), $opValidation);
-                }
-            }
-        }
-        
-        return null; 
-    }
-    
-    // Helper methods
-    private function getFilteredData($filter, $selectedIds) {
-        if (!empty($selectedIds)) {
-            $allData = $this->model->getTableDataByFilter($filter);
-            $idsArray = explode(',', $selectedIds);
-            $data = array();
-            
-            foreach ($allData as $row) {
-                $rowId = isset($row['CHAVE_LOJA']) ? $row['CHAVE_LOJA'] : 
-                        (isset($row['id']) ? $row['id'] : '');
-                if (in_array($rowId, $idsArray)) {
-                    $data[] = $row;
-                }
-            }
-            return $data;
-        } else {
-            return $this->model->getTableDataByFilter($filter);
-        }
-    }
-    
-    private function getActiveTypes($row, $cutoff) {
-        $activeTypes = array();
-        $fields = Wxkd_Config::FIELD_MAPPINGS;
-        
-        foreach ($fields as $field => $label) {
-            $raw = isset($row[$field]) ? trim($row[$field]) : '';
-            if (!empty($raw)) {
-                $parts = explode('/', $raw);
-                if (count($parts) == 3) {
-                    $day = (int)$parts[0];
-                    $month = (int)$parts[1];
-                    $year = (int)$parts[2];
-                    if (checkdate($month, $day, $year)) {
-                        $timestamp = mktime(0, 0, 0, $month, $day, $year);
-                        if ($timestamp > $cutoff) {
-                            $activeTypes[] = $label;
-                        }
-                    }
-                }
-            }
-        }
-        
-        return $activeTypes;
-    }
-    
-    private function getEmpresaCode($row) {
-        $possibleEmpresaFields = array('COD_EMPRESA', 'cod_empresa', 'Cod_Empresa', 'CODEMPRESA', 'cod_emp');
-        foreach ($possibleEmpresaFields as $field) {
-            if (isset($row[$field]) && !empty($row[$field])) {
-                return $row[$field];
-            }
-        }
-        return '';
-    }
-    
-    private function addDateFieldsToXML(&$xml, $row) {
-        $fields = Wxkd_Config::FIELD_MAPPINGS;
-        $cutoff = Wxkd_Config::getCutoffTimestamp();
-
-        foreach ($fields as $field => $label) {
-            $raw = isset($row[$field]) ? trim($row[$field]) : '';
-
-            if (!empty($raw)) {
-                $parts = explode('/', $raw);
-                if (count($parts) == 3) {
-                    $day = (int)$parts[0];
-                    $month = (int)$parts[1];
-                    $year = (int)$parts[2];
-
-                    if (checkdate($month, $day, $year)) {
-                        $timestamp = mktime(0, 0, 0, $month, $day, $year);
-                        if ($timestamp > $cutoff) {
-                            $formattedDate = sprintf('%04d-%02d-%02d', $year, $month, $day);
-                            $xml .= '<date>' . htmlspecialchars($formattedDate) . '</date>';
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    private function addStandardFieldsToXML(&$xml, $row) {
-        $xml .= '<cod_loja>' . addcslashes(isset($row['Cod_Loja']) ? $row['Cod_Loja'] : '', '"<>&') . '</cod_loja>';
-        $xml .= '<quant_lojas>' . addcslashes(isset($row['QUANT_LOJAS']) ? $row['QUANT_LOJAS'] : '', '"<>&') . '</quant_lojas>';
-        $xml .= '<tipo_correspondente>' . addcslashes(isset($row['TIPO_CORRESPONDENTE']) ? $row['TIPO_CORRESPONDENTE'] : '', '"<>&') . '</tipo_correspondente>';
-        $xml .= '<data_conclusao>' . addcslashes(isset($row['DATA_CONCLUSAO']) ? $row['DATA_CONCLUSAO'] : '', '"<>&') . '</data_conclusao>';
-        
-        $xml .= '<data_solicitacao>';
-        $timeAndre = strtotime($row['DATA_SOLICITACAO']);
-        if ($timeAndre !== false && !empty($row['DATA_SOLICITACAO'])) {
-            $xml .= date('d/m/Y', $timeAndre);
-        } else {
-            $xml .= '—';
-        }
-        $xml .= '</data_solicitacao>';
-    }
-    
-    private function addValidationFieldsToXML(&$xml, $row) {
-        $validationFields = array(
-            'dep_dinheiro' => 'DEP_DINHEIRO_VALID',
-            'dep_cheque' => 'DEP_CHEQUE_VALID',
-            'rec_retirada' => 'REC_RETIRADA_VALID',
-            'saque_cheque' => 'SAQUE_CHEQUE_VALID'
-        );
-        
-        foreach ($validationFields as $xmlField => $validField) {
-            $xml .= '<' . $xmlField . '>';
-            if (isset($row[$validField]) && isset($row['TIPO_LIMITES'])) {
-                $isPresencaOrOrgao = (strpos($row['TIPO_LIMITES'], 'PRESENCA') !== false || 
-                                strpos($row['TIPO_LIMITES'], 'ORG_PAGADOR') !== false);
-                $isAvancadoOrApoio = (strpos($row['TIPO_LIMITES'], 'AVANCADO') !== false || 
-                                strpos($row['TIPO_LIMITES'], 'UNIDADE_NEGOCIO') !== false);
-                
-                $limits = $this->getLimitsForField($xmlField, $isPresencaOrOrgao, $isAvancadoOrApoio);
-                
-                if ($row[$validField] == 1) {
-                    $xml .= $limits['valid'];
-                } else {
-                    $xml .= $limits['invalid'];
-                }
-            } else {
-                $xml .= 'Tipo não definido';
-            }
-            $xml .= '</' . $xmlField . '>';
-        }
-        
-        // Special fields
-        $xml .= '<segunda_via_cartao>';
-        if (isset($row['SEGUNDA_VIA_CARTAO_VALID'])) {
-            $xml .= ($row['SEGUNDA_VIA_CARTAO_VALID'] === 1) ? 'Apto' : 'Nao Apto';
-        }
-        $xml .= '</segunda_via_cartao>';
-        
-        $xml .= '<holerite_inss>';
-        if (isset($row['HOLERITE_INSS_VALID'])) {
-            $xml .= ($row['HOLERITE_INSS_VALID'] === 1) ? 'Apto' : 'Nao Apto';
-        }
-        $xml .= '</holerite_inss>';
-        
-        $xml .= '<cons_inss>';
-        if (isset($row['CONSULTA_INSS_VALID'])) {
-            $xml .= ($row['CONSULTA_INSS_VALID'] === 1) ? 'Apto' : 'Nao Apto';
-        }
-        $xml .= '</cons_inss>';
-        
-        $xml .= '<data_contrato>' . addcslashes(isset($row['DATA_CONTRATO']) ? $row['DATA_CONTRATO'] : '', '"<>&') . '</data_contrato>';
-        $xml .= '<tipo_contrato>' . addcslashes(isset($row['TIPO_CONTRATO']) ? $row['TIPO_CONTRATO'] : '', '"<>&') . '</tipo_contrato>';
-    }
-    
-    private function getLimitsForField($field, $isPresencaOrOrgao, $isAvancadoOrApoio) {
-        $limits = Wxkd_Config::getLimitsConfig($field);
-    private function getLimitsForField($field, $isPresencaOrOrgao, $isAvancadoOrApoio) {
-        $limits = Wxkd_Config::getLimitsConfig($field);
-        
-        if (!$limits) {
-            return array('valid' => '0', 'invalid' => '0*');
-        }
-        
-        if ($isPresencaOrOrgao) {
-            return array(
-                'valid' => $limits['presenca'],
-                'invalid' => $limits['presenca'] . '*'
-            );
-        } elseif ($isAvancadoOrApoio) {
-            return array(
-                'valid' => $limits['avancado'],
-                'invalid' => $limits['avancado'] . '*'
-            );
-        } else {
-            return array(
-                'valid' => '0',
-                'invalid' => '0*'
-            );
-        }
-    }
-    
-    private function validateRecordsForTXTExport($data) {
-        $invalidRecords = array();
-        $cutoff = Wxkd_Config::getCutoffTimestamp();
-        
-        foreach ($data as $row) {
-            $activeTypes = $this->getActiveTypes($row, $cutoff);
-            $codEmpresa = $this->getEmpresaCode($row);
-            
-            if (empty($codEmpresa) || empty($activeTypes)) {
-                continue;
-            }
-            
-            $isValid = true;
-            $errorMessage = '';
-            
-            foreach ($activeTypes as $type) {
-                if ($type === 'AV' || $type === 'PR' || $type === 'UN') {
-                    $basicValidation = $this->checkBasicValidations($row);
-                    if ($basicValidation !== true) {
-                        $isValid = false;
-                        $errorMessage = 'Tipo ' . $type . ' - ' . $basicValidation;
-                        break;
-                    }
-                } elseif ($type === 'OP') {
-                    $opValidation = $this->checkOPValidations($row);
-                    if ($opValidation !== true) {
-                        $isValid = false;
-                        $errorMessage = $opValidation;
-                        break;
-                    }
-                }
-            }
-            
-            if (!$isValid) {
-                $invalidRecords[] = array(
-                    'cod_empresa' => $codEmpresa,
-                    'error' => $errorMessage
-                );
-            }
-        }
-        
-        return $invalidRecords;
-    }
-    
-    private function checkBasicValidations($row) {
-        $requiredFields = Wxkd_Config::getValidationFields('basic');
-        
-        $missingFields = array();
-        foreach ($requiredFields as $field => $name) {
-            if (!isset($row[$field]) || $row[$field] != '1') {
-                $missingFields[] = $name;
-            }
-        }
-        
-        if (!empty($missingFields)) {
-            return 'Validações pendentes: ' . implode(', ', $missingFields);
-        }
-        
-        return true;
     }
 
-    private function checkOPValidations($row) {
-        $tipoContrato = isset($row['TIPO_CONTRATO']) ? $row['TIPO_CONTRATO'] : '';
-        $version = $this->extractVersionFromContract($tipoContrato);
-        
-        if ($version === null) {
-            return 'Tipo de contrato não pode ser exportado: ' . $tipoContrato;
+    public function contractDateCheck() {
+        try {
+            // Optimized contract check query
+            $query = "SELECT A.Chave_Loja
+                     " . $this->baseJoins . "
+                     WHERE (B.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR C.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR D.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR E.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "') 
+                     AND H.WXKD_FLAG = 0 
+                     AND G.TIPO IN (
+                         'Contrato de Correspondente 8.1',
+                         'Contrato de Correspondente 8.2',
+                         'Contrato de Correspondente 9.1',
+                         'Contrato de Correspondente 9.2',
+                         'Contrato de Correspondente 10.1',
+                         'Contrato de Correspondente 10.2'
+                     )";
+                     
+            $result = $this->sql->select($query);
+            return $result;
+            
+        } catch (Exception $e) {
+            throw new Exception("Erro ao verificar contratos: " . $e->getMessage());
         }
-        
-        $requiredFields = Wxkd_Config::getValidationFields('op');
-        
-        if (Wxkd_Config::requiresSegundaViaValidation($version)) {
-            $requiredFields['SEGUNDA_VIA_CARTAO_VALID'] = 'Segunda Via Cartão';
-        }
-        
-        $missingFields = array();
-        foreach ($requiredFields as $field => $name) {
-            if (!isset($row[$field]) || $row[$field] != '1') {
-                $missingFields[] = $name;
-            }
-        }
-        
-        if (!empty($missingFields)) {
-            return 'Validações OP pendentes (v' . $version . '): ' . implode(', ', $missingFields);
-        }
-        
-        return true;
     }
 
-    private function extractVersionFromContract($tipoContrato) {
-        if (preg_match('/(\d+\.\d+)/', $tipoContrato, $matches)) {
-            $version = (float)$matches[1];
-            if (Wxkd_Config::isValidContractVersion($version)) {
-                return $version;
-            }
-        }
-        return null;
-    }
-    
-    private function outputValidationError($invalidRecords) {
-        $xml = '<response>';
-        $xml .= '<success>false</success>';
-        $xml .= '<validation_error>true</validation_error>';
-        $xml .= '<invalid_records>';
-        foreach ($invalidRecords as $record) {
-            $xml .= '<record>';
-            $xml .= '<cod_empresa>' . addcslashes($record['cod_empresa'], '"<>&') . '</cod_empresa>';
-            $xml .= '<error>' . addcslashes($record['error'], '"<>&') . '</error>';
-            $xml .= '<error_msg>' . str_replace(array('ç','õ','ã'),array('c','o','a'), $record['error']) . '</error_msg>';
-            $xml .= '</record>';
-        }
-        $xml .= '</invalid_records>';
-        $xml .= '<message>Alguns registros não atendem aos critérios para exportação TXT. Use o botão Exportar Access.</message>';
-        $xml .= '</response>';
-        
-        echo $xml;
-        exit;
+    public function __destruct() {
+        $this->sql = null;
     }
 }
 ?>
