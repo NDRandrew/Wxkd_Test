@@ -1,226 +1,192 @@
-The user doesn't want to add CSS, so I need to remove the CSS parts from my response and just focus on the JavaScript fix that will build the accordion from the XML data they showed me.
+The error is saying that `this.formatMoney is not a function` which means that in the HistoricoModule, when it's trying to call `this.formatMoney`, the function doesn't exist or the context is wrong.
 
-Looking at the XML data they provided:
-```xml
-<tableData>
-    <row>
-        <0>1</0>
-        <CHAVE_LOTE>1</CHAVE_LOTE>
-        <1>Jul 21 2025  4:14PM</1>
-        <DATA_LOG>Jul 21 2025  4:14PM</DATA_LOG>
-        <2>1</2>
-        <TOTAL_REGISTROS>1</TOTAL_REGISTROS>
-        <3>MULTIDROGAS</3>
-        <PRIMEIRO_NOME_LOJA>MULTIDROGAS</PRIMEIRO_NOME_LOJA>
-        <4>Cadastramento</4>
-        <FILTRO>Cadastramento</FILTRO>
-    </row>
-</tableData>
-```
+Looking at the JavaScript code I provided earlier, I see that the `formatMoney` function is defined in the HistoricoModule, but there might be a context issue when it's being called within the jQuery each loop.
 
-The data is there, so the JavaScript just needs to build the accordion from this data. I'll provide just the JavaScript update without any CSS.
+Let me fix this by ensuring the method calls are properly scoped within the HistoricoModule.
 
-**Update only the JavaScript (TestJ.txt) - Fix the FilterModule.loadTableData method:**
+The error is because of the `this` context in the HistoricoModule. Let me fix the JavaScript method:
+
+**Update the JavaScript (TestJ.txt) - Fix the HistoricoModule:**
 
 ```javascript
-const FilterModuleUpdated = {
-    ...FilterModule,
+const HistoricoModule = {
+    init: function() {
+        $(document).on('click', '.load-details', this.loadDetails.bind(this));
+        $(document).on('shown.bs.collapse', '.panel-collapse', this.onAccordionExpand.bind(this));
+    },
     
-    loadTableData: function(filter) {
-        showLoading();
+    loadDetails: function(e) {
+        e.preventDefault();
+        const button = $(e.currentTarget);
+        const chaveLote = button.data('chave-lote');
+        const tbody = button.closest('tbody');
         
-        // Show/hide appropriate containers based on filter
-        if (filter === 'historico') {
-            $('.table-scrollable').hide();
-            $('#historicoAccordion').show();
-        } else {
-            $('#historicoAccordion').hide();
-            $('.table-scrollable').show();
-            $('#dataTableAndre tbody').html('<tr><td colspan="12" class="text-center">Carregando...</td></tr>');
+        // Prevent multiple clicks
+        if (button.prop('disabled')) {
+            return;
         }
-
-        $.get('wxkd.php?action=ajaxGetTableData&filter=' + filter)
+        
+        button.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Carregando...');
+        
+        // Store reference to this module for use in callbacks
+        const self = this;
+        
+        $.get(`wxkd.php?action=ajaxGetHistoricoDetails&chave_lote=${chaveLote}`)
             .done((xmlData) => {
                 try {
                     const $xml = $(xmlData);
                     const success = $xml.find('success').text() === 'true';
                     
                     if (success) {
-                        const cardData = {
-                            cadastramento: $xml.find('cardData cadastramento').text(),
-                            descadastramento: $xml.find('cardData descadastramento').text(),
-                            historico: $xml.find('cardData historico').text()
-                        };
+                        let detailsHtml = '';
+                        let recordCount = 0;
                         
-                        this.updateCardCounts(cardData);
-                        
-                        if (filter === 'historico') {
-                            // Build accordion HTML from XML data
-                            this.buildHistoricoAccordion($xml);
-                            hideLoading();
-                        } else {
-                            // Handle normal table data
-                            const tableData = [];
-                            $xml.find('tableData row').each(function() {
-                                const row = {};
-                                $(this).children().each(function() {
-                                    row[this.tagName] = $(this).text();
-                                });
-                                tableData.push(row);
+                        $xml.find('detailData row').each(function() {
+                            const row = {};
+                            $(this).children().each(function() {
+                                row[this.tagName] = $(this).text();
                             });
-
-                            PaginationModule.replaceTableDataEnhanced(tableData);
-                            PaginationModule.currentPage = 1;
-                            PaginationModule.updateTable();
                             
-                            CheckboxModule.clearSelections();
-                            
-                            setTimeout(() => {
-                                CheckboxModule.init();
-                                CheckboxModule.updateSelectAllState();
-                                CheckboxModule.updateExportButton();
-                            }, 200);
-                            
-                            setTimeout(() => {
-                                StatusFilterModule.reapplyAfterDataLoad();
-                                hideLoading();
-                            }, 400);
+                            recordCount++;
+                            detailsHtml += `
+                                <tr>
+                                    <td>${row.CHAVE_LOJA || ''}</td>
+                                    <td>${row.NOME_LOJA || ''}</td>
+                                    <td>${row.COD_EMPRESA || ''}</td>
+                                    <td>${row.COD_LOJA || ''}</td>
+                                    <td>${self.formatDate(row.DATA_LOG)}</td>
+                                    <td><span class="badge badge-info">${row.FILTRO || ''}</span></td>
+                                </tr>
+                            `;
+                        });
+                        
+                        if (recordCount > 0) {
+                            tbody.html(detailsHtml);
+                        } else {
+                            tbody.html('<tr><td colspan="6" class="text-center text-muted">Nenhum detalhe encontrado</td></tr>');
                         }
+                        
+                        // Add summary row
+                        tbody.append(`
+                            <tr class="info">
+                                <td colspan="6" class="text-center">
+                                    <strong>Total de ${recordCount} registro(s) processado(s) neste lote</strong>
+                                </td>
+                            </tr>
+                        `);
+                    } else {
+                        tbody.html('<tr><td colspan="6" class="text-center text-danger">Erro ao carregar detalhes</td></tr>');
                     }
+                    
                 } catch (e) {
-                    console.error('Error parsing XML: ', e);
-                    if (filter !== 'historico') {
-                        $('#dataTableAndre tbody').html('<tr><td colspan="12" class="text-center text-danger">Erro ao processar dados</td></tr>');
-                    }
-                    hideLoading();
+                    console.error('Error loading historico details: ', e);
+                    tbody.html('<tr><td colspan="6" class="text-center text-danger">Erro ao processar dados</td></tr>');
                 }
             })
-            .fail((jqXHR, textStatus, errorThrown) => {
-                console.error('AJAX failed:', textStatus, errorThrown);
-                if (filter !== 'historico') {
-                    $('#dataTableAndre tbody').html('<tr><td colspan="12" class="text-center text-danger">Erro ao carregar dados</td></tr>');
-                }
-                hideLoading();
+            .fail(() => {
+                tbody.html('<tr><td colspan="6" class="text-center text-danger">Erro na requisição</td></tr>');
+            })
+            .always(() => {
+                button.prop('disabled', false).html('<i class="fa fa-refresh"></i> Recarregar');
             });
     },
     
-    buildHistoricoAccordion: function($xml) {
-        let accordionHtml = '';
-        const rows = $xml.find('tableData row');
+    onAccordionExpand: function(e) {
+        const panel = $(e.target);
+        const tbody = panel.find('.historico-details');
+        const loadButton = tbody.find('.load-details');
         
-        console.log('Building accordion with', rows.length, 'rows');
-        
-        if (rows.length > 0) {
-            accordionHtml = '<div class="panel-group accordion" id="accordions">';
-            
-            rows.each(function() {
-                const row = {};
-                $(this).children().each(function() {
-                    row[this.tagName] = $(this).text();
-                });
-                
-                console.log('Processing row:', row);
-                
-                const chaveLote = row.CHAVE_LOTE || row['0'];
-                const dataLog = row.DATA_LOG || row['1'];
-                const totalRegistros = row.TOTAL_REGISTROS || row['2'];
-                const primeiroNomeLoja = row.PRIMEIRO_NOME_LOJA || row['3'];
-                const filtro = row.FILTRO || row['4'];
-                
-                // Format date
-                let formattedDate = dataLog;
-                try {
-                    const date = new Date(dataLog);
-                    if (!isNaN(date.getTime())) {
-                        formattedDate = date.toLocaleDateString('pt-BR') + ' ' + 
-                                      date.toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'});
-                    }
-                } catch (e) {
-                    console.log('Date formatting error:', e);
-                }
-                
-                accordionHtml += `
-                    <div class="panel panel-default">
-                        <div class="panel-heading">
-                            <h4 class="panel-title">
-                                <a class="accordion-toggle collapsed" data-toggle="collapse" 
-                                   data-parent="#accordions" href="#collapse${chaveLote}" 
-                                   aria-expanded="false">
-                                    <i class="fa-fw fa fa-history"></i> 
-                                    Lote #${chaveLote} - ${formattedDate} - 
-                                    ${totalRegistros} registro(s) - 
-                                    ${primeiroNomeLoja}
-                                </a>
-                            </h4>
-                        </div>
-                        <div id="collapse${chaveLote}" class="panel-collapse collapse" 
-                             aria-expanded="false" style="height: 0px;">
-                            <div class="panel-body border-red">
-                                <div class="table-responsive">
-                                    <table class="table table-striped table-sm">
-                                        <thead>
-                                            <tr>
-                                                <th>Chave Loja</th>
-                                                <th>Nome Loja</th>
-                                                <th>Cod Empresa</th>
-                                                <th>Cod Loja</th>
-                                                <th>Data Log</th>
-                                                <th>Filtro</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody class="historico-details" data-chave-lote="${chaveLote}">
-                                            <tr>
-                                                <td colspan="6" class="text-center">
-                                                    <button class="btn btn-sm btn-info load-details" 
-                                                            data-chave-lote="${chaveLote}">
-                                                        <i class="fa fa-download"></i> Carregar Detalhes
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            });
-            
-            accordionHtml += '</div>';
-        } else {
-            accordionHtml = `
-                <div class="alert alert-info">
-                    <i class="fa fa-info-circle"></i>
-                    Nenhum histórico encontrado. Os registros aparecerão aqui após a exportação de arquivos TXT.
-                </div>
-            `;
+        // Auto-load details when accordion is expanded for the first time
+        if (loadButton.length > 0 && !loadButton.prop('disabled')) {
+            loadButton.click();
         }
+    },
+    
+    formatDate: function(dateString) {
+        if (!dateString) return '—';
         
-        // Create or update the accordion container
-        if ($('#historicoAccordion').length === 0) {
-            $('.table-scrollable').after('<div id="historicoAccordion"></div>');
-        }
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) return dateString;
         
-        $('#historicoAccordion').html(accordionHtml);
-        console.log('Accordion HTML created');
+        return date.toLocaleDateString('pt-BR') + ' ' + date.toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'});
     }
 };
-
-// Replace FilterModule with the updated version
-Object.assign(FilterModule, FilterModuleUpdated);
 ```
 
-**And add the container div in your HTML (TestH.txt) right after the table-scrollable div:**
+**Also add the missing ajaxGetHistoricoDetails method to your Controller (TestC.txt):**
 
 ```php
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Add this accordion container -->
-            <div id="historicoAccordion" style="display: none;"></div>
-            
-            <div class="row mt-3">
+public function ajaxGetHistoricoDetails() {
+    $chaveLote = isset($_GET['chave_lote']) ? (int)$_GET['chave_lote'] : 0;
+    
+    try {
+        if ($chaveLote <= 0) {
+            throw new Exception("CHAVE_LOTE inválido");
+        }
+        
+        $query = "SELECT * FROM PGTOCORSP.dbo.TB_WXKD_LOG WHERE CHAVE_LOTE = $chaveLote ORDER BY CHAVE_LOJA";
+        $detailData = $this->model->sql->select($query);
+        
+        $xml = '<response>';
+        $xml .= '<success>true</success>';
+        $xml .= '<detailData>';
+        
+        if (is_array($detailData) && count($detailData) > 0) {
+            foreach ($detailData as $row) {
+                $xml .= '<row>';
+                foreach ($row as $key => $value) {
+                    $xml .= '<' . $key . '>' . addcslashes($value, '"<>&') . '</' . $key . '>';
+                }
+                $xml .= '</row>';
+            }
+        }
+        
+        $xml .= '</detailData>';
+        $xml .= '</response>';
+        
+    } catch (Exception $e) {
+        $xml = '<response>';
+        $xml .= '<success>false</success>';
+        $xml .= '<e>' . addcslashes($e->getMessage(), '"<>&') . '</e>';
+        $xml .= '</response>';
+    }
+
+    echo $xml;
+    exit;
+}
 ```
 
-This will build the accordion dynamically from the XML data without requiring any additional CSS.
+**And update your main switch case in TestH.txt to include the new action:**
+
+```php
+switch($action) {
+    case 'exportCSV':
+        $controller->exportCSV();
+        break;
+    case 'exportTXT':
+        $controller->exportTXT();
+        break;
+    case 'exportAccess':  
+        $controller->exportAccess();
+        break;
+    case 'ajaxGetTableData':
+        $controller->ajaxGetTableData();
+        break;
+    case 'ajaxGetHistoricoDetails':  // Add this line
+        $controller->ajaxGetHistoricoDetails();
+        break;
+    default:
+        $data = $controller->index();
+        $cardData = $data['cardData'];
+        $tableData = $data['tableData'];
+        $activeFilter = $data['activeFilter'];
+        $contractChavesLookup = $data['contractChavesLookup'];
+        break;
+}
+```
+
+The main fixes:
+1. Removed the `formatMoney` method that was causing the error
+2. Used `const self = this` to maintain proper context
+3. Simplified the detail loading to focus on the basic fields
+4. Added the missing `ajaxGetHistoricoDetails` method
