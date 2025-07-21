@@ -1,171 +1,165 @@
 <?php
-// Update the exportTXT method in your Wxkd_DashboardController class
+// Add this right after the closing </div> of the table-scrollable div and before the pagination div
+// Replace the table section with this conditional rendering:
+?>
 
-public function exportTXT() {
-    $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
-    $selectedIds = isset($_GET['ids']) ? $_GET['ids'] : '';
+<div>
+    <div>
+        <div class="table-scrollable" <?php echo ($activeFilter === 'historico') ? 'style="display:none;"' : ''; ?>>
+            <!-- Your existing table code goes here - keep it as is -->
+            <table class="table table-striped table-bordered table-hover dataTable no-footer" id="dataTableAndre">
+                <!-- Keep all your existing table structure -->
+            </table>
+        </div>
+        
+        <?php if ($activeFilter === 'historico'): ?>
+            <div class="accordion-container" id="historicoAccordion">
+                <?php if (is_array($tableData) && !empty($tableData)): ?>
+                    <div class="panel-group accordion" id="accordions">
+                        <?php foreach ($tableData as $index => $row): ?>
+                            <div class="panel panel-default">
+                                <div class="panel-heading">
+                                    <h4 class="panel-title">
+                                        <a class="accordion-toggle collapsed" data-toggle="collapse" 
+                                           data-parent="#accordions" href="#collapse<?php echo $row['CHAVE_LOTE']; ?>" 
+                                           aria-expanded="false">
+                                            <i class="fa-fw fa fa-history"></i> 
+                                            Lote #<?php echo $row['CHAVE_LOTE']; ?> - 
+                                            <?php echo date('d/m/Y H:i', strtotime($row['DATA_LOG'])); ?> - 
+                                            <?php echo $row['TOTAL_REGISTROS']; ?> registro(s) - 
+                                            <?php echo htmlspecialchars($row['PRIMEIRO_NOME_LOJA']); ?><?php echo ($row['TOTAL_REGISTROS'] > 1) ? ' e outros' : ''; ?>
+                                        </a>
+                                    </h4>
+                                </div>
+                                <div id="collapse<?php echo $row['CHAVE_LOTE']; ?>" 
+                                     class="panel-collapse collapse" 
+                                     aria-expanded="false" style="height: 0px;">
+                                    <div class="panel-body border-red">
+                                        <div class="table-responsive">
+                                            <table class="table table-striped table-sm historico-detail-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Chave Loja</th>
+                                                        <th>Nome Loja</th>
+                                                        <th>Cod Empresa</th>
+                                                        <th>Cod Loja</th>
+                                                        <th>Tipo Correspondente</th>
+                                                        <th>Dep Dinheiro</th>
+                                                        <th>Dep Cheque</th>
+                                                        <th>Rec Retirada</th>
+                                                        <th>Saque Cheque</th>
+                                                        <th>2Via Cartão</th>
+                                                        <th>Holerite INSS</th>
+                                                        <th>Consulta INSS</th>
+                                                        <th>Prova de Vida</th>
+                                                        <th>Data Contrato</th>
+                                                        <th>Tipo Contrato</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody class="historico-details" data-chave-lote="<?php echo $row['CHAVE_LOTE']; ?>">
+                                                    <tr>
+                                                        <td colspan="15" class="text-center">
+                                                            <button class="btn btn-sm btn-info load-details" 
+                                                                    data-chave-lote="<?php echo $row['CHAVE_LOTE']; ?>">
+                                                                <i class="fa fa-download"></i> Carregar Detalhes
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        
+                                        <div class="mt-2">
+                                            <small class="text-muted">
+                                                <strong>Resumo:</strong> 
+                                                Lojas: <?php echo htmlspecialchars($row['CHAVES_LOJAS']); ?>
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php else: ?>
+                    <div class="alert alert-info">
+                        <i class="fa fa-info-circle"></i>
+                        Nenhum histórico encontrado. Os registros aparecerão aqui após a exportação de arquivos TXT.
+                    </div>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
+    </div>
+</div>
 
-    try {
-        $data = $this->getFilteredData($filter, $selectedIds);
-        
-        if (empty($data)) {
-            $xml = '<response>';
-            $xml .= '<success>false</success>';
-            $xml .= '<e>Nenhum dado encontrado para exportação</e>';
-            $xml .= '</response>';
-            echo $xml;
-            exit;
-        }
-        
-        $invalidRecords = $this->validateRecordsForTXTExport($data);
-        
-        if (!empty($invalidRecords)) {
-            $this->outputValidationError($invalidRecords);
-            return;
-        }
-        
-        $xml = '<response><success>true</success><txtData>';
-        
-        $recordsToUpdate = array();
-        
-        foreach ($data as $row) {
-            $xml .= '<row>';
-            $xml .= '<cod_empresa>' . addcslashes(isset($row['Cod_Empresa']) ? $row['Cod_Empresa'] : '', '"<>&') . '</cod_empresa>';
-            $xml .= '<quant_lojas>' . addcslashes(isset($row['QUANT_LOJAS']) ? $row['QUANT_LOJAS'] : '', '"<>&') . '</quant_lojas>';
-            $xml .= '<cod_loja>' . addcslashes(isset($row['Cod_Loja']) ? $row['Cod_Loja'] : '', '"<>&') . '</cod_loja>';
-            $xml .= '<TIPO_CORRESPONDENTE>' . addcslashes(isset($row['TIPO_CORRESPONDENTE']) ? $row['TIPO_CORRESPONDENTE'] : '', '"<>&') . '</TIPO_CORRESPONDENTE>';
-            $xml .= '<data_contrato>' . addcslashes(isset($row['DATA_CONTRATO']) ? $row['DATA_CONTRATO'] : '', '"<>&') . '</data_contrato>';
-            $xml .= '<tipo_contrato>' . addcslashes(isset($row['TIPO_CONTRATO']) ? $row['TIPO_CONTRATO'] : '', '"<>&') . '</tipo_contrato>';
-            $xml .= '</row>';
-            
-            $codEmpresa = (int) (isset($row['Cod_Empresa']) ? $row['Cod_Empresa'] : 0);
-            $codLoja = (int) (isset($row['Cod_Loja']) ? $row['Cod_Loja'] : 0);
-            
-            if ($codEmpresa > 0 && $codLoja > 0) {
-                $recordsToUpdate[] = array(
-                    'COD_EMPRESA' => $codEmpresa,
-                    'COD_LOJA' => $codLoja
-                );
-            }
-        }
-        
-        if (!empty($recordsToUpdate)) {
-            // Generate new CHAVE_LOTE for this export batch
-            $chaveLote = $this->model->generateChaveLote();
-            
-            // Update WXKD_FLAG
-            $updateResult = $this->model->updateWxkdFlag($recordsToUpdate);
-            
-            // Insert log entries
-            $logResult = false;
-            if ($updateResult) {
-                $logResult = $this->model->insertLogEntries($data, $chaveLote);
-            }
-            
-            $xml .= '<flagUpdate>';
-            $xml .= '<success>' . ($updateResult ? 'true' : 'false') . '</success>';
-            $xml .= '<recordsUpdated>' . count($recordsToUpdate) . '</recordsUpdated>';
-            $xml .= '</flagUpdate>';
-            
-            $xml .= '<logInsert>';
-            $xml .= '<success>' . ($logResult ? 'true' : 'false') . '</success>';
-            $xml .= '<chaveLote>' . $chaveLote . '</chaveLote>';
-            $xml .= '<recordsLogged>' . count($data) . '</recordsLogged>';
-            $xml .= '</logInsert>';
-        }
-        
-        $xml .= '</txtData></response>';
-        echo $xml;
-        exit;
-        
-    } catch (Exception $e) {
-        $xml = '<response>';
-        $xml .= '<success>false</success>';
-        $xml .= '<e>' . addcslashes($e->getMessage(), '"<>&') . '</e>';
-        $xml .= '</response>';
-        echo $xml;
-        exit;
-    }
+<?php
+// Also update the main switch case at the top of your file to handle the new action:
+/*
+switch($action) {
+    case 'exportCSV':
+        $controller->exportCSV();
+        break;
+    case 'exportTXT':
+        $controller->exportTXT();
+        break;
+    case 'exportAccess':  
+        $controller->exportAccess();
+        break;
+    case 'ajaxGetTableData':
+        $controller->ajaxGetTableData();
+        break;
+    case 'ajaxGetHistoricoDetails':  // Add this new case
+        $controller->ajaxGetHistoricoDetails();
+        break;
+    default:
+        $data = $controller->index();
+        $cardData = $data['cardData'];
+        $tableData = $data['tableData'];
+        $activeFilter = $data['activeFilter'];
+        $contractChavesLookup = $data['contractChavesLookup'];
+        break;
+}
+*/
+?>
+
+<style>
+/* Add these styles for the accordion */
+.accordion-container {
+    margin-top: 20px;
 }
 
-// Update the getTableDataByFilter method in your model - add this case:
-public function getTableDataByFilter($filter = 'all') {
-    try {
-        $query = "";
-        
-        switch($filter) {
-            case 'cadastramento':
-                $query = "SELECT " . $this->baseSelectFields . $this->baseJoins . 
-                        " WHERE (B.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR C.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR D.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR E.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "') 
-                        AND H.WXKD_FLAG = 0";
-                break;
-                
-            case 'descadastramento':
-                // ... existing descadastramento query
-                break;
-                
-            case 'historico':
-                $chaveLote = isset($_GET['chave_lote']) ? (int)$_GET['chave_lote'] : 0;
-                
-                if ($chaveLote > 0) {
-                    return $this->getHistoricoDetails($chaveLote);
-                } else {
-                    return $this->getHistoricoSummary();
-                }
-                break;
-                
-            default: 
-                $query = "SELECT " . $this->baseSelectFields . $this->baseJoins . 
-                        " WHERE (B.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR C.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR D.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR E.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "') 
-                        AND H.WXKD_FLAG IN (0,1)";
-                break;
-        }
-        
-        if (empty($query)) {
-            return array();
-        }
-        
-        $result = $this->sql->select($query);
-        return $result;
-        
-    } catch (Exception $e) {
-        error_log("getTableDataByFilter - Exception: " . $e->getMessage());
-        return array();
-    }
+.historico-detail-table {
+    font-size: 12px;
 }
 
-// Add a new method to handle historico AJAX requests specifically
-public function ajaxGetHistoricoDetails() {
-    $chaveLote = isset($_GET['chave_lote']) ? (int)$_GET['chave_lote'] : 0;
-    
-    try {
-        $detailData = $this->model->getHistoricoDetails($chaveLote);
-        
-        $xml = '<response>';
-        $xml .= '<success>true</success>';
-        $xml .= '<detailData>';
-        
-        if (is_array($detailData) && count($detailData) > 0) {
-            foreach ($detailData as $row) {
-                $xml .= '<row>';
-                foreach ($row as $key => $value) {
-                    $xml .= '<' . $key . '>' . addcslashes($value, '"<>&') . '</' . $key . '>';
-                }
-                $xml .= '</row>';
-            }
-        }
-        
-        $xml .= '</detailData>';
-        $xml .= '</response>';
-        
-    } catch (Exception $e) {
-        $xml = '<response>';
-        $xml .= '<success>false</success>';
-        $xml .= '<error>' . addcslashes($e->getMessage(), '"<>&') . '</error>';
-        $xml .= '</response>';
-    }
-
-    echo $xml;
-    exit;
+.historico-detail-table th,
+.historico-detail-table td {
+    padding: 8px 4px;
+    text-align: center;
+    vertical-align: middle;
 }
+
+.panel-title a {
+    text-decoration: none;
+}
+
+.panel-title a:hover {
+    text-decoration: none;
+}
+
+.border-red {
+    border-left: 3px solid #d9534f;
+}
+
+.border-gold {
+    border-left: 3px solid #f0ad4e;
+}
+
+.load-details {
+    transition: all 0.3s ease;
+}
+
+.load-details:hover {
+    transform: scale(1.05);
+}
+</style><?php
 ?>
