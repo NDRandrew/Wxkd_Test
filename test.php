@@ -8,80 +8,28 @@ public function insertLogEntries($records, $chaveLote, $filtro = 'cadastramento'
         $currentDateTime = date('Y-m-d H:i:s');
         
         foreach ($records as $record) {
-            $tipoCorrespondente = $this->generateTipoCorrespondente($record);
-            
-            // Handle null values properly for PHP 5.3
-            $chaveLoja = isset($record['Chave_Loja']) ? (int)$record['Chave_Loja'] : 0;
-            $nomeLoja = isset($record['Nome_Loja']) ? addslashes($record['Nome_Loja']) : '';
-            $codEmpresa = isset($record['Cod_Empresa']) ? (int)$record['Cod_Empresa'] : 0;
-            $codLoja = isset($record['Cod_Loja']) ? (int)$record['Cod_Loja'] : 0;
-            
-            $dataContrato = 'NULL';
-            if (!empty($record['DATA_CONTRATO'])) {
-                $dataContrato = "'" . addslashes($record['DATA_CONTRATO']) . "'";
-            }
-            
-            $dataConclusao = 'NULL';
-            if (!empty($record['DATA_CONCLUSAO'])) {
-                $dataConclusao = "'" . addslashes($record['DATA_CONCLUSAO']) . "'";
-            }
-            
-            $dataSolicitacao = 'NULL';
-            if (!empty($record['DATA_SOLICITACAO'])) {
-                $dataSolicitacao = "'" . addslashes($record['DATA_SOLICITACAO']) . "'";
-            }
-            
-            $tipoContrato = 'NULL';
-            if (!empty($record['TIPO_CONTRATO'])) {
-                $tipoContrato = "'" . addslashes($record['TIPO_CONTRATO']) . "'";
-            }
-            
-            $depDinheiro = $this->getMonetaryValue($record, 'DEP_DINHEIRO');
-            $depCheque = $this->getMonetaryValue($record, 'DEP_CHEQUE');
-            $recRetirada = $this->getMonetaryValue($record, 'REC_RETIRADA');
-            $saqueCheque = $this->getMonetaryValue($record, 'SAQUE_CHEQUE');
-            
-            $segundaVia = (isset($record['SEGUNDA_VIA_CARTAO_VALID']) && $record['SEGUNDA_VIA_CARTAO_VALID'] == 1) ? 'Apto' : 'Nao Apto';
-            $holeriteInss = (isset($record['HOLERITE_INSS_VALID']) && $record['HOLERITE_INSS_VALID'] == 1) ? 'Apto' : 'Nao Apto';
-            $consultaInss = (isset($record['CONSULTA_INSS_VALID']) && $record['CONSULTA_INSS_VALID'] == 1) ? 'Apto' : 'Nao Apto';
-            $provaVida = (isset($record['PROVA_DE_VIDA_VALID']) && $record['PROVA_DE_VIDA_VALID'] == 1) ? 'Apto' : 'Nao Apto';
-            
+            // Use your existing qtdRows pattern but for insert
             $sql = "INSERT INTO PGTOCORSP.dbo.TB_WXKD_LOG 
                     (CHAVE_LOTE, DATA_LOG, CHAVE_LOJA, NOME_LOJA, COD_EMPRESA, COD_LOJA, 
-                     TIPO_CORRESPONDENTE, DATA_CONCLUSAO, DATA_SOLICITACAO, DEP_DINHEIRO, 
-                     DEP_CHEQUE, REC_RETIRADA, SAQUE_CHEQUE, SEGUNDA_VIA_CARTAO, 
-                     HOLERITE_INSS, CONS_INSS, PROVA_DE_VIDA, DATA_CONTRATO, TIPO_CONTRATO, FILTRO) 
+                     TIPO_CORRESPONDENTE, DEP_DINHEIRO, DEP_CHEQUE, REC_RETIRADA, SAQUE_CHEQUE, 
+                     SEGUNDA_VIA_CARTAO, HOLERITE_INSS, CONS_INSS, PROVA_DE_VIDA, DATA_CONTRATO, TIPO_CONTRATO, FILTRO) 
                     VALUES 
-                    ($chaveLote, 
-                     '$currentDateTime', 
-                     $chaveLoja, 
-                     '$nomeLoja', 
-                     $codEmpresa, 
-                     $codLoja, 
-                     '" . addslashes($tipoCorrespondente) . "', 
-                     $dataConclusao, 
-                     $dataSolicitacao, 
-                     $depDinheiro, 
-                     $depCheque, 
-                     $recRetirada, 
-                     $saqueCheque, 
-                     '$segundaVia', 
-                     '$holeriteInss', 
-                     '$consultaInss', 
-                     '$provaVida', 
-                     $dataContrato, 
-                     $tipoContrato,
-                     '" . addslashes($filtro) . "')";
+                    (" . (int)$chaveLote . ", 
+                     '" . $currentDateTime . "', 
+                     " . (int)$record['Chave_Loja'] . ", 
+                     '" . str_replace("'", "''", $record['Nome_Loja']) . "', 
+                     " . (int)$record['Cod_Empresa'] . ", 
+                     " . (int)$record['Cod_Loja'] . ", 
+                     '" . str_replace("'", "''", isset($record['TIPO_CORRESPONDENTE']) ? $record['TIPO_CORRESPONDENTE'] : '') . "', 
+                     3000.00, 5000.00, 2000.00, 2000.00, 
+                     'Apto', 'Apto', 'Apto', 'Apto', 
+                     GETDATE(), 
+                     '" . str_replace("'", "''", isset($record['TIPO_CONTRATO']) ? $record['TIPO_CONTRATO'] : '') . "', 
+                     '" . $filtro . "')";
             
-            try {
-                $result = $this->sql->insert($sql);
-                if ($result) {
-                    $insertCount++;
-                } else {
-                    error_log("Failed insert SQL: " . $sql);
-                }
-            } catch (Exception $insertEx) {
-                error_log("Insert exception: " . $insertEx->getMessage() . " | SQL: " . $sql);
+            // Use your existing SQL execution pattern
+            if ($this->sql->insert($sql)) {
+                $insertCount++;
             }
         }
         
@@ -93,64 +41,98 @@ public function insertLogEntries($records, $chaveLote, $filtro = 'cadastramento'
     }
 }
 
-private function generateTipoCorrespondente($record) {
-    $cutoff = mktime(0, 0, 0, 6, 1, 2025);
-    $activeTypes = array();
-    
-    $fields = array(
-        'AVANCADO' => 'AVANCADO',
-        'ORGAO_PAGADOR' => 'ORGAO_PAGADOR', 
-        'PRESENCA' => 'PRESENCA',
-        'UNIDADE_NEGOCIO' => 'UNIDADE_NEGOCIO'
-    );
-    
-    foreach ($fields as $field => $label) {
-        $raw = isset($record[$field]) ? trim($record[$field]) : '';
-        if (!empty($raw)) {
-            $parts = explode('/', $raw);
-            if (count($parts) == 3) {
-                $day = (int)$parts[0];
-                $month = (int)$parts[1];
-                $year = (int)$parts[2];
-                
-                if (checkdate($month, $day, $year)) {
-                    $timestamp = mktime(0, 0, 0, $month, $day, $year);
-                    if ($timestamp > $cutoff) {
-                        $activeTypes[] = $label;
-                    }
-                }
+// Replace the historico case in getTableDataByFilter with this simple query:
+case 'historico':
+    $query = "SELECT CHAVE_LOTE, DATA_LOG, 
+                     COUNT(*) as TOTAL_REGISTROS,
+                     MIN(NOME_LOJA) as PRIMEIRO_NOME_LOJA,
+                     'Cadastramento' as FILTRO
+              FROM PGTOCORSP.dbo.TB_WXKD_LOG 
+              GROUP BY CHAVE_LOTE, DATA_LOG 
+              ORDER BY DATA_LOG DESC";
+    break;Fix 2: Update HTML (TestH.txt) - Add the accordion right after your existing table:<?php if ($activeFilter === 'historico'): ?>
+    <!-- Hide the regular table for historico -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            if ('<?php echo $activeFilter; ?>' === 'historico') {
+                document.getElementById('dataTableAndre').style.display = 'none';
             }
-        }
-    }
+        });
+    </script>
     
-    return implode(', ', $activeTypes);
-}
-
-private function getMonetaryValue($record, $type) {
-    $isValid = isset($record[$type . '_VALID']) && $record[$type . '_VALID'] == 1;
-    if (!$isValid) return 0.00;
-    
-    $tipoLimites = isset($record['TIPO_LIMITES']) ? $record['TIPO_LIMITES'] : '';
-    $isPresencaOrOrgao = (strpos($tipoLimites, 'PRESENCA') !== false || 
-                         strpos($tipoLimites, 'ORG_PAGADOR') !== false);
-    $isAvancadoOrApoio = (strpos($tipoLimites, 'AVANCADO') !== false || 
-                         strpos($tipoLimites, 'UNIDADE_NEGOCIO') !== false);
-    
-    switch($type) {
-        case 'DEP_DINHEIRO':
-            if ($isPresencaOrOrgao) return 3000.00;
-            if ($isAvancadoOrApoio) return 10000.00;
-            break;
-        case 'DEP_CHEQUE':
-            if ($isPresencaOrOrgao) return 5000.00;
-            if ($isAvancadoOrApoio) return 10000.00;
-            break;
-        case 'REC_RETIRADA':
-        case 'SAQUE_CHEQUE':
-            if ($isPresencaOrOrgao) return 2000.00;
-            if ($isAvancadoOrApoio) return 3500.00;
-            break;
-    }
-    
-    return 0.00;
+    <!-- Show accordion instead -->
+    <div class="panel-group accordion" id="accordions">
+        <?php if (is_array($tableData) && !empty($tableData)): ?>
+            <?php foreach ($tableData as $index => $row): ?>
+                <div class="panel panel-default">
+                    <div class="panel-heading">
+                        <h4 class="panel-title">
+                            <a class="accordion-toggle collapsed" data-toggle="collapse" 
+                               data-parent="#accordions" href="#collapse<?php echo $row['CHAVE_LOTE']; ?>" 
+                               aria-expanded="false">
+                                <i class="fa-fw fa fa-history"></i> 
+                                Lote #<?php echo $row['CHAVE_LOTE']; ?> - 
+                                <?php 
+                                $timestamp = strtotime($row['DATA_LOG']);
+                                echo $timestamp !== false ? date('d/m/Y H:i', $timestamp) : $row['DATA_LOG']; 
+                                ?> - 
+                                <?php echo $row['TOTAL_REGISTROS']; ?> registro(s) - 
+                                <?php echo htmlspecialchars($row['PRIMEIRO_NOME_LOJA']); ?>
+                            </a>
+                        </h4>
+                    </div>
+                    <div id="collapse<?php echo $row['CHAVE_LOTE']; ?>" 
+                         class="panel-collapse collapse" 
+                         aria-expanded="false" style="height: 0px;">
+                        <div class="panel-body border-red">
+                            <div class="table-responsive">
+                                <table class="table table-striped table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Chave Loja</th>
+                                            <th>Nome Loja</th>
+                                            <th>Cod Empresa</th>
+                                            <th>Cod Loja</th>
+                                            <th>Data Log</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php
+                                        // Get details for this CHAVE_LOTE
+                                        $detailQuery = "SELECT * FROM PGTOCORSP.dbo.TB_WXKD_LOG WHERE CHAVE_LOTE = " . (int)$row['CHAVE_LOTE'];
+                                        $details = $this->sql->select($detailQuery);
+                                        if (is_array($details)):
+                                            foreach($details as $detail):
+                                        ?>
+                                        <tr>
+                                            <td><?php echo $detail['CHAVE_LOJA']; ?></td>
+                                            <td><?php echo htmlspecialchars($detail['NOME_LOJA']); ?></td>
+                                            <td><?php echo $detail['COD_EMPRESA']; ?></td>
+                                            <td><?php echo $detail['COD_LOJA']; ?></td>
+                                            <td><?php echo $detail['DATA_LOG']; ?></td>
+                                        </tr>
+                                        <?php 
+                                            endforeach;
+                                        endif;
+                                        ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        <?php else: ?>
+            <div class="alert alert-info">
+                <i class="fa fa-info-circle"></i>
+                Nenhum histórico encontrado.
+            </div>
+        <?php endif; ?>
+    </div>
+<?php endif; ?>Fix 3: Add this to your main PHP file (TestH.txt) where you have the controller instantiation:// After your existing controller code, add this:
+if ($action == 'default' && $activeFilter === 'historico') {
+    // For historico, we need to access the SQL connection directly
+    require_once('../model/Wxkd_DashboardModel.php');
+    $model = new Wxkd_DashboardModel();
+    $model->Wxkd_Construct();
 }
