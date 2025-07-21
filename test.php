@@ -1,217 +1,226 @@
-Update the Model (TestM.txt) - Modify the updateWxkdFlag method to include logging:public function updateWxkdFlag($records, $fullData = array(), $chaveLote = 0, $filtro = 'cadastramento') {
-    $logs = array();
+The user doesn't want to add CSS, so I need to remove the CSS parts from my response and just focus on the JavaScript fix that will build the accordion from the XML data they showed me.
+
+Looking at the XML data they provided:
+```xml
+<tableData>
+    <row>
+        <0>1</0>
+        <CHAVE_LOTE>1</CHAVE_LOTE>
+        <1>Jul 21 2025  4:14PM</1>
+        <DATA_LOG>Jul 21 2025  4:14PM</DATA_LOG>
+        <2>1</2>
+        <TOTAL_REGISTROS>1</TOTAL_REGISTROS>
+        <3>MULTIDROGAS</3>
+        <PRIMEIRO_NOME_LOJA>MULTIDROGAS</PRIMEIRO_NOME_LOJA>
+        <4>Cadastramento</4>
+        <FILTRO>Cadastramento</FILTRO>
+    </row>
+</tableData>
+```
+
+The data is there, so the JavaScript just needs to build the accordion from this data. I'll provide just the JavaScript update without any CSS.
+
+**Update only the JavaScript (TestJ.txt) - Fix the FilterModule.loadTableData method:**
+
+```javascript
+const FilterModuleUpdated = {
+    ...FilterModule,
     
-    try {
-        $logs[] = "updateWxkdFlag START - Records count: " . count($records) . ", ChaveLote: $chaveLote, Filtro: $filtro";
+    loadTableData: function(filter) {
+        showLoading();
         
-        if (empty($records)) {
-            $logs[] = "updateWxkdFlag - No records provided";
-            $this->debugLogs = $logs;
-            return false;
+        // Show/hide appropriate containers based on filter
+        if (filter === 'historico') {
+            $('.table-scrollable').hide();
+            $('#historicoAccordion').show();
+        } else {
+            $('#historicoAccordion').hide();
+            $('.table-scrollable').show();
+            $('#dataTableAndre tbody').html('<tr><td colspan="12" class="text-center">Carregando...</td></tr>');
         }
-        
-        $updateCount = 0;
-        $logInsertCount = 0;
-        $currentDateTime = date('Y-m-d H:i:s');
-        
-        // First, update WXKD_FLAG as before
-        foreach ($records as $index => $record) {
-            $codEmpresa = (int) $record['COD_EMPRESA'];
-            $codLoja = (int) $record['COD_LOJA'];
-            
-            $logs[] = "updateWxkdFlag - Processing record #$index: CodEmpresa=$codEmpresa, CodLoja=$codLoja";
-            
-            if ($codEmpresa <= 0 || $codLoja <= 0) {
-                $logs[] = "updateWxkdFlag - Invalid empresa/loja codes for record #$index";
-                continue;
-            }
-            
-            $checkSql = "SELECT COUNT(*) as total FROM PGTOCORSP.dbo.tb_wxkd_flag 
-                         WHERE COD_EMPRESA = $codEmpresa AND COD_LOJA = $codLoja";
-            
-            $checkResult = $this->sql->select($checkSql);
-            
-            if (empty($checkResult) || !isset($checkResult[0]['total']) || $checkResult[0]['total'] == 0) {
-                $logs[] = "updateWxkdFlag - No matching record found in tb_wxkd_flag for record #$index";
-                continue;
-            }
-            
-            $sql = "UPDATE PGTOCORSP.dbo.tb_wxkd_flag 
-                    SET WXKD_FLAG = 1 
-                    WHERE COD_EMPRESA = $codEmpresa AND COD_LOJA = $codLoja";
-            
-            $result = $this->sql->update($sql);
-            
-            if ($result) {
-                $updateCount++;
-                $logs[] = "updateWxkdFlag - Successfully updated WXKD_FLAG for record #$index";
-            } else {
-                $logs[] = "updateWxkdFlag - Failed to update WXKD_FLAG for record #$index";
-            }
-        }
-        
-        // Now insert into TB_WXKD_LOG if we have full data and chaveLote
-        if (!empty($fullData) && $chaveLote > 0) {
-            $logs[] = "updateWxkdFlag - Starting log insertion with " . count($fullData) . " records";
-            
-            foreach ($fullData as $index => $record) {
-                $logs[] = "updateWxkdFlag - Processing log record #$index";
-                $logs[] = "updateWxkdFlag - Record keys: " . implode(', ', array_keys($record));
-                
-                // Check if required fields exist
-                if (!isset($record['Chave_Loja'])) {
-                    $logs[] = "updateWxkdFlag - Missing Chave_Loja in log record #$index";
-                    continue;
-                }
-                
-                if (!isset($record['Nome_Loja'])) {
-                    $logs[] = "updateWxkdFlag - Missing Nome_Loja in log record #$index";
-                    continue;
-                }
-                
-                $chaveLoja = (int)$record['Chave_Loja'];
-                $nomeLoja = str_replace("'", "''", $record['Nome_Loja']);
-                $codEmpresa = isset($record['Cod_Empresa']) ? (int)$record['Cod_Empresa'] : 0;
-                $codLoja = isset($record['Cod_Loja']) ? (int)$record['Cod_Loja'] : 0;
-                $tipoCorrespondente = isset($record['TIPO_CORRESPONDENTE']) ? str_replace("'", "''", $record['TIPO_CORRESPONDENTE']) : '';
-                $tipoContrato = isset($record['TIPO_CONTRATO']) ? str_replace("'", "''", $record['TIPO_CONTRATO']) : '';
-                
-                $logs[] = "updateWxkdFlag - Log prepared values: ChaveLoja=$chaveLoja, NomeLoja=$nomeLoja, CodEmpresa=$codEmpresa, CodLoja=$codLoja";
-                
-                $logSql = "INSERT INTO PGTOCORSP.dbo.TB_WXKD_LOG 
-                        (CHAVE_LOTE, DATA_LOG, CHAVE_LOJA, NOME_LOJA, COD_EMPRESA, COD_LOJA, 
-                         TIPO_CORRESPONDENTE, DEP_DINHEIRO, DEP_CHEQUE, REC_RETIRADA, SAQUE_CHEQUE, 
-                         SEGUNDA_VIA_CARTAO, HOLERITE_INSS, CONS_INSS, PROVA_DE_VIDA, DATA_CONTRATO, TIPO_CONTRATO, FILTRO) 
-                        VALUES 
-                        ($chaveLote, 
-                         '$currentDateTime', 
-                         $chaveLoja, 
-                         '$nomeLoja', 
-                         $codEmpresa, 
-                         $codLoja, 
-                         '$tipoCorrespondente', 
-                         3000.00, 5000.00, 2000.00, 2000.00, 
-                         'Apto', 'Apto', 'Apto', 'Apto', 
-                         GETDATE(), 
-                         '$tipoContrato', 
-                         '$filtro')";
-                
-                $logs[] = "updateWxkdFlag - Log SQL Query: " . $logSql;
-                
+
+        $.get('wxkd.php?action=ajaxGetTableData&filter=' + filter)
+            .done((xmlData) => {
                 try {
-                    $logResult = $this->sql->insert($logSql);
-                    $logs[] = "updateWxkdFlag - Log insert result for record #$index: " . ($logResult ? 'SUCCESS' : 'FAILED');
+                    const $xml = $(xmlData);
+                    const success = $xml.find('success').text() === 'true';
                     
-                    if ($logResult) {
-                        $logInsertCount++;
-                        $logs[] = "updateWxkdFlag - Log insert count now: $logInsertCount";
+                    if (success) {
+                        const cardData = {
+                            cadastramento: $xml.find('cardData cadastramento').text(),
+                            descadastramento: $xml.find('cardData descadastramento').text(),
+                            historico: $xml.find('cardData historico').text()
+                        };
+                        
+                        this.updateCardCounts(cardData);
+                        
+                        if (filter === 'historico') {
+                            // Build accordion HTML from XML data
+                            this.buildHistoricoAccordion($xml);
+                            hideLoading();
+                        } else {
+                            // Handle normal table data
+                            const tableData = [];
+                            $xml.find('tableData row').each(function() {
+                                const row = {};
+                                $(this).children().each(function() {
+                                    row[this.tagName] = $(this).text();
+                                });
+                                tableData.push(row);
+                            });
+
+                            PaginationModule.replaceTableDataEnhanced(tableData);
+                            PaginationModule.currentPage = 1;
+                            PaginationModule.updateTable();
+                            
+                            CheckboxModule.clearSelections();
+                            
+                            setTimeout(() => {
+                                CheckboxModule.init();
+                                CheckboxModule.updateSelectAllState();
+                                CheckboxModule.updateExportButton();
+                            }, 200);
+                            
+                            setTimeout(() => {
+                                StatusFilterModule.reapplyAfterDataLoad();
+                                hideLoading();
+                            }, 400);
+                        }
                     }
-                } catch (Exception $logEx) {
-                    $logs[] = "updateWxkdFlag - Log insert exception for record #$index: " . $logEx->getMessage();
+                } catch (e) {
+                    console.error('Error parsing XML: ', e);
+                    if (filter !== 'historico') {
+                        $('#dataTableAndre tbody').html('<tr><td colspan="12" class="text-center text-danger">Erro ao processar dados</td></tr>');
+                    }
+                    hideLoading();
                 }
-            }
+            })
+            .fail((jqXHR, textStatus, errorThrown) => {
+                console.error('AJAX failed:', textStatus, errorThrown);
+                if (filter !== 'historico') {
+                    $('#dataTableAndre tbody').html('<tr><td colspan="12" class="text-center text-danger">Erro ao carregar dados</td></tr>');
+                }
+                hideLoading();
+            });
+    },
+    
+    buildHistoricoAccordion: function($xml) {
+        let accordionHtml = '';
+        const rows = $xml.find('tableData row');
+        
+        console.log('Building accordion with', rows.length, 'rows');
+        
+        if (rows.length > 0) {
+            accordionHtml = '<div class="panel-group accordion" id="accordions">';
+            
+            rows.each(function() {
+                const row = {};
+                $(this).children().each(function() {
+                    row[this.tagName] = $(this).text();
+                });
+                
+                console.log('Processing row:', row);
+                
+                const chaveLote = row.CHAVE_LOTE || row['0'];
+                const dataLog = row.DATA_LOG || row['1'];
+                const totalRegistros = row.TOTAL_REGISTROS || row['2'];
+                const primeiroNomeLoja = row.PRIMEIRO_NOME_LOJA || row['3'];
+                const filtro = row.FILTRO || row['4'];
+                
+                // Format date
+                let formattedDate = dataLog;
+                try {
+                    const date = new Date(dataLog);
+                    if (!isNaN(date.getTime())) {
+                        formattedDate = date.toLocaleDateString('pt-BR') + ' ' + 
+                                      date.toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'});
+                    }
+                } catch (e) {
+                    console.log('Date formatting error:', e);
+                }
+                
+                accordionHtml += `
+                    <div class="panel panel-default">
+                        <div class="panel-heading">
+                            <h4 class="panel-title">
+                                <a class="accordion-toggle collapsed" data-toggle="collapse" 
+                                   data-parent="#accordions" href="#collapse${chaveLote}" 
+                                   aria-expanded="false">
+                                    <i class="fa-fw fa fa-history"></i> 
+                                    Lote #${chaveLote} - ${formattedDate} - 
+                                    ${totalRegistros} registro(s) - 
+                                    ${primeiroNomeLoja}
+                                </a>
+                            </h4>
+                        </div>
+                        <div id="collapse${chaveLote}" class="panel-collapse collapse" 
+                             aria-expanded="false" style="height: 0px;">
+                            <div class="panel-body border-red">
+                                <div class="table-responsive">
+                                    <table class="table table-striped table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>Chave Loja</th>
+                                                <th>Nome Loja</th>
+                                                <th>Cod Empresa</th>
+                                                <th>Cod Loja</th>
+                                                <th>Data Log</th>
+                                                <th>Filtro</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="historico-details" data-chave-lote="${chaveLote}">
+                                            <tr>
+                                                <td colspan="6" class="text-center">
+                                                    <button class="btn btn-sm btn-info load-details" 
+                                                            data-chave-lote="${chaveLote}">
+                                                        <i class="fa fa-download"></i> Carregar Detalhes
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            accordionHtml += '</div>';
+        } else {
+            accordionHtml = `
+                <div class="alert alert-info">
+                    <i class="fa fa-info-circle"></i>
+                    Nenhum histórico encontrado. Os registros aparecerão aqui após a exportação de arquivos TXT.
+                </div>
+            `;
         }
         
-        $logs[] = "updateWxkdFlag END - Flag updates: $updateCount, Log inserts: $logInsertCount";
-        $this->debugLogs = $logs;
+        // Create or update the accordion container
+        if ($('#historicoAccordion').length === 0) {
+            $('.table-scrollable').after('<div id="historicoAccordion"></div>');
+        }
         
-        return $updateCount > 0;
-        
-    } catch (Exception $e) {
-        $logs[] = "updateWxkdFlag - MAIN Exception: " . $e->getMessage();
-        $this->debugLogs = $logs;
-        return false;
+        $('#historicoAccordion').html(accordionHtml);
+        console.log('Accordion HTML created');
     }
-}
+};
 
-public function getDebugLogs() {
-    return isset($this->debugLogs) ? $this->debugLogs : array();
-}Update the Controller (TestC.txt) - Modify the exportTXT method:public function exportTXT() {
-    $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
-    $selectedIds = isset($_GET['ids']) ? $_GET['ids'] : '';
+// Replace FilterModule with the updated version
+Object.assign(FilterModule, FilterModuleUpdated);
+```
 
-    try {
-        $data = $this->getFilteredData($filter, $selectedIds);
-        
-        if (empty($data)) {
-            $xml = '<response>';
-            $xml .= '<success>false</success>';
-            $xml .= '<e>Nenhum dado encontrado para exportação</e>';
-            $xml .= '</response>';
-            echo $xml;
-            exit;
-        }
-        
-        $invalidRecords = $this->validateRecordsForTXTExport($data);
-        
-        if (!empty($invalidRecords)) {
-            $this->outputValidationError($invalidRecords);
-            return;
-        }
-        
-        // Generate CHAVE_LOTE BEFORE processing
-        $chaveLote = $this->model->generateChaveLote();
-        
-        $xml = '<response><success>true</success><txtData>';
-        
-        $recordsToUpdate = array();
-        
-        foreach ($data as $row) {
-            $xml .= '<row>';
-            $xml .= '<cod_empresa>' . addcslashes(isset($row['Cod_Empresa']) ? $row['Cod_Empresa'] : '', '"<>&') . '</cod_empresa>';
-            $xml .= '<quant_lojas>' . addcslashes(isset($row['QUANT_LOJAS']) ? $row['QUANT_LOJAS'] : '', '"<>&') . '</quant_lojas>';
-            $xml .= '<cod_loja>' . addcslashes(isset($row['Cod_Loja']) ? $row['Cod_Loja'] : '', '"<>&') . '</cod_loja>';
-            $xml .= '<TIPO_CORRESPONDENTE>' . addcslashes(isset($row['TIPO_CORRESPONDENTE']) ? $row['TIPO_CORRESPONDENTE'] : '', '"<>&') . '</TIPO_CORRESPONDENTE>';
-            $xml .= '<data_contrato>' . addcslashes(isset($row['DATA_CONTRATO']) ? $row['DATA_CONTRATO'] : '', '"<>&') . '</data_contrato>';
-            $xml .= '<tipo_contrato>' . addcslashes(isset($row['TIPO_CONTRATO']) ? $row['TIPO_CONTRATO'] : '', '"<>&') . '</tipo_contrato>';
-            $xml .= '</row>';
+**And add the container div in your HTML (TestH.txt) right after the table-scrollable div:**
+
+```php
+                    </div>
+                </div>
+            </div>
             
-            $codEmpresa = (int) (isset($row['Cod_Empresa']) ? $row['Cod_Empresa'] : 0);
-            $codLoja = (int) (isset($row['Cod_Loja']) ? $row['Cod_Loja'] : 0);
+            <!-- Add this accordion container -->
+            <div id="historicoAccordion" style="display: none;"></div>
             
-            if ($codEmpresa > 0 && $codLoja > 0) {
-                $recordsToUpdate[] = array(
-                    'COD_EMPRESA' => $codEmpresa,
-                    'COD_LOJA' => $codLoja
-                );
-            }
-        }
-        
-        if (!empty($recordsToUpdate)) {
-            // Call the updated method with full data for logging
-            $updateResult = $this->model->updateWxkdFlag($recordsToUpdate, $data, $chaveLote, $filter);
-            
-            // Get debug logs from model
-            $debugLogs = $this->model->getDebugLogs();
-            
-            $xml .= '<debugLogs>';
-            foreach ($debugLogs as $log) {
-                $xml .= '<log>' . addcslashes($log, '"<>&') . '</log>';
-            }
-            $xml .= '</debugLogs>';
-            
-            $xml .= '<flagUpdate>';
-            $xml .= '<success>' . ($updateResult ? 'true' : 'false') . '</success>';
-            $xml .= '<recordsUpdated>' . count($recordsToUpdate) . '</recordsUpdated>';
-            $xml .= '</flagUpdate>';
-            
-            $xml .= '<logInsert>';
-            $xml .= '<success>' . ($updateResult ? 'true' : 'false') . '</success>';
-            $xml .= '<chaveLote>' . $chaveLote . '</chaveLote>';
-            $xml .= '<recordsLogged>' . count($data) . '</recordsLogged>';
-            $xml .= '</logInsert>';
-        }
-        
-        $xml .= '</txtData></response>';
-        echo $xml;
-        exit;
-        
-    } catch (Exception $e) {
-        $xml = '<response>';
-        $xml .= '<success>false</success>';
-        $xml .= '<e>' . addcslashes($e->getMessage(), '"<>&') . '</e>';
-        $xml .= '</response>';
-        echo $xml;
-        exit;
-    }
-}
+            <div class="row mt-3">
+```
+
+This will build the accordion dynamically from the XML data without requiring any additional CSS.
