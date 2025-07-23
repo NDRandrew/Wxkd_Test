@@ -1,289 +1,214 @@
-const SearchModule = {
-    isSearchingHistorico: false,
-    
+const HistoricoModule = {
     init: function() {
-        $('#searchInput').on('keyup', this.filterTable.bind(this));
+        $(document).on('click', '.load-details', this.loadDetails.bind(this));
+        $(document).on('shown.bs.collapse', '.panel-collapse', this.onAccordionExpand.bind(this));
     },
     
-    filterTable: function() {
-        const value = $('#searchInput').val().toLowerCase();
-        const currentFilter = FilterModule.currentFilter;
+    loadDetails: function(e) {
+        e.preventDefault();
+        const button = $(e.currentTarget);
+        const chaveLote = button.data('chave-lote');
+        const tbody = button.closest('tbody');
         
-        if (currentFilter === 'historico') {
-            this.filterHistorico(value);
-        } else {
-            // Original table filtering logic
-            PaginationModule.searchTerm = value;
-            PaginationModule.currentPage = 1;
-            PaginationModule.updateTable();
-        }
-    },
-    
-    filterHistorico: function(searchTerm) {
-        if (!searchTerm) {
-            // Show all accordions when search is empty
-            $('.panel').show();
-            this.removeSearchHighlights();
+        if (button.prop('disabled')) {
             return;
         }
         
-        this.isSearchingHistorico = true;
-        let foundAny = false;
+        button.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Carregando...');
         
-        // Search through each accordion panel
-        $('.panel').each((index, panel) => {
-            const $panel = $(panel);
-            const $title = $panel.find('.panel-title a');
-            const titleText = $title.text().toLowerCase();
-            const chaveLote = $panel.find('.historico-lote-checkbox').data('chave-lote');
-            
-            // Check if title matches
-            const titleMatches = titleText.includes(searchTerm);
-            
-            if (titleMatches) {
-                $panel.show();
-                this.highlightText($title, searchTerm);
-                foundAny = true;
-            } else {
-                // Check if data inside accordion matches
-                this.searchInsideAccordion($panel, chaveLote, searchTerm).then((dataMatches) => {
-                    if (dataMatches) {
-                        $panel.show();
-                        foundAny = true;
-                        // Optionally expand the accordion to show the matching data
-                        this.expandAccordionIfMatches($panel, chaveLote, searchTerm);
-                    } else {
-                        $panel.hide();
-                    }
-                });
-            }
-        });
+        const self = this;
         
-        // Handle case when no results found
-        setTimeout(() => {
-            if (!foundAny && $('.panel:visible').length === 0) {
-                this.showNoResultsMessage();
-            } else {
-                this.hideNoResultsMessage();
-            }
-        }, 500);
-    },
-    
-    searchInsideAccordion: function($panel, chaveLote, searchTerm) {
-        return new Promise((resolve) => {
-            const $detailsBody = $panel.find(`.historico-details[data-chave-lote="${chaveLote}"]`);
-            
-            // Check if data is already loaded
-            const hasLoadedData = $detailsBody.find('tr').length > 1 && 
-                                 !$detailsBody.find('.load-details').length;
-            
-            if (hasLoadedData) {
-                // Search in already loaded data
-                const dataMatches = this.searchInTableData($detailsBody, searchTerm);
-                resolve(dataMatches);
-            } else {
-                // Load data and then search
-                this.loadAndSearchAccordionData(chaveLote, searchTerm).then(resolve);
-            }
-        });
-    },
-    
-    loadAndSearchAccordionData: function(chaveLote, searchTerm) {
-        return new Promise((resolve) => {
-            $.get(`wxkd.php?action=ajaxGetHistoricoDetails&chave_lote=${chaveLote}`)
-                .done((xmlData) => {
-                    try {
-                        const $xml = $(xmlData);
-                        const success = $xml.find('success').text() === 'true';
+        $.get(`wxkd.php?action=ajaxGetHistoricoDetails&chave_lote=${chaveLote}`)
+            .done((xmlData) => {
+                console.log('Raw XML Response:', xmlData); // Debug logging
+                
+                try {
+                    const $xml = $(xmlData);
+                    const success = $xml.find('success').text() === 'true';
+                    
+                    if (success) {
+                        let detailsHtml = '';
+                        let recordCount = 0;
                         
-                        if (success) {
-                            let foundMatch = false;
+                        $xml.find('detailData row').each(function() {
+                            const row = {};
+                            const $row = $(this);
                             
-                            // Search through the XML data without loading it into DOM
-                            $xml.find('detailData row').each(function() {
-                                const row = {};
-                                $(this).children().each(function() {
-                                    row[this.tagName] = $(this).text().toLowerCase();
-                                });
-                                
-                                // Search in all row data
-                                for (const key in row) {
-                                    if (row[key].includes(searchTerm)) {
-                                        foundMatch = true;
-                                        return false; // Break out of loop
-                                    }
-                                }
-                                
-                                if (foundMatch) return false; // Break out of outer loop
+                            // Debug: Log the XML structure
+                            console.log('Processing XML row:', this);
+                            console.log('Row children count:', $row.children().length);
+                            
+                            // Parse XML data more carefully
+                            $row.children().each(function() {
+                                const tagName = this.tagName || this.nodeName;
+                                const textContent = $(this).text() || '';
+                                row[tagName] = textContent;
+                                console.log(`${tagName}: ${textContent}`); // Debug each field
                             });
                             
-                            resolve(foundMatch);
+                            console.log('Parsed row object:', row); // Debug parsed object
+                            
+                            recordCount++;
+                            const detailId = `${chaveLote}_${recordCount}`;
+                            
+                            // Build table row with proper error handling and defaults
+                            detailsHtml += `
+                                <tr>
+                                    <td class="checkbox-column">
+                                        <label>
+                                            <input type="checkbox" class="form-check-input historico-detail-checkbox" 
+                                                   value="${detailId}" data-chave-lote="${chaveLote}">
+                                            <span class="text"></span>
+                                        </label>
+                                    </td>
+                                    <td>${self.getFieldValue(row, ['CHAVE_LOJA', 'chave_loja'])}</td>
+                                    <td>${self.getFieldValue(row, ['NOME_LOJA', 'nome_loja'])}</td>
+                                    <td>${self.getFieldValue(row, ['COD_EMPRESA', 'cod_empresa'])}</td>
+                                    <td>${self.getFieldValue(row, ['COD_LOJA', 'cod_loja'])}</td>
+                                    <td>${self.getFieldValue(row, ['TIPO_CORRESPONDENTE', 'tipo_correspondente'])}</td>
+                                    <td>${self.getFieldValue(row, ['DATA_CONCLUSAO', 'data_conclusao'])}</td>
+                                    <td>${self.getFieldValue(row, ['DATA_SOLICITACAO', 'data_solicitacao'])}</td>
+                                    <td>${self.formatCurrency(self.getFieldValue(row, ['DEP_DINHEIRO', 'dep_dinheiro']))}</td>
+                                    <td>${self.formatCurrency(self.getFieldValue(row, ['DEP_CHEQUE', 'dep_cheque']))}</td>
+                                    <td>${self.formatCurrency(self.getFieldValue(row, ['REC_RETIRADA', 'rec_retirada']))}</td>
+                                    <td>${self.formatCurrency(self.getFieldValue(row, ['SAQUE_CHEQUE', 'saque_cheque']))}</td>
+                                    <td>${self.getFieldValue(row, ['SEGUNDA_VIA_CARTAO', 'segunda_via_cartao'])}</td>
+                                    <td>${self.getFieldValue(row, ['HOLERITE_INSS', 'holerite_inss'])}</td>
+                                    <td>${self.getFieldValue(row, ['CONS_INSS', 'cons_inss'])}</td>
+                                    <td>${self.getFieldValue(row, ['PROVA_DE_VIDA', 'prova_de_vida'])}</td>
+                                    <td>${self.formatDate(self.getFieldValue(row, ['DATA_CONTRATO', 'data_contrato']))}</td>
+                                    <td>${self.getFieldValue(row, ['TIPO_CONTRATO', 'tipo_contrato'])}</td>
+                                    <td>${self.formatDate(self.getFieldValue(row, ['DATA_LOG', 'data_log']))}</td>
+                                    <td><span class="badge badge-info">${self.getFieldValue(row, ['FILTRO', 'filtro'])}</span></td>
+                                </tr>
+                            `;
+                        });
+                        
+                        console.log('Generated HTML:', detailsHtml); // Debug generated HTML
+                        
+                        if (recordCount > 0) {
+                            tbody.html(detailsHtml);
                         } else {
-                            resolve(false);
+                            tbody.html('<tr><td colspan="20" class="text-center text-muted">Nenhum detalhe encontrado</td></tr>');
                         }
-                    } catch (e) {
-                        console.error('Error searching accordion data:', e);
-                        resolve(false);
+                        
+                        tbody.append(`
+                            <tr class="info">
+                                <td colspan="20" class="text-center">
+                                    <strong>Total de ${recordCount} registro(s) processado(s) neste lote</strong>
+                                </td>
+                            </tr>
+                        `);
+                        
+                        HistoricoCheckboxModule.init();
+                        
+                    } else {
+                        const errorMsg = $xml.find('e').text() || 'Erro desconhecido';
+                        console.error('Server error:', errorMsg);
+                        tbody.html(`<tr><td colspan="20" class="text-center text-danger">Erro ao carregar detalhes: ${errorMsg}</td></tr>`);
                     }
-                })
-                .fail(() => {
-                    resolve(false);
-                });
-        });
+                    
+                } catch (e) {
+                    console.error('Error loading historico details: ', e);
+                    tbody.html('<tr><td colspan="20" class="text-center text-danger">Erro ao processar dados</td></tr>');
+                }
+            })
+            .fail((xhr, status, error) => {
+                console.error('AJAX request failed:', status, error);
+                console.error('Response text:', xhr.responseText);
+                tbody.html('<tr><td colspan="20" class="text-center text-danger">Erro na requisição</td></tr>');
+            })
+            .always(() => {
+                button.prop('disabled', false).html('<i class="fa fa-refresh"></i> Recarregar');
+            });
     },
     
-    searchInTableData: function($tableBody, searchTerm) {
-        let found = false;
-        
-        $tableBody.find('tr').each(function() {
-            const rowText = $(this).text().toLowerCase();
-            if (rowText.includes(searchTerm)) {
-                found = true;
-                // Highlight the matching text in this row
-                SearchModule.highlightTextInElement($(this), searchTerm);
-                return false; // Break loop
+    // Helper function to get field value with fallback options
+    getFieldValue: function(row, fieldNames) {
+        for (let i = 0; i < fieldNames.length; i++) {
+            const fieldName = fieldNames[i];
+            if (row[fieldName] !== undefined && row[fieldName] !== null && row[fieldName] !== '') {
+                return this.escapeHtml(row[fieldName]);
             }
-        });
-        
-        return found;
+        }
+        return '';
     },
     
-    expandAccordionIfMatches: function($panel, chaveLote, searchTerm) {
-        const $collapse = $panel.find(`#collapse${chaveLote}`);
-        const $detailsBody = $panel.find(`.historico-details[data-chave-lote="${chaveLote}"]`);
+    // Helper function to escape HTML entities
+    escapeHtml: function(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    },
+    
+    // Helper function to format currency values
+    formatCurrency: function(value) {
+        if (!value || value === '' || value === '0' || value === '0.00') {
+            return '0';
+        }
         
-        // Expand the accordion
-        $collapse.collapse('show');
+        // If it's already formatted as currency, return as is
+        if (value.includes('R$')) {
+            return value;
+        }
         
-        // Load details if not already loaded
-        const $loadButton = $detailsBody.find('.load-details');
-        if ($loadButton.length > 0) {
-            $loadButton.click();
-            
-            // Wait for data to load and then highlight
-            setTimeout(() => {
-                this.highlightMatchingDataRows($detailsBody, searchTerm);
-            }, 1000);
-        } else {
-            // Data already loaded, highlight immediately
-            this.highlightMatchingDataRows($detailsBody, searchTerm);
+        // If it's a number, format it as currency
+        const numValue = parseFloat(value);
+        if (!isNaN(numValue) && numValue > 0) {
+            return `R$ ${numValue.toLocaleString('pt-BR', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            })}`;
+        }
+        
+        return value;
+    },
+    
+    onAccordionExpand: function(e) {
+        const panel = $(e.target);
+        const tbody = panel.find('.historico-details');
+        const loadButton = tbody.find('.load-details');
+        
+        if (loadButton.length > 0 && !loadButton.prop('disabled')) {
+            loadButton.click();
         }
     },
     
-    highlightMatchingDataRows: function($tableBody, searchTerm) {
-        $tableBody.find('tr').each(function() {
-            const $row = $(this);
-            const rowText = $row.text().toLowerCase();
-            
-            if (rowText.includes(searchTerm)) {
-                // Highlight the entire row
-                $row.addClass('search-highlight-row');
-                
-                // Highlight specific text in cells
-                $row.find('td').each(function() {
-                    const $cell = $(this);
-                    SearchModule.highlightTextInElement($cell, searchTerm);
-                });
-            }
-        });
-    },
-    
-    highlightText: function($element, searchTerm) {
-        const originalText = $element.text();
-        const regex = new RegExp(`(${searchTerm})`, 'gi');
-        const highlightedText = originalText.replace(regex, '<span class="search-highlight">$1</span>');
-        
-        // Preserve the original HTML structure while adding highlights
-        $element.html(highlightedText);
-    },
-    
-    highlightTextInElement: function($element, searchTerm) {
-        const originalText = $element.text();
-        const lowerText = originalText.toLowerCase();
-        const lowerSearchTerm = searchTerm.toLowerCase();
-        
-        if (lowerText.includes(lowerSearchTerm)) {
-            const regex = new RegExp(`(${this.escapeRegExp(searchTerm)})`, 'gi');
-            const highlightedText = originalText.replace(regex, '<span class="search-highlight">$1</span>');
-            $element.html(highlightedText);
+    formatDate: function(dateString) {
+        if (!dateString || dateString === '') {
+            return '';
         }
-    },
-    
-    escapeRegExp: function(string) {
-        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    },
-    
-    removeSearchHighlights: function() {
-        $('.search-highlight').each(function() {
-            const $this = $(this);
-            $this.replaceWith($this.text());
-        });
         
-        $('.search-highlight-row').removeClass('search-highlight-row');
-    },
-    
-    showNoResultsMessage: function() {
-        if ($('.search-no-results').length === 0) {
-            const noResultsHtml = `
-                <div class="alert alert-info search-no-results">
-                    <i class="fa fa-info-circle"></i>
-                    Nenhum resultado encontrado para a pesquisa. Tente termos diferentes.
-                </div>
-            `;
-            $('#historicoAccordion').prepend(noResultsHtml);
+        // Handle different date formats
+        const parts = dateString.match(/^([A-Za-z]+) (\d{1,2}) (\d{4}) (.+)$/);
+        if (parts) {
+            const months = {
+                Jan: '01', Feb: '02', Mar: '03', Apr: '04',
+                May: '05', Jun: '06', Jul: '07', Aug: '08',
+                Sep: '09', Oct: '10', Nov: '11', Dec: '12'
+            };
+
+            const month = months[parts[1]];
+            const day = ('0' + parts[2]).slice(-2);
+            const year = parts[3];
+
+            return `${day}/${month}/${year}`;
         }
-    },
-    
-    hideNoResultsMessage: function() {
-        $('.search-no-results').remove();
+        
+        // If it's already in dd/mm/yyyy format, return as is
+        if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateString)) {
+            return dateString;
+        }
+        
+        // Try to parse other formats
+        const date = new Date(dateString);
+        if (!isNaN(date.getTime())) {
+            const day = ('0' + date.getDate()).slice(-2);
+            const month = ('0' + (date.getMonth() + 1)).slice(-2);
+            const year = date.getFullYear();
+            return `${day}/${month}/${year}`;
+        }
+        
+        return dateString;
     }
-};
-
-// Add CSS styles for search highlights
-const searchStyles = `
-<style>
-.search-highlight {
-    background-color: #ffff00;
-    color: #000;
-    font-weight: bold;
-    padding: 1px 2px;
-    border-radius: 2px;
-}
-
-.search-highlight-row {
-    background-color: #fff3cd !important;
-    border-left: 4px solid #ffc107;
-}
-
-.search-no-results {
-    margin: 15px 0;
-}
-</style>
-`;
-
-// Inject styles into the document
-if (!document.getElementById('search-highlight-styles')) {
-    const styleElement = document.createElement('div');
-    styleElement.id = 'search-highlight-styles';
-    styleElement.innerHTML = searchStyles;
-    document.head.appendChild(styleElement);
-}
-
-// Enhanced FilterModule integration
-const originalClearFilter = FilterModule.clearFilter;
-FilterModule.clearFilter = function() {
-    SearchModule.removeSearchHighlights();
-    SearchModule.hideNoResultsMessage();
-    $('#searchInput').val('');
-    originalClearFilter.call(this);
-};
-
-// Clear search when filter changes
-const originalApplyFilter = FilterModule.applyFilter;
-FilterModule.applyFilter = function(filter) {
-    if (filter !== 'historico') {
-        SearchModule.removeSearchHighlights();
-        SearchModule.hideNoResultsMessage();
-    }
-    originalApplyFilter.call(this, filter);
 };
