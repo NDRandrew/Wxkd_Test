@@ -1,182 +1,131 @@
-/* Add this CSS to fix the table layout issues */
-<style>
-/* Ensure historico tables display properly */
-.historico-details table {
-    table-layout: fixed;
-    width: 100%;
-    white-space: nowrap;
-}
+<?php
+// Add this at the very top of your Wxkd_DashboardController.php file, right after <?php
+// This prevents any accidental output before headers
 
-.historico-details table td {
-    vertical-align: top;
-    padding: 8px 4px;
-    border: 1px solid #ddd;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 120px;
-}
-
-.historico-details table th {
-    padding: 8px 4px;
-    border: 1px solid #ddd;
-    background-color: #f5f5f5;
-    font-weight: bold;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-/* First column (checkbox) should be narrow */
-.historico-details table td:first-child,
-.historico-details table th:first-child {
-    width: 50px;
-    max-width: 50px;
-    text-align: center;
-}
-
-/* Chave Loja column */
-.historico-details table td:nth-child(2),
-.historico-details table th:nth-child(2) {
-    width: 80px;
-    max-width: 80px;
-}
-
-/* Nome Loja column - wider */
-.historico-details table td:nth-child(3),
-.historico-details table th:nth-child(3) {
-    width: 200px;
-    max-width: 200px;
-    white-space: normal;
-}
-
-/* Empresa and Loja codes */
-.historico-details table td:nth-child(4),
-.historico-details table th:nth-child(4),
-.historico-details table td:nth-child(5),
-.historico-details table th:nth-child(5) {
-    width: 80px;
-    max-width: 80px;
-}
-
-/* Currency columns */
-.historico-details table td:nth-child(9),
-.historico-details table th:nth-child(9),
-.historico-details table td:nth-child(10),
-.historico-details table th:nth-child(10),
-.historico-details table td:nth-child(11),
-.historico-details table th:nth-child(11),
-.historico-details table td:nth-child(12),
-.historico-details table th:nth-child(12) {
-    width: 100px;
-    max-width: 100px;
-    text-align: right;
-}
-
-/* Date columns */
-.historico-details table td:nth-child(7),
-.historico-details table th:nth-child(7),
-.historico-details table td:nth-child(8),
-.historico-details table th:nth-child(8),
-.historico-details table td:nth-child(17),
-.historico-details table th:nth-child(17),
-.historico-details table td:nth-child(19),
-.historico-details table th:nth-child(19) {
-    width: 90px;
-    max-width: 90px;
-}
-
-/* Status columns (Apto/Não Apto) */
-.historico-details table td:nth-child(13),
-.historico-details table th:nth-child(13),
-.historico-details table td:nth-child(14),
-.historico-details table th:nth-child(14),
-.historico-details table td:nth-child(15),
-.historico-details table th:nth-child(15),
-.historico-details table td:nth-child(16),
-.historico-details table th:nth-child(16) {
-    width: 80px;
-    max-width: 80px;
-    text-align: center;
-}
-
-/* Tipo Contrato column */
-.historico-details table td:nth-child(18),
-.historico-details table th:nth-child(18) {
-    width: 120px;
-    max-width: 120px;
-}
-
-/* Filtro column */
-.historico-details table td:nth-child(20),
-.historico-details table th:nth-child(20) {
-    width: 100px;
-    max-width: 100px;
-    text-align: center;
-}
-
-/* Ensure the table scrolls horizontally if needed */
-.historico-details .table-scrollable {
-    overflow-x: auto;
-    overflow-y: visible;
-}
-
-/* Fix for accordion content */
-.panel-body {
-    padding: 15px;
-}
-
-/* Debug highlighting for issues */
-.debug-highlight {
-    background-color: #ffcccc !important;
-    border: 2px solid #ff0000 !important;
-}
-</style>
-
-/* JavaScript Debug Helper */
-<script>
-// Add this debug function to help identify XML parsing issues
-function debugHistoricoXML(xmlData, chaveLote) {
-    console.group(`Debug Historico XML for Lote ${chaveLote}`);
-    
-    try {
-        console.log('Raw XML:', xmlData);
-        
-        const $xml = $(xmlData);
-        const success = $xml.find('success').text();
-        console.log('Success status:', success);
-        
-        const rows = $xml.find('detailData row');
-        console.log('Number of rows found:', rows.length);
-        
-        rows.each(function(index) {
-            console.group(`Row ${index + 1}`);
-            
-            const $row = $(this);
-            console.log('Row element:', this);
-            console.log('Row children count:', $row.children().length);
-            
-            const rowData = {};
-            $row.children().each(function() {
-                const tagName = this.tagName || this.nodeName;
-                const textContent = $(this).text() || '';
-                rowData[tagName] = textContent;
-                console.log(`${tagName}: "${textContent}"`);
-            });
-            
-            console.log('Complete row object:', rowData);
-            console.groupEnd();
-        });
-        
-    } catch (e) {
-        console.error('Error parsing XML:', e);
+// Prevent any output before XML headers
+if (isset($_GET['action']) && $_GET['action'] === 'ajaxGetHistoricoDetails') {
+    // Clean any existing output
+    while (ob_get_level()) {
+        ob_end_clean();
     }
     
-    console.groupEnd();
+    // Start clean output buffering
+    ob_start();
+    
+    // Turn off error reporting to prevent warnings from appearing in XML
+    error_reporting(E_ERROR | E_PARSE);
+    ini_set('display_errors', 0);
 }
 
-// Enhanced load details with debugging
-const originalLoadDetails = HistoricoModule.loadDetails;
-HistoricoModule.loadDetails = function(e) {
+// Alternative approach - Add this to the very top of wxkd.php (main file)
+if (isset($_GET['action']) && $_GET['action'] === 'ajaxGetHistoricoDetails') {
+    // Suppress all output until we're ready to send XML
+    ob_start();
+    error_reporting(0);
+    ini_set('display_errors', 0);
+}
+
+// Updated ajaxGetHistoricoDetails method with better error handling
+public function ajaxGetHistoricoDetails() {
+    // Additional cleanup
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    ob_start();
+    
+    $chaveLote = isset($_GET['chave_lote']) ? (int)$_GET['chave_lote'] : 0;
+    
+    try {
+        if ($chaveLote <= 0) {
+            throw new Exception("CHAVE_LOTE inválido");
+        }
+        
+        $query = "SELECT * FROM PGTOCORSP.dbo.TB_WXKD_LOG WHERE CHAVE_LOTE = $chaveLote ORDER BY CHAVE_LOJA";
+        $detailData = $this->model->sql->select($query);
+        
+        $xmlData = array();
+        
+        if (is_array($detailData) && count($detailData) > 0) {
+            foreach ($detailData as $row) {
+                // Clean row - only keep named keys, ignore numeric indices
+                $cleanRow = array();
+                
+                $expectedFields = array(
+                    'CHAVE_LOJA', 'NOME_LOJA', 'COD_EMPRESA', 'COD_LOJA',
+                    'TIPO_CORRESPONDENTE', 'DATA_CONCLUSAO', 'DATA_SOLICITACAO',
+                    'DEP_DINHEIRO', 'DEP_CHEQUE', 'REC_RETIRADA', 'SAQUE_CHEQUE',
+                    'SEGUNDA_VIA_CARTAO', 'HOLERITE_INSS', 'CONS_INSS', 'PROVA_DE_VIDA',
+                    'DATA_CONTRATO', 'TIPO_CONTRATO', 'DATA_LOG', 'FILTRO'
+                );
+                
+                foreach ($expectedFields as $field) {
+                    if (isset($row[$field])) {
+                        $cleanRow[$field] = $this->cleanXmlValue($row[$field]);
+                    } else {
+                        $cleanRow[$field] = '';
+                    }
+                }
+                
+                $xmlData[] = $cleanRow;
+            }
+        }
+        
+        // Build XML manually to ensure clean structure
+        $xml = '<?xml version="1.0" encoding="UTF-8"?>' . "\n<response>\n<success>true</success>\n<detailData>\n";
+        
+        foreach ($xmlData as $index => $row) {
+            $xml .= '<row id="' . ($index + 1) . '">' . "\n";
+            foreach ($row as $key => $value) {
+                $xml .= '<' . $key . '>' . $value . '</' . $key . '>' . "\n";
+            }
+            $xml .= '</row>' . "\n";
+        }
+        
+        $xml .= '</detailData>' . "\n</response>";
+        
+        // Clear buffer completely
+        ob_clean();
+        
+        // Set headers if possible
+        if (!headers_sent()) {
+            header('Content-Type: application/xml; charset=utf-8');
+            header('Cache-Control: no-cache');
+        }
+        
+        echo $xml;
+        
+    } catch (Exception $e) {
+        ob_clean();
+        
+        $errorXml = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
+        $errorXml .= '<response>' . "\n";
+        $errorXml .= '<success>false</success>' . "\n";
+        $errorXml .= '<e>' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8') . '</e>' . "\n";
+        $errorXml .= '</response>';
+        
+        if (!headers_sent()) {
+            header('Content-Type: application/xml; charset=utf-8');
+        }
+        
+        echo $errorXml;
+    }
+    
+    ob_end_flush();
+    exit;
+}
+
+// Helper method
+private function cleanXmlValue($value) {
+    if ($value === null) return '';
+    $value = (string)$value;
+    $value = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $value);
+    return htmlspecialchars($value, ENT_QUOTES | ENT_XML1, 'UTF-8');
+}
+?>
+
+/* JAVASCRIPT FIX - Update your HistoricoModule.loadDetails method */
+
+loadDetails: function(e) {
     e.preventDefault();
     const button = $(e.currentTarget);
     const chaveLote = button.data('chave-lote');
@@ -188,19 +137,138 @@ HistoricoModule.loadDetails = function(e) {
     
     button.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Carregando...');
     
+    const self = this;
+    
     $.get(`wxkd.php?action=ajaxGetHistoricoDetails&chave_lote=${chaveLote}`)
         .done((xmlData) => {
-            // Debug the XML response
-            debugHistoricoXML(xmlData, chaveLote);
+            console.log('Raw XML Response:', xmlData);
             
-            // Continue with original functionality
-            originalLoadDetails.call(this, e);
+            try {
+                // Clean the XML response more aggressively
+                let cleanedXml = xmlData;
+                
+                // Remove PHP warnings/errors before XML
+                const xmlStart = cleanedXml.indexOf('<?xml');
+                if (xmlStart > 0) {
+                    cleanedXml = cleanedXml.substring(xmlStart);
+                }
+                
+                // Remove any remaining HTML/PHP output
+                cleanedXml = cleanedXml.replace(/^.*?(<\?xml.*<\/response>).*$/s, '$1');
+                
+                console.log('Cleaned XML:', cleanedXml);
+                
+                const $xml = $(cleanedXml);
+                const success = $xml.find('success').text() === 'true';
+                
+                if (success) {
+                    let detailsHtml = '';
+                    let recordCount = 0;
+                    
+                    $xml.find('detailData row').each(function() {
+                        const $row = $(this);
+                        recordCount++;
+                        const detailId = `${chaveLote}_${recordCount}`;
+                        
+                        // Build clean row data object
+                        const rowData = {
+                            CHAVE_LOJA: $row.find('CHAVE_LOJA').text() || '',
+                            NOME_LOJA: $row.find('NOME_LOJA').text() || '',
+                            COD_EMPRESA: $row.find('COD_EMPRESA').text() || '',
+                            COD_LOJA: $row.find('COD_LOJA').text() || '',
+                            TIPO_CORRESPONDENTE: $row.find('TIPO_CORRESPONDENTE').text() || '',
+                            DATA_CONCLUSAO: $row.find('DATA_CONCLUSAO').text() || '',
+                            DATA_SOLICITACAO: $row.find('DATA_SOLICITACAO').text() || '',
+                            DEP_DINHEIRO: $row.find('DEP_DINHEIRO').text() || '0',
+                            DEP_CHEQUE: $row.find('DEP_CHEQUE').text() || '0',
+                            REC_RETIRADA: $row.find('REC_RETIRADA').text() || '0',
+                            SAQUE_CHEQUE: $row.find('SAQUE_CHEQUE').text() || '0',
+                            SEGUNDA_VIA_CARTAO: $row.find('SEGUNDA_VIA_CARTAO').text() || '',
+                            HOLERITE_INSS: $row.find('HOLERITE_INSS').text() || '',
+                            CONS_INSS: $row.find('CONS_INSS').text() || '',
+                            PROVA_DE_VIDA: $row.find('PROVA_DE_VIDA').text() || '',
+                            DATA_CONTRATO: $row.find('DATA_CONTRATO').text() || '',
+                            TIPO_CONTRATO: $row.find('TIPO_CONTRATO').text() || '',
+                            DATA_LOG: $row.find('DATA_LOG').text() || '',
+                            FILTRO: $row.find('FILTRO').text() || ''
+                        };
+                        
+                        console.log(`Row ${recordCount} data:`, rowData);
+                        
+                        // Build table row HTML
+                        detailsHtml += `
+                            <tr>
+                                <td class="checkbox-column">
+                                    <label>
+                                        <input type="checkbox" class="form-check-input historico-detail-checkbox" 
+                                               value="${detailId}" data-chave-lote="${chaveLote}">
+                                        <span class="text"></span>
+                                    </label>
+                                </td>
+                                <td>${self.escapeHtml(rowData.CHAVE_LOJA)}</td>
+                                <td>${self.escapeHtml(rowData.NOME_LOJA)}</td>
+                                <td>${self.escapeHtml(rowData.COD_EMPRESA)}</td>
+                                <td>${self.escapeHtml(rowData.COD_LOJA)}</td>
+                                <td>${self.escapeHtml(rowData.TIPO_CORRESPONDENTE)}</td>
+                                <td>${self.formatDate(rowData.DATA_CONCLUSAO)}</td>
+                                <td>${self.formatDate(rowData.DATA_SOLICITACAO)}</td>
+                                <td>${self.formatCurrency(rowData.DEP_DINHEIRO)}</td>
+                                <td>${self.formatCurrency(rowData.DEP_CHEQUE)}</td>
+                                <td>${self.formatCurrency(rowData.REC_RETIRADA)}</td>
+                                <td>${self.formatCurrency(rowData.SAQUE_CHEQUE)}</td>
+                                <td>${self.escapeHtml(rowData.SEGUNDA_VIA_CARTAO)}</td>
+                                <td>${self.escapeHtml(rowData.HOLERITE_INSS)}</td>
+                                <td>${self.escapeHtml(rowData.CONS_INSS)}</td>
+                                <td>${self.escapeHtml(rowData.PROVA_DE_VIDA)}</td>
+                                <td>${self.formatDate(rowData.DATA_CONTRATO)}</td>
+                                <td>${self.escapeHtml(rowData.TIPO_CONTRATO)}</td>
+                                <td>${self.formatDate(rowData.DATA_LOG)}</td>
+                                <td><span class="badge badge-info">${self.escapeHtml(rowData.FILTRO)}</span></td>
+                            </tr>
+                        `;
+                    });
+                    
+                    console.log('Generated HTML length:', detailsHtml.length);
+                    console.log('Sample HTML:', detailsHtml.substring(0, 200));
+                    
+                    if (recordCount > 0) {
+                        tbody.html(detailsHtml);
+                        
+                        tbody.append(`
+                            <tr class="info">
+                                <td colspan="20" class="text-center">
+                                    <strong>Total de ${recordCount} registro(s) processado(s) neste lote</strong>
+                                </td>
+                            </tr>
+                        `);
+                        
+                        // Re-initialize checkbox module
+                        setTimeout(() => {
+                            HistoricoCheckboxModule.init();
+                        }, 100);
+                        
+                    } else {
+                        tbody.html('<tr><td colspan="20" class="text-center text-muted">Nenhum detalhe encontrado</td></tr>');
+                    }
+                    
+                } else {
+                    const errorMsg = $xml.find('e').text() || 'Erro desconhecido';
+                    console.error('Server error:', errorMsg);
+                    tbody.html(`<tr><td colspan="20" class="text-center text-danger">Erro: ${errorMsg}</td></tr>`);
+                }
+                
+            } catch (e) {
+                console.error('Error parsing XML response:', e);
+                console.error('XML Data:', xmlData);
+                tbody.html('<tr><td colspan="20" class="text-center text-danger">Erro ao processar resposta XML</td></tr>');
+            }
         })
         .fail((xhr, status, error) => {
             console.error('AJAX request failed:', status, error);
             console.error('Response text:', xhr.responseText);
             tbody.html('<tr><td colspan="20" class="text-center text-danger">Erro na requisição</td></tr>');
+        })
+        .always(() => {
             button.prop('disabled', false).html('<i class="fa fa-refresh"></i> Recarregar');
         });
-};
-</script>
+}
