@@ -1,49 +1,37 @@
 <?php
 /**
- * TxtModal - MVC Compatible Version
+ * TxtModal - Manual Form Version
  * 
- * Works with custom database classes and MVC structures
- * Supports: Custom MSSQL class, Model objects, etc.
+ * Simple modal where users manually input all data for TXT generation
+ * No database connection needed - pure form-based input
  * 
  * Usage:
- * 1. Include this file: require_once 'TxtModal.php';
- * 2. Initialize: $txtModal = new TxtModal($this->model);
- * 3. Add to controller: $txtModal->render();
- * 4. Replace export button onclick: TxtModal.show()
+ * 1. Include: require_once 'TxtModal.php';
+ * 2. Initialize: $txtModal = new TxtModal();
+ * 3. Render: $txtModal->render();
+ * 4. Show modal: TxtModal.show()
  */
 
 class TxtModal {
     
-    private $model;
     private $config;
     
     /**
      * Constructor
-     * @param mixed $model Your model object with database connection
      * @param array $config Configuration options
      */
-    public function __construct($model = null, $config = array()) {
-        $this->model = $model;
-        
+    public function __construct($config = array()) {
         // Default configuration
         $this->config = array_merge(array(
-            'table_name' => 'your_table',
-            'historico_table' => 'your_historico_table',
-            'id_field' => 'id',
-            'chave_lote_field' => 'chave_lote',
-            'ajax_action' => 'txtModal',
-            'debug' => false
+            'modal_title' => 'Geração Manual de TXT',
+            'max_records' => 50, // Maximum number of records user can add
+            'default_limits' => array(
+                'AV' => array('dinheiro' => '1000000', 'cheque' => '1000000', 'retirada' => '350000', 'saque' => '350000'),
+                'UN' => array('dinheiro' => '1000000', 'cheque' => '1000000', 'retirada' => '350000', 'saque' => '350000'),
+                'PR' => array('dinheiro' => '300000', 'cheque' => '500000', 'retirada' => '200000', 'saque' => '200000'),
+                'OP' => array('dinheiro' => '300000', 'cheque' => '500000', 'retirada' => '200000', 'saque' => '200000')
+            )
         ), $config);
-        
-        // Handle AJAX requests automatically
-        $this->handleAjax();
-    }
-    
-    /**
-     * Set model
-     */
-    public function setModel($model) {
-        $this->model = $model;
     }
     
     /**
@@ -54,205 +42,7 @@ class TxtModal {
     }
     
     /**
-     * Handle AJAX requests automatically
-     */
-    private function handleAjax() {
-        if (isset($_GET['action']) && $_GET['action'] === $this->config['ajax_action']) {
-            $this->processAjaxRequest();
-            exit;
-        }
-    }
-    
-    /**
-     * Process AJAX request and return XML data
-     */
-    private function processAjaxRequest() {
-        header('Content-Type: text/xml; charset=utf-8');
-        echo '<?xml version="1.0" encoding="UTF-8"?>';
-        echo '<response>';
-        
-        try {
-            $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
-            $ids = isset($_GET['ids']) ? $_GET['ids'] : '';
-            
-            if (empty($ids)) {
-                echo '<success>false</success>';
-                echo '<e>Nenhum ID fornecido</e>';
-                echo '</response>';
-                return;
-            }
-            
-            $data = $this->fetchData($filter, $ids);
-            
-            if ($data !== false && is_array($data)) {
-                echo '<success>true</success>';
-                echo '<data>';
-                
-                foreach ($data as $row) {
-                    echo '<row>';
-                    foreach ($row as $key => $value) {
-                        echo '<' . strtolower($key) . '>' . htmlspecialchars($value) . '</' . strtolower($key) . '>';
-                    }
-                    echo '</row>';
-                }
-                
-                echo '</data>';
-            } else {
-                echo '<success>false</success>';
-                echo '<e>Erro ao consultar dados</e>';
-            }
-            
-        } catch (Exception $e) {
-            echo '<success>false</success>';
-            echo '<e>' . htmlspecialchars($e->getMessage()) . '</e>';
-        }
-        
-        echo '</response>';
-    }
-    
-    /**
-     * Fetch data from database via model
-     * Override this method to customize data fetching
-     */
-    protected function fetchData($filter, $ids) {
-        if (!$this->model) {
-            throw new Exception('Model not set');
-        }
-        
-        // Try to use model method if it exists
-        if (method_exists($this->model, 'getTxtModalData')) {
-            return $this->model->getTxtModalData($filter, $ids);
-        }
-        
-        // Fallback to direct SQL execution
-        return $this->executeDirectSQL($filter, $ids);
-    }
-    
-    /**
-     * Execute SQL directly via model's SQL connection
-     */
-    private function executeDirectSQL($filter, $ids) {
-        $idsArray = explode(',', $ids);
-        $idsArray = array_map('intval', $idsArray);
-        $idsString = implode(',', $idsArray);
-        
-        if ($filter === 'historico') {
-            $sql = "SELECT chave_loja, nome_loja, cod_empresa, cod_loja, 
-                           avancado, presenca, unidade_negocio, orgao_pagador,
-                           tipo_contrato, data_conclusao, tipo_correspondente
-                    FROM " . $this->config['historico_table'] . " 
-                    WHERE " . $this->config['chave_lote_field'] . " IN ($idsString)";
-        } else {
-            $sql = "SELECT chave_loja, nome_loja, cod_empresa, cod_loja,
-                           avancado, presenca, unidade_negocio, orgao_pagador,
-                           tipo_contrato
-                    FROM " . $this->config['table_name'] . " 
-                    WHERE " . $this->config['id_field'] . " IN ($idsString)";
-        }
-        
-        return $this->executeQuery($sql);
-    }
-    
-    /**
-     * Execute database query - works with various model types
-     */
-    private function executeQuery($sql) {
-        if ($this->config['debug']) {
-            error_log("TxtModal SQL: " . $sql);
-        }
-        
-        $result = array();
-        
-        try {
-            // Check if model has sql property (like your MSSQL class)
-            if (isset($this->model->sql)) {
-                $connection = $this->model->sql;
-                
-                // Try common methods for custom database classes
-                if (method_exists($connection, 'query')) {
-                    $queryResult = $connection->query($sql);
-                    if (is_array($queryResult)) {
-                        return $queryResult;
-                    }
-                } elseif (method_exists($connection, 'fetch_all')) {
-                    $queryResult = $connection->fetch_all($sql);
-                    if (is_array($queryResult)) {
-                        return $queryResult;
-                    }
-                } elseif (method_exists($connection, 'get_results')) {
-                    $queryResult = $connection->get_results($sql);
-                    if (is_array($queryResult)) {
-                        // Convert objects to arrays if needed
-                        foreach ($queryResult as $row) {
-                            if (is_object($row)) {
-                                $result[] = (array) $row;
-                            } else {
-                                $result[] = $row;
-                            }
-                        }
-                        return $result;
-                    }
-                }
-            }
-            
-            // Try if model itself has query methods
-            if (method_exists($this->model, 'query')) {
-                $queryResult = $this->model->query($sql);
-                if (is_array($queryResult)) {
-                    return $queryResult;
-                }
-            }
-            
-            // Try if model has executeQuery method
-            if (method_exists($this->model, 'executeQuery')) {
-                $queryResult = $this->model->executeQuery($sql);
-                if (is_array($queryResult)) {
-                    return $queryResult;
-                }
-            }
-            
-            // If model is actually a direct connection object
-            if (is_resource($this->model)) {
-                // MySQL resource
-                $query_result = mysql_query($sql, $this->model);
-                if ($query_result) {
-                    while ($row = mysql_fetch_assoc($query_result)) {
-                        $result[] = $row;
-                    }
-                    mysql_free_result($query_result);
-                }
-            } elseif ($this->model instanceof mysqli) {
-                // MySQLi
-                $query_result = $this->model->query($sql);
-                if ($query_result) {
-                    while ($row = $query_result->fetch_assoc()) {
-                        $result[] = $row;
-                    }
-                    $query_result->free();
-                }
-            } elseif ($this->model instanceof PDO) {
-                // PDO
-                $stmt = $this->model->query($sql);
-                if ($stmt) {
-                    $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                }
-            }
-            
-            return $result;
-            
-        } catch (Exception $e) {
-            if ($this->config['debug']) {
-                error_log("TxtModal Query Error: " . $e->getMessage());
-            }
-            throw $e;
-        }
-        
-        return false;
-    }
-    
-    /**
      * Render the complete modal and JavaScript
-     * Call this once in your controller/view where you want the modal to be available
      */
     public function render() {
         $this->renderModal();
@@ -261,66 +51,172 @@ class TxtModal {
     }
     
     /**
-     * Render just the modal HTML
+     * Render the modal HTML
      */
     public function renderModal() {
         ?>
-        <div class="modal fade" id="txtGenerationModal" tabindex="-1" role="dialog">
+        <div class="modal fade" id="txtManualModal" tabindex="-1" role="dialog">
             <div class="modal-dialog modal-lg" role="document">
                 <div class="modal-content">
                     <div class="modal-header">
                         <button type="button" class="close" data-dismiss="modal">&times;</button>
                         <h4 class="modal-title">
-                            <i class="fa fa-file-text-o"></i> Geração de TXT - Seleção de Registros
+                            <i class="fa fa-edit"></i> <?php echo $this->config['modal_title']; ?>
                         </h4>
                     </div>
                     <div class="modal-body">
-                        <div class="row" style="margin-bottom: 15px;">
-                            <div class="col-md-6">
-                                <label>
-                                    <input type="checkbox" id="selectAllTxtModal" class="form-check-input"> 
-                                    Selecionar Todos
-                                </label>
+                        
+                        <!-- Add New Record Section -->
+                        <div class="panel panel-primary">
+                            <div class="panel-heading">
+                                <h5 class="panel-title"><i class="fa fa-plus"></i> Adicionar Novo Registro</h5>
                             </div>
-                            <div class="col-md-6 text-right">
-                                <span class="badge badge-info" id="selectedCountTxt">0 selecionados</span>
+                            <div class="panel-body">
+                                <div class="row">
+                                    <div class="col-md-3">
+                                        <div class="form-group">
+                                            <label for="newCodEmpresa">Código Empresa *</label>
+                                            <input type="text" class="form-control" id="newCodEmpresa" placeholder="Ex: 1234567890" maxlength="10">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="form-group">
+                                            <label for="newCodLoja">Código Loja *</label>
+                                            <input type="text" class="form-control" id="newCodLoja" placeholder="Ex: 12345" maxlength="5">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label for="newNomeLoja">Nome Loja</label>
+                                            <input type="text" class="form-control" id="newNomeLoja" placeholder="Nome da loja (opcional)">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>&nbsp;</label>
+                                            <button type="button" class="btn btn-primary btn-block" id="addRecordBtn">
+                                                <i class="fa fa-plus"></i> Adicionar
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Tipo Correspondente Selection -->
+                                <div class="row">
+                                    <div class="col-md-12">
+                                        <label>Tipo de Correspondente *</label>
+                                        <div class="checkbox-group" style="margin-top: 10px;">
+                                            <label class="checkbox-inline">
+                                                <input type="radio" name="tipoCorrespondente" value="AV" id="tipo_av"> 
+                                                <span class="badge badge-success">AV</span> Avançado
+                                            </label>
+                                            <label class="checkbox-inline">
+                                                <input type="radio" name="tipoCorrespondente" value="PR" id="tipo_pr"> 
+                                                <span class="badge badge-info">PR</span> Presença
+                                            </label>
+                                            <label class="checkbox-inline">
+                                                <input type="radio" name="tipoCorrespondente" value="UN" id="tipo_un"> 
+                                                <span class="badge badge-warning">UN</span> Unidade Negócio
+                                            </label>
+                                            <label class="checkbox-inline">
+                                                <input type="radio" name="tipoCorrespondente" value="OP" id="tipo_op"> 
+                                                <span class="badge badge-primary">OP</span> Órgão Pagador
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Services Selection (only for OP) -->
+                                <div id="opServicesSection" style="display: none; margin-top: 15px;">
+                                    <label>Serviços OP (Órgão Pagador)</label>
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <label class="checkbox-inline">
+                                                <input type="checkbox" id="op_holerite" checked> Holerite INSS
+                                            </label>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="checkbox-inline">
+                                                <input type="checkbox" id="op_consulta" checked> Consulta INSS
+                                            </label>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="checkbox-inline">
+                                                <input type="checkbox" id="op_segunda_via"> Segunda Via Cartão
+                                            </label>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="checkbox-inline">
+                                                <input type="checkbox" id="op_saque" checked> Saque Cheque
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <small class="text-muted">Segunda Via Cartão é adicionada automaticamente para contratos > v10.1</small>
+                                </div>
                             </div>
                         </div>
                         
-                        <div id="txtModalLoading" class="text-center" style="padding: 40px; display: none;">
-                            <i class="fa fa-spinner fa-spin fa-2x"></i>
-                            <p>Carregando dados...</p>
+                        <!-- Records List -->
+                        <div class="panel panel-default">
+                            <div class="panel-heading">
+                                <h5 class="panel-title">
+                                    <i class="fa fa-list"></i> Registros Adicionados 
+                                    <span class="badge" id="recordCount">0</span>
+                                </h5>
+                                <div class="pull-right">
+                                    <button type="button" class="btn btn-xs btn-danger" id="clearAllBtn" style="margin-top: -5px;">
+                                        <i class="fa fa-trash"></i> Limpar Todos
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="panel-body">
+                                <div id="recordsList">
+                                    <div class="alert alert-info">
+                                        <i class="fa fa-info-circle"></i> 
+                                        Nenhum registro adicionado ainda. Use o formulário acima para adicionar registros.
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         
-                        <div id="txtModalError" class="alert alert-danger" style="display: none;">
-                            <i class="fa fa-exclamation-triangle"></i>
-                            <span id="txtModalErrorMessage">Erro ao carregar dados</span>
+                        <!-- Advanced Options -->
+                        <div class="panel panel-default">
+                            <div class="panel-heading" data-toggle="collapse" data-target="#advancedOptions">
+                                <h5 class="panel-title">
+                                    <i class="fa fa-cog"></i> Opções Avançadas 
+                                    <i class="fa fa-chevron-down pull-right"></i>
+                                </h5>
+                            </div>
+                            <div id="advancedOptions" class="panel-collapse collapse">
+                                <div class="panel-body">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <h6><strong>Limites Personalizados</strong></h6>
+                                            <div class="checkbox">
+                                                <label>
+                                                    <input type="checkbox" id="customLimits"> Usar limites personalizados
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <h6><strong>Formato de Arquivo</strong></h6>
+                                            <select class="form-control" id="fileFormat">
+                                                <option value="txt">TXT (Padrão)</option>
+                                                <option value="txt_with_bom">TXT com BOM</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         
-                        <div id="txtModalContent" style="max-height: 400px; overflow-y: auto;">
-                            <table class="table table-striped table-bordered">
-                                <thead>
-                                    <tr>
-                                        <th width="50">
-                                            <input type="checkbox" id="headerSelectAll" class="form-check-input">
-                                        </th>
-                                        <th>Código Empresa</th>
-                                        <th>Código Loja</th>
-                                        <th>Nome Loja</th>
-                                        <th>Tipo Correspondente</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="txtModalTableBody">
-                                </tbody>
-                            </table>
-                        </div>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-default" data-dismiss="modal">
                             <i class="fa fa-times"></i> Cancelar
                         </button>
-                        <button type="button" class="btn btn-primary" id="generateTxtBtn" disabled>
-                            <i class="fa fa-download"></i> Gerar TXT (<span id="selectedCountFooter">0</span>)
+                        <button type="button" class="btn btn-primary" id="generateManualTxtBtn" disabled>
+                            <i class="fa fa-download"></i> Gerar TXT (<span id="totalRecords">0</span> registros)
                         </button>
                     </div>
                 </div>
@@ -330,164 +226,169 @@ class TxtModal {
     }
     
     /**
-     * Render the JavaScript
+     * Render JavaScript
      */
     public function renderJavaScript() {
-        $ajaxAction = $this->config['ajax_action'];
+        $defaultLimits = json_encode($this->config['default_limits']);
+        $maxRecords = $this->config['max_records'];
         ?>
         <script type="text/javascript">
         window.TxtModal = {
-            currentData: [],
-            selectedIds: [],
-            currentFilter: '',
+            records: [],
+            defaultLimits: <?php echo $defaultLimits; ?>,
+            maxRecords: <?php echo $maxRecords; ?>,
             
-            show: function(selectedIds, filter) {
-                // Auto-detect parameters if not provided
-                if (!selectedIds) {
-                    var currentFilter = (typeof getCurrentFilter === 'function') ? getCurrentFilter() : 'all';
-                    if (currentFilter === 'historico' && typeof HistoricoCheckboxModule !== 'undefined') {
-                        selectedIds = HistoricoCheckboxModule.getSelectedIds();
-                    } else if (typeof CheckboxModule !== 'undefined') {
-                        selectedIds = CheckboxModule.getSelectedIds();
-                    } else {
-                        selectedIds = this.getSelectedIds();
-                    }
-                    filter = currentFilter;
-                }
+            show: function() {
+                $('#txtManualModal').modal('show');
+                this.updateUI();
+            },
+            
+            addRecord: function() {
+                var codEmpresa = $('#newCodEmpresa').val().trim();
+                var codLoja = $('#newCodLoja').val().trim();
+                var nomeLoja = $('#newNomeLoja').val().trim() || 'Loja ' + codEmpresa + '-' + codLoja;
+                var tipoCorrespondente = $('input[name="tipoCorrespondente"]:checked').val();
                 
-                if (!selectedIds || selectedIds.length === 0) {
-                    alert('Selecione pelo menos um registro');
+                // Validation
+                if (!codEmpresa) {
+                    alert('Código da Empresa é obrigatório');
+                    $('#newCodEmpresa').focus();
                     return;
                 }
                 
-                this.selectedIds = selectedIds;
-                this.currentFilter = filter || 'all';
+                if (!codLoja) {
+                    alert('Código da Loja é obrigatório');
+                    $('#newCodLoja').focus();
+                    return;
+                }
                 
-                $('#txtGenerationModal').modal('show');
-                this.loadData();
-            },
-            
-            getSelectedIds: function() {
-                var ids = [];
-                $('.row-checkbox:checked, .historico-lote-checkbox:checked').each(function() {
-                    ids.push($(this).val());
+                if (!tipoCorrespondente) {
+                    alert('Selecione o Tipo de Correspondente');
+                    return;
+                }
+                
+                if (codEmpresa.length > 10) {
+                    alert('Código da Empresa deve ter no máximo 10 dígitos');
+                    return;
+                }
+                
+                if (codLoja.length > 5) {
+                    alert('Código da Loja deve ter no máximo 5 dígitos');
+                    return;
+                }
+                
+                if (this.records.length >= this.maxRecords) {
+                    alert('Máximo de ' + this.maxRecords + ' registros permitidos');
+                    return;
+                }
+                
+                // Check for duplicates
+                var duplicate = this.records.find(function(record) {
+                    return record.codEmpresa === codEmpresa && record.codLoja === codLoja;
                 });
-                return ids;
+                
+                if (duplicate) {
+                    alert('Este registro já foi adicionado (Empresa: ' + codEmpresa + ', Loja: ' + codLoja + ')');
+                    return;
+                }
+                
+                // Collect OP services if OP type
+                var opServices = {};
+                if (tipoCorrespondente === 'OP') {
+                    opServices = {
+                        holerite: $('#op_holerite').is(':checked'),
+                        consulta: $('#op_consulta').is(':checked'),
+                        segundaVia: $('#op_segunda_via').is(':checked'),
+                        saque: $('#op_saque').is(':checked')
+                    };
+                }
+                
+                // Add record
+                var record = {
+                    id: Date.now(),
+                    codEmpresa: codEmpresa,
+                    codLoja: codLoja,
+                    nomeLoja: nomeLoja,
+                    tipoCorrespondente: tipoCorrespondente,
+                    opServices: opServices
+                };
+                
+                this.records.push(record);
+                
+                // Clear form
+                $('#newCodEmpresa, #newCodLoja, #newNomeLoja').val('');
+                $('input[name="tipoCorrespondente"]').prop('checked', false);
+                $('#opServicesSection').hide();
+                
+                this.updateUI();
+                
+                // Focus back to first field
+                $('#newCodEmpresa').focus();
             },
             
-            loadData: function() {
-                var self = this;
-                
-                $('#txtModalLoading').show();
-                $('#txtModalContent').hide();
-                $('#txtModalError').hide();
-                
-                var idsParam = this.selectedIds.join(',');
-                var url = '?action=<?php echo $ajaxAction; ?>&filter=' + this.currentFilter + '&ids=' + encodeURIComponent(idsParam);
-                
-                $.get(url)
-                    .done(function(xmlData) {
-                        try {
-                            var $xml = $(xmlData);
-                            var success = $xml.find('success').text() === 'true';
-                            
-                            if (success) {
-                                self.populateModal($xml);
-                            } else {
-                                var errorMsg = $xml.find('e').text() || 'Erro ao carregar dados';
-                                self.showError(errorMsg);
-                            }
-                        } catch (e) {
-                            console.error('Error parsing XML:', e);
-                            self.showError('Erro ao processar resposta do servidor');
-                        }
-                    })
-                    .fail(function(xhr, status, error) {
-                        console.error('AJAX failed:', status, error);
-                        self.showError('Erro na comunicação com o servidor: ' + error);
-                    })
-                    .always(function() {
-                        $('#txtModalLoading').hide();
-                    });
+            removeRecord: function(id) {
+                this.records = this.records.filter(function(record) {
+                    return record.id !== id;
+                });
+                this.updateUI();
             },
             
-            populateModal: function($xml) {
-                var self = this;
-                this.currentData = [];
-                var tableHtml = '';
+            clearAll: function() {
+                if (this.records.length === 0) return;
                 
-                $xml.find('row').each(function(index) {
-                    var row = {};
+                if (confirm('Tem certeza que deseja remover todos os registros?')) {
+                    this.records = [];
+                    this.updateUI();
+                }
+            },
+            
+            updateUI: function() {
+                this.updateRecordsList();
+                this.updateCounters();
+            },
+            
+            updateRecordsList: function() {
+                var self = this;
+                var container = $('#recordsList');
+                
+                if (this.records.length === 0) {
+                    container.html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> Nenhum registro adicionado ainda. Use o formulário acima para adicionar registros.</div>');
+                    return;
+                }
+                
+                var html = '<div class="table-responsive"><table class="table table-striped table-bordered"><thead><tr><th width="80">Empresa</th><th width="60">Loja</th><th>Nome</th><th width="80">Tipo</th><th width="80">Ações</th></tr></thead><tbody>';
+                
+                this.records.forEach(function(record) {
+                    var badgeClass = self.getTipoBadgeClass(record.tipoCorrespondente);
+                    var opServicesText = '';
                     
-                    $(this).children().each(function() {
-                        row[this.tagName] = $(this).text();
-                    });
+                    if (record.tipoCorrespondente === 'OP') {
+                        var services = [];
+                        if (record.opServices.holerite) services.push('Holerite');
+                        if (record.opServices.consulta) services.push('Consulta');
+                        if (record.opServices.segundaVia) services.push('2ª Via');
+                        if (record.opServices.saque) services.push('Saque');
+                        opServicesText = '<br><small class="text-muted">' + services.join(', ') + '</small>';
+                    }
                     
-                    row.tipo_correspondente = self.getTipoCorrespondente(row);
-                    self.currentData.push(row);
-                    
-                    var rowId = 'txtrow_' + index;
-                    tableHtml += '<tr>' +
-                        '<td><label><input type="checkbox" class="form-check-input record-checkbox" value="' + index + '" id="' + rowId + '" data-index="' + index + '" checked><span class="text"></span></label></td>' +
-                        '<td><strong>' + self.escapeHtml(row.cod_empresa) + '</strong></td>' +
-                        '<td><strong>' + self.escapeHtml(row.cod_loja) + '</strong></td>' +
-                        '<td>' + self.escapeHtml(row.nome_loja) + '</td>' +
-                        '<td><span class="badge ' + self.getTipoBadgeClass(row.tipo_correspondente) + '">' + row.tipo_correspondente + '</span></td>' +
+                    html += '<tr>' +
+                        '<td><strong>' + record.codEmpresa + '</strong></td>' +
+                        '<td><strong>' + record.codLoja + '</strong></td>' +
+                        '<td>' + record.nomeLoja + '</td>' +
+                        '<td><span class="badge ' + badgeClass + '">' + record.tipoCorrespondente + '</span>' + opServicesText + '</td>' +
+                        '<td><button class="btn btn-xs btn-danger" onclick="TxtModal.removeRecord(' + record.id + ')"><i class="fa fa-trash"></i></button></td>' +
                         '</tr>';
                 });
                 
-                $('#txtModalTableBody').html(tableHtml);
-                $('#txtModalContent').show();
-                
-                $('#selectAllTxtModal, #headerSelectAll').prop('checked', true);
-                this.updateSelectedCount();
+                html += '</tbody></table></div>';
+                container.html(html);
             },
             
-            getTipoCorrespondente: function(row) {
-                var tipoCampos = {
-                    'avancado': 'AV',
-                    'presenca': 'PR', 
-                    'unidade_negocio': 'UN',
-                    'orgao_pagador': 'OP'
-                };
-                
-                var cutoff = new Date(2025, 5, 1);
-                var mostRecentDate = null;
-                var mostRecentType = '';
-                
-                if (row.tipo_correspondente && row.tipo_correspondente !== '') {
-                    return row.tipo_correspondente;
-                }
-                
-                for (var campo in tipoCampos) {
-                    var raw = row[campo];
-                    if (raw) {
-                        var date = this.parseDate(raw);
-                        if (date && date > cutoff) {
-                            if (mostRecentDate === null || date > mostRecentDate) {
-                                mostRecentDate = date;
-                                mostRecentType = tipoCampos[campo];
-                            }
-                        }
-                    }
-                }
-                
-                return mostRecentType || 'N/A';
-            },
-            
-            parseDate: function(dateString) {
-                if (!dateString || typeof dateString !== 'string') return null;
-                
-                var parts = dateString.trim().split('/');
-                if (parts.length !== 3) return null;
-                
-                var day = parseInt(parts[0], 10);
-                var month = parseInt(parts[1], 10) - 1;
-                var year = parseInt(parts[2], 10);
-                
-                if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
-                
-                return new Date(year, month, day);
+            updateCounters: function() {
+                var count = this.records.length;
+                $('#recordCount').text(count);
+                $('#totalRecords').text(count);
+                $('#generateManualTxtBtn').prop('disabled', count === 0);
             },
             
             getTipoBadgeClass: function(tipo) {
@@ -500,61 +401,52 @@ class TxtModal {
                 return classes[tipo] || 'badge-default';
             },
             
-            updateSelectedCount: function() {
-                var checkedCount = $('.record-checkbox:checked').length;
-                $('#selectedCountTxt').text(checkedCount + ' selecionados');
-                $('#selectedCountFooter').text(checkedCount);
-                $('#generateTxtBtn').prop('disabled', checkedCount === 0);
-            },
-            
             generateTXT: function() {
-                var self = this;
-                var selectedIndexes = [];
-                
-                $('.record-checkbox:checked').each(function() {
-                    selectedIndexes.push(parseInt($(this).data('index')));
-                });
-                
-                if (selectedIndexes.length === 0) {
-                    alert('Selecione pelo menos um registro');
+                if (this.records.length === 0) {
+                    alert('Adicione pelo menos um registro');
                     return;
                 }
                 
                 var txtContent = '';
+                var self = this;
                 
-                selectedIndexes.forEach(function(index) {
-                    var row = self.currentData[index];
-                    var empresa = row.cod_empresa;
-                    var codigoLoja = row.cod_loja;
-                    var tipoCorrespondente = row.tipo_correspondente;
+                this.records.forEach(function(record) {
+                    var empresa = record.codEmpresa;
+                    var codigoLoja = record.codLoja;
+                    var tipo = record.tipoCorrespondente;
                     
-                    if (['AV', 'PR', 'UN'].includes(tipoCorrespondente)) {
-                        var limits;
-                        if (tipoCorrespondente === 'AV' || tipoCorrespondente === 'UN') {
-                            limits = { dinheiro: '1000000', cheque: '1000000', retirada: '350000', saque: '350000' };
-                        } else if (tipoCorrespondente === 'PR') {
-                            limits = { dinheiro: '300000', cheque: '500000', retirada: '200000', saque: '200000' };
-                        }
-
+                    if (['AV', 'PR', 'UN'].includes(tipo)) {
+                        var limits = self.defaultLimits[tipo];
+                        
                         txtContent += self.formatToTXTLine(empresa, codigoLoja, 19, '01', 500, limits.dinheiro, 1, 0, 2, 0) + '\r\n';
                         txtContent += self.formatToTXTLine(empresa, codigoLoja, 19, '02', 500, limits.cheque, 1, 0, 2, 0) + '\r\n';
                         txtContent += self.formatToTXTLine(empresa, codigoLoja, 28, '04', 1000, limits.retirada, 1, 0, 2, 0) + '\r\n';
                         txtContent += self.formatToTXTLine(empresa, codigoLoja, 29, '04', 1000, limits.saque, 1, 0, 2, 0) + '\r\n';
                         
-                    } else if (tipoCorrespondente === 'OP') {
-                        var limits = { dinheiro: '300000', cheque: '500000', retirada: '200000', saque: '200000' };
-                        txtContent += self.formatToTXTLine(empresa, codigoLoja, 14, '04', 0, 0, 1, 0, 1, 0) + '\r\n';
-                        txtContent += self.formatToTXTLine(empresa, codigoLoja, 18, '04', 0, 0, 1, 0, 1, 0) + '\r\n';
-                        txtContent += self.formatToTXTLine(empresa, codigoLoja, 29, '04', 1000, limits.saque, 1, 0, 1, 0) + '\r\n';
+                    } else if (tipo === 'OP') {
+                        var services = record.opServices;
+                        
+                        if (services.holerite) {
+                            txtContent += self.formatToTXTLine(empresa, codigoLoja, 14, '04', 0, 0, 1, 0, 1, 0) + '\r\n';
+                        }
+                        if (services.consulta) {
+                            txtContent += self.formatToTXTLine(empresa, codigoLoja, 18, '04', 0, 0, 1, 0, 1, 0) + '\r\n';
+                        }
+                        if (services.segundaVia) {
+                            txtContent += self.formatToTXTLine(empresa, codigoLoja, 31, '04', 0, 0, 1, 0, 1, 0) + '\r\n';
+                        }
+                        if (services.saque) {
+                            txtContent += self.formatToTXTLine(empresa, codigoLoja, 29, '04', 1000, self.defaultLimits.OP.saque, 1, 0, 1, 0) + '\r\n';
+                        }
                     }
                 });
                 
                 if (txtContent) {
-                    var filename = 'custom_txt_' + this.getCurrentTimestamp() + '.txt';
+                    var filename = 'manual_txt_' + this.getCurrentTimestamp() + '.txt';
                     this.downloadTXTFile(txtContent, filename);
                     
-                    $('#txtGenerationModal').modal('hide');
-                    this.showSuccessMessage('TXT gerado com sucesso!\n' + selectedIndexes.length + ' registros processados.');
+                    $('#txtManualModal').modal('hide');
+                    this.showSuccessMessage('TXT gerado com sucesso!\n' + this.records.length + ' registros processados.');
                 } else {
                     alert('Erro ao gerar conteúdo TXT');
                 }
@@ -606,16 +498,15 @@ class TxtModal {
                 return str.substring(0, length);
             },
             
-            escapeHtml: function(text) {
-                if (!text) return '';
-                var div = document.createElement('div');
-                div.textContent = text;
-                return div.innerHTML;
-            },
-            
             downloadTXTFile: function(txtContent, filename) {
-                var txtWithBOM = '\uFEFF' + txtContent;
-                var blob = new Blob([txtWithBOM], { type: 'text/plain;charset=utf-8;' });
+                var fileFormat = $('#fileFormat').val();
+                var content = txtContent;
+                
+                if (fileFormat === 'txt_with_bom') {
+                    content = '\uFEFF' + txtContent;
+                }
+                
+                var blob = new Blob([content], { type: 'text/plain;charset=utf-8;' });
                 
                 var link = document.createElement('a');
                 if (link.download !== undefined) {
@@ -645,12 +536,6 @@ class TxtModal {
                 return year + '-' + month + '-' + day + '_' + hours + '-' + minutes + '-' + seconds;
             },
             
-            showError: function(message) {
-                $('#txtModalErrorMessage').text(message);
-                $('#txtModalError').show();
-                $('#txtModalContent').hide();
-            },
-            
             showSuccessMessage: function(message) {
                 var alertHtml = '<div class="alert alert-success" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10000; min-width: 400px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">' +
                     '<button class="close" onclick="$(this).parent().remove()" style="color: #3c763d !important; opacity: 0.7; position: absolute; top: 10px; right: 15px;"><i class="fa fa-times"></i></button>' +
@@ -667,33 +552,42 @@ class TxtModal {
             }
         };
         
-        // Auto-attach event listeners when DOM is ready
+        // Event Listeners
         $(document).ready(function() {
-            $(document).on('change', '#selectAllTxtModal, #headerSelectAll', function() {
-                var isChecked = $(this).is(':checked');
-                $('.record-checkbox').prop('checked', isChecked);
-                TxtModal.updateSelectedCount();
+            // Add record button
+            $(document).on('click', '#addRecordBtn', function() {
+                TxtModal.addRecord();
             });
             
-            $(document).on('change', '.record-checkbox', function() {
-                var totalCheckboxes = $('.record-checkbox').length;
-                var checkedCheckboxes = $('.record-checkbox:checked').length;
-                
-                var selectAllCheckboxes = $('#selectAllTxtModal, #headerSelectAll');
-                
-                if (checkedCheckboxes === 0) {
-                    selectAllCheckboxes.prop('indeterminate', false).prop('checked', false);
-                } else if (checkedCheckboxes === totalCheckboxes) {
-                    selectAllCheckboxes.prop('indeterminate', false).prop('checked', true);
-                } else {
-                    selectAllCheckboxes.prop('indeterminate', true).prop('checked', false);
+            // Enter key in form fields
+            $(document).on('keypress', '#newCodEmpresa, #newCodLoja, #newNomeLoja', function(e) {
+                if (e.which === 13) {
+                    TxtModal.addRecord();
                 }
-                
-                TxtModal.updateSelectedCount();
             });
             
-            $(document).on('click', '#generateTxtBtn', function() {
+            // Show/hide OP services when OP is selected
+            $(document).on('change', 'input[name="tipoCorrespondente"]', function() {
+                if ($(this).val() === 'OP') {
+                    $('#opServicesSection').show();
+                } else {
+                    $('#opServicesSection').hide();
+                }
+            });
+            
+            // Generate TXT button
+            $(document).on('click', '#generateManualTxtBtn', function() {
                 TxtModal.generateTXT();
+            });
+            
+            // Clear all button
+            $(document).on('click', '#clearAllBtn', function() {
+                TxtModal.clearAll();
+            });
+            
+            // Only allow numbers in empresa and loja fields
+            $(document).on('input', '#newCodEmpresa, #newCodLoja', function() {
+                this.value = this.value.replace(/[^0-9]/g, '');
             });
         });
         </script>
@@ -701,19 +595,25 @@ class TxtModal {
     }
     
     /**
-     * Render additional CSS
+     * Render CSS
      */
     public function renderCSS() {
         ?>
         <style type="text/css">
-        #txtGenerationModal .badge-success { background-color: #5cb85c; }
-        #txtGenerationModal .badge-info { background-color: #5bc0de; }
-        #txtGenerationModal .badge-warning { background-color: #f0ad4e; }
-        #txtGenerationModal .badge-primary { background-color: #337ab7; }
-        #txtGenerationModal .badge-default { background-color: #777; }
-        #txtGenerationModal .form-check-input { margin-right: 8px; }
-        #txtGenerationModal .table th { background-color: #f5f5f5; }
-        #txtGenerationModal .modal-lg { max-width: 900px; }
+        #txtManualModal .badge-success { background-color: #5cb85c; }
+        #txtManualModal .badge-info { background-color: #5bc0de; }
+        #txtManualModal .badge-warning { background-color: #f0ad4e; }
+        #txtManualModal .badge-primary { background-color: #337ab7; }
+        #txtManualModal .badge-default { background-color: #777; }
+        #txtManualModal .form-check-input { margin-right: 8px; }
+        #txtManualModal .panel-heading { cursor: pointer; }
+        #txtManualModal .checkbox-group { margin-bottom: 15px; }
+        #txtManualModal .checkbox-inline { margin-right: 20px; }
+        #txtManualModal .table th { background-color: #f5f5f5; }
+        #txtManualModal .modal-lg { max-width: 900px; }
+        #txtManualModal .panel { margin-bottom: 15px; }
+        #txtManualModal .panel-heading h5 { margin: 0; }
+        #txtManualModal .alert { margin-bottom: 0; }
         </style>
         <?php
     }
