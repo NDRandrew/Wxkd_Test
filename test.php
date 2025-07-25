@@ -569,8 +569,29 @@ class TxtModal {
             }
         };
         
+            cleanup: function() {
+                this.records = [];
+                $('#newCodEmpresa, #newCodLoja, #newNomeLoja').val('');
+                $('input[name="tipoCorrespondente"]').prop('checked', false);
+                $('#opServicesSection').hide();
+                this.updateUI();
+            }
+        };
+        
         // Event Listeners
         $(document).ready(function() {
+            // Modal close/hide events - cleanup when user leaves
+            $('#txtManualModal').on('hidden.bs.modal', function() {
+                TxtModal.cleanup();
+            });
+            
+            // Page unload - cleanup when user navigates away
+            $(window).on('beforeunload', function() {
+                if (TxtModal.records.length > 0) {
+                    TxtModal.cleanup();
+                }
+            });
+            
             // Add record button
             $(document).on('click', '#addRecordBtn', function() {
                 TxtModal.addRecord();
@@ -600,6 +621,13 @@ class TxtModal {
             // Clear all button
             $(document).on('click', '#clearAllBtn', function() {
                 TxtModal.clearAll();
+            });
+            
+            // Cancel button - explicit cleanup
+            $(document).on('click', '[data-dismiss="modal"]', function() {
+                if ($(this).closest('#txtManualModal').length > 0) {
+                    TxtModal.cleanup();
+                }
             });
             
             // Only allow numbers in empresa and loja fields
