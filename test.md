@@ -1,218 +1,256 @@
-# 📊 Guia de Implementação - Exportação XLS/CSV
+# TXT Generation Modal Class Documentation
 
-## 🎯 **Objetivo**
-Substituir a exportação XML por exportação Excel (XLS) e CSV, mantendo toda a funcionalidade de seleção e filtros.
+## Overview
 
-## 🔧 **Arquivos a Modificar**
+The `TxtGenerationModal` class creates an interactive modal that allows users to selectively generate TXT files by choosing which `COD_EMPRESA` and `COD_LOJA` records to include. This provides more granular control compared to the automatic `extractTXTfromXML` function.
 
-### **1. Controller (views/Wxkd_dashboard.php)**
+## Features
 
-**Adicionar os métodos:**
-- `exportXLS()` - Exportação Excel
-- `exportCSV()` - Exportação CSV  
-- `getSelectedRecords()` - Buscar registros específicos
-- `generateXLSContent()` - Gerar formato Excel
-- `generateCSVContent()` - Gerar formato CSV
-- `getExportHTML()` - HTML dos botões
-- `getExportStyles()` - CSS dos botões
+- **Interactive Selection**: Users can check/uncheck individual records
+- **Select All/None**: Bulk selection options
+- **Real-time Counter**: Shows selected record count
+- **Type Indicators**: Visual badges showing correspondence type (AV, PR, UN, OP)
+- **Error Handling**: Proper error display and loading states
+- **File Download**: Automatic TXT file download with proper formatting
 
-**Atualizar roteamento:**
+## Integration Steps
+
+### 1. Include the JavaScript Class
+
+Add the class to your existing JavaScript file or include it separately:
+
+```javascript
+// The TxtGenerationModal class code goes here
+```
+
+### 2. Replace Export Function Call
+
+Instead of calling `exportSelectedTXT()`, use:
+
+```javascript
+// Old way
+// exportSelectedTXT();
+
+// New way
+showTxtGenerationModal();
+```
+
+### 3. Update HTML Button
+
+Update your export button to call the new function:
+
+```html
+<button onclick="showTxtGenerationModal()" class="btn btn-primary">
+    <i class="fa fa-file-text-o"></i> Gerar TXT Customizado
+</button>
+```
+
+### 4. PHP Backend Changes
+
+Create a new action in your `wxkd.php` file to handle the modal data request:
+
 ```php
-case 'exportXLS':
-    $this->exportXLS();
-    break;
-case 'exportCSV':
-    $this->exportCSV();
-    break;
+<?php
+// In your wxkd.php file, add this new action
+if ($action === 'getTxtModalData') {
+    $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
+    $ids = isset($_GET['ids']) ? $_GET['ids'] : '';
+    
+    // Start XML response
+    header('Content-Type: text/xml; charset=utf-8');
+    echo '<?xml version="1.0" encoding="UTF-8"?>';
+    echo '<response>';
+    
+    try {
+        // Your existing logic to get data based on filter and ids
+        // This should be similar to your existing export logic
+        
+        if ($filter === 'historico') {
+            // Handle historico data
+            $idsArray = explode(',', $ids);
+            // Query your database for historico records
+            // Example:
+            $sql = "SELECT chave_loja, nome_loja, cod_empresa, cod_loja, 
+                           avancado, presenca, unidade_negocio, orgao_pagador,
+                           tipo_contrato
+                    FROM your_historico_table 
+                    WHERE chave_lote IN (" . implode(',', array_map('intval', $idsArray)) . ")";
+        } else {
+            // Handle normal data
+            $idsArray = explode(',', $ids);
+            // Query your database for normal records
+            // Example:
+            $sql = "SELECT chave_loja, nome_loja, cod_empresa, cod_loja,
+                           avancado, presenca, unidade_negocio, orgao_pagador,
+                           tipo_contrato
+                    FROM your_main_table 
+                    WHERE id IN (" . implode(',', array_map('intval', $idsArray)) . ")";
+        }
+        
+        // Execute query (adjust based on your database connection method)
+        $result = mysql_query($sql); // or mysqli_query, etc.
+        
+        if ($result) {
+            echo '<success>true</success>';
+            echo '<data>';
+            
+            while ($row = mysql_fetch_assoc($result)) {
+                echo '<row>';
+                echo '<cod_empresa>' . htmlspecialchars($row['cod_empresa']) . '</cod_empresa>';
+                echo '<cod_loja>' . htmlspecialchars($row['cod_loja']) . '</cod_loja>';
+                echo '<nome_loja>' . htmlspecialchars($row['nome_loja']) . '</nome_loja>';
+                echo '<chave_loja>' . htmlspecialchars($row['chave_loja']) . '</chave_loja>';
+                
+                // Include date fields for tipo correspondente calculation
+                echo '<avancado>' . htmlspecialchars($row['avancado']) . '</avancado>';
+                echo '<presenca>' . htmlspecialchars($row['presenca']) . '</presenca>';
+                echo '<unidade_negocio>' . htmlspecialchars($row['unidade_negocio']) . '</unidade_negocio>';
+                echo '<orgao_pagador>' . htmlspecialchars($row['orgao_pagador']) . '</orgao_pagador>';
+                
+                echo '<tipo_contrato>' . htmlspecialchars($row['tipo_contrato']) . '</tipo_contrato>';
+                echo '</row>';
+            }
+            
+            echo '</data>';
+        } else {
+            echo '<success>false</success>';
+            echo '<e>Erro ao consultar dados</e>';
+        }
+        
+    } catch (Exception $e) {
+        echo '<success>false</success>';
+        echo '<e>' . htmlspecialchars($e->getMessage()) . '</e>';
+    }
+    
+    echo '</response>';
+    exit;
+}
+?>
 ```
 
-### **2. Model (models/Wxkd_DashboardModel.php)**
+## Class Methods
 
-**Adicionar método:**
-- `getSelectedRecords($idsArray, $filter)` - Buscar registros por IDs específicos
+### Core Methods
 
-### **3. JavaScript (assets/Wxkd_script.js)**
+- **`init()`**: Initializes the modal and event listeners
+- **`show(selectedIds, filter)`**: Opens the modal with specified data
+- **`loadData()`**: Fetches data from the server
+- **`populateModal($xml)`**: Populates the modal with fetched data
+- **`generateTXT()`**: Generates and downloads the TXT file
 
-**Adicionar/Atualizar:**
-- `ExportModule` completo com suporte XLS/CSV
-- Funções globais: `exportSelectedXLS()`, `exportSelectedCSV()`, `exportAllXLS()`, `exportAllCSV()`
-- Indicador de loading durante exportação
-- Compatibilidade com funções XML existentes
+### Helper Methods
 
-### **4. HTML (parte da view)**
+- **`updateSelectedCount()`**: Updates the selection counter
+- **`updateSelectAllState()`**: Manages select all checkbox state
+- **`getTipoCorrespondenteFromXML($row)`**: Determines correspondence type
+- **`formatToTXTLine(...)`**: Formats data into TXT line format
+- **`downloadTXTFile(content, filename)`**: Handles file download
 
-**Substituir seção de exportação por:**
-- Botões organizados por tipo (Selecionados/Todos)
-- Opções XLS e CSV para cada tipo
-- Informações sobre cada formato
+## Usage Example
 
-## 📝 **Passos de Implementação**
+```javascript
+// Initialize (done automatically on document ready)
+TxtGenerationModal.init();
 
-### **Passo 1: Backup**
-```bash
-cp views/Wxkd_dashboard.php views/Wxkd_dashboard.php.backup
-cp models/Wxkd_DashboardModel.php models/Wxkd_DashboardModel.php.backup
-cp assets/Wxkd_script.js assets/Wxkd_script.js.backup
+// Show modal with selected records
+const selectedIds = CheckboxModule.getSelectedIds();
+const currentFilter = 'cadastramento';
+TxtGenerationModal.show(selectedIds, currentFilter);
 ```
 
-### **Passo 2: Atualizar Controller**
+## Modal Structure
 
-**A) Adicionar métodos de exportação:**
-1. Copiar código do artifact "Método exportXLS - Controller"
-2. Copiar código do artifact "Versão Alternativa - Exportação CSV"
-3. Adicionar no final da classe
+The modal includes:
 
-**B) Atualizar roteamento:**
-1. Copiar código do artifact "Controller Atualizado - Roteamento XLS/CSV"
-2. Substituir método `handleRequest()` ou adicionar cases
+1. **Header**: Title and close button
+2. **Body**: 
+   - Select all checkbox and counter
+   - Loading indicator
+   - Error display area
+   - Data table with checkboxes
+3. **Footer**: Cancel and Generate buttons
 
-**C) Atualizar HTML da página:**
-1. Localizar seção de exportação XML atual
-2. Substituir por código do artifact "HTML Atualizado - Botões Exportação XLS"
-3. Ou usar método `getExportHTML()` para inserir dinamicamente
+## Data Flow
 
-### **Passo 3: Atualizar Model**
+1. User selects records and clicks export button
+2. `showTxtGenerationModal()` is called
+3. Modal opens and sends AJAX request to `wxkd.php?action=getTxtModalData`
+4. PHP returns XML with record data
+5. Modal populates with checkboxes for each record
+6. User selects desired records
+7. `generateTXT()` processes selected records
+8. TXT file is generated and downloaded
 
-**Adicionar método getSelectedRecords:**
-1. Abrir `models/Wxkd_DashboardModel.php`
-2. Adicionar código do artifact "Método getSelectedRecords - Model"
-3. Salvar arquivo
+## Error Handling
 
-### **Passo 4: Atualizar JavaScript**
+- **Loading States**: Shows spinner while fetching data
+- **Server Errors**: Displays server error messages
+- **Client Errors**: Handles XML parsing and validation errors
+- **Empty Selection**: Prevents generation with no records selected
 
-**Substituir módulo de exportação:**
-1. Abrir `assets/Wxkd_script.js`
-2. Localizar `ExportModule` existente (se houver)
-3. Substituir por código do artifact "JavaScript Completo - Exportação XLS/CSV"
-4. Ou adicionar ao final do arquivo
+## Customization
 
-### **Passo 5: Testar**
+### Styling
+The modal uses Bootstrap classes and can be customized with additional CSS:
 
-**A) Teste básico:**
-1. Acessar dashboard
-2. Verificar se botões de exportação aparecem
-3. Testar clique (deve mostrar loading)
+```css
+#txtGenerationModal .modal-dialog {
+    max-width: 900px; /* Adjust modal width */
+}
 
-**B) Teste funcional:**
-1. Selecionar alguns registros
-2. Clicar "Exportar Selecionados (XLS)"
-3. Verificar se arquivo baixa
-4. Abrir no Excel e verificar formatação
-
-**C) Teste completo:**
-1. Testar todos os 4 botões (Sel. XLS, Sel. CSV, Todos XLS, Todos CSV)
-2. Testar com diferentes filtros (Cadastramento, Descadastramento, Histórico)
-3. Verificar dados nos arquivos exportados
-
-## 🎨 **Características dos Formatos**
-
-### **📊 XLS (Excel):**
-- ✅ Formatação completa (cores, bordas, estilos)
-- ✅ Reconhecido nativamente pelo Excel
-- ✅ Colunas com tipos corretos (texto, número, data)
-- ✅ Nome da planilha dinâmico
-- ❌ Arquivo maior
-- ❌ Menos compatível com outros programas
-
-### **📄 CSV:**
-- ✅ Formato universal
-- ✅ Arquivo menor
-- ✅ Compatível com Excel, Google Sheets, etc.
-- ✅ BOM UTF-8 para caracteres especiais
-- ✅ Separador ponto e vírgula (padrão brasileiro)
-- ❌ Sem formatação
-- ❌ Todas as colunas como texto
-
-## 🔍 **Solução de Problemas**
-
-### **Problema 1: "Headers already sent"**
-**Causa:** Output antes dos headers
-**Solução:** Verificar se não há espaços/output antes do PHP
-
-### **Problema 2: Arquivo não baixa**
-**Causa:** JavaScript ou headers incorretos
-**Solução:** Verificar console do browser (F12) e logs do servidor
-
-### **Problema 3: Caracteres especiais corrompidos**
-**Causa:** Encoding incorreto
-**Solução:** BOM UTF-8 já incluído no CSV, verificar encoding do banco
-
-### **Problema 4: Excel não abre XLS**
-**Causa:** Formato XML incorreto
-**Solução:** Usar exportação CSV como alternativa
-
-### **Problema 5: Dados não aparecem no arquivo**
-**Causa:** Query não retorna dados ou mapeamento incorreto
-**Solução:** Verificar logs e testar getSelectedRecords isoladamente
-
-## 📊 **Estrutura dos Arquivos Gerados**
-
-### **XLS:**
-```
-Dashboard_Cadastramento_2025-06-27_14-30-15.xls
-├── Planilha: "Dashboard_Cadastramento"
-├── Cabeçalho: Azul com fonte branca
-├── Dados: Formatados com bordas
-└── Colunas: ID, Nome, Email, Telefone, Endereço, Cidade, Estado, Chave Loja, Data, Tipo
+.record-checkbox {
+    transform: scale(1.2); /* Larger checkboxes */
+}
 ```
 
-### **CSV:**
+### Behavior
+Modify the `generateTXT()` method to change TXT generation logic:
+
+```javascript
+generateTXT: function() {
+    // Custom logic here
+    // Access selected data via this.currentData[index]
+}
 ```
-dashboard_cadastramento_2025-06-27_14-30-15.csv
-├── Encoding: UTF-8 com BOM
-├── Separador: Ponto e vírgula (;)
-├── Delimitador: Aspas duplas (")
-└── Formato: "ID";"Nome";"Email"...
+
+## Browser Compatibility
+
+- Requires jQuery
+- Bootstrap modal support
+- Modern browsers with Blob and URL.createObjectURL support
+- File download API support
+
+## Security Considerations
+
+- Input sanitization in PHP backend
+- SQL injection prevention with prepared statements
+- XSS prevention with `htmlspecialchars()`
+- Validate user permissions before data access
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Modal doesn't open**: Check if `TxtGenerationModal.init()` was called
+2. **No data loads**: Verify PHP action name and XML response format
+3. **Download fails**: Check browser file download permissions
+4. **Select all not working**: Ensure event delegation is properly set up
+
+### Debug Mode
+
+Add debug logging:
+
+```javascript
+// Add to loadData method
+.done(function(xmlData) {
+    console.log('XML Response:', xmlData); // Debug line
+    // ... rest of code
+})
 ```
 
-## ✅ **Checklist de Validação**
+## Performance Notes
 
-- [ ] Backup dos arquivos originais feito
-- [ ] Métodos de exportação adicionados no Controller
-- [ ] Método getSelectedRecords adicionado no Model
-- [ ] JavaScript atualizado com ExportModule
-- [ ] HTML dos botões adicionado/atualizado
-- [ ] Roteamento das actions configurado
-- [ ] Teste de exportação selecionados XLS
-- [ ] Teste de exportação selecionados CSV
-- [ ] Teste de exportação todos XLS
-- [ ] Teste de exportação todos CSV
-- [ ] Teste com filtro Cadastramento
-- [ ] Teste com filtro Descadastramento
-- [ ] Teste com filtro Histórico
-- [ ] Arquivos abrem corretamente no Excel
-- [ ] Dados estão corretos nos arquivos
-- [ ] Loading indicator funciona
-- [ ] Tratamento de erros funciona
-
-## 🚀 **Após Implementação**
-
-### **1. Limpeza:**
-- Remover funções de exportação XML antigas (opcional)
-- Remover logs de debug se adicionados
-- Otimizar queries se necessário
-
-### **2. Documentação:**
-- Atualizar documentação do sistema
-- Treinar usuários nos novos formatos
-- Documentar diferenças entre XLS e CSV
-
-### **3. Monitoramento:**
-- Verificar logs de erro por alguns dias
-- Monitorar performance das exportações
-- Coletar feedback dos usuários
-
----
-
-## 🎉 **Resultado Final**
-
-Após a implementação, o sistema terá:
-
-✅ **Exportação Excel (XLS)** com formatação profissional  
-✅ **Exportação CSV** compatível e universal  
-✅ **Seleção específica** de registros  
-✅ **Exportação completa** por filtro  
-✅ **Interface moderna** com loading indicators  
-✅ **Compatibilidade total** com sistema existente  
-
-**O usuário poderá escolher entre 4 opções de exportação conforme sua necessidade!**
+- Modal reuses DOM elements for efficiency
+- Large datasets (>1000 records) may impact performance
+- Consider pagination for very large result sets
+- XML parsing is synchronous and may block UI briefly
