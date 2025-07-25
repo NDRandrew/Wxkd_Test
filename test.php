@@ -1,242 +1,502 @@
-Looking at the JavaScript code, I need to understand how the existing filtering works. Let me analyze the `filterRowData` function and `isFieldActive` function.
-
-Looking at the existing code:
-
-1. The `filterRowData` function receives `rowData` as parameter
-2. It checks `statusCell = rowData[6]` for status filtering
-3. The `isFieldActive` function looks for specific HTML patterns in the status cell
-
-But for contract filtering, I need to look at a different column. Looking at the HTML structure in TestH.txt, I can see the table structure:
-
-- Column 0: Checkbox
-- Column 1: Chave_Loja  
-- Column 2: Nome_Loja
-- Column 3: Cod_Empresa
-- Column 4: Cod_Loja
-- Column 5: QUANT_LOJAS
-- Column 6: TIPO_CORRESPONDENTE (status indicators)
-- Column 7: DATA_CONCLUSAO
-- Column 8: DATA_SOLICITACAO
-- ...
-- Column 16: Data_Contrato
-- Column 17: Tipo_Contrato
-
-So the contract type would be in column 17 (0-based indexing).
-
-Looking at the existing `PaginationModule.createRowData` function, I can see how the row data is structured. The TIPO_CONTRATO data is added as the last column.
-
-Let me check the `filterRowData` function more carefully. It receives `rowData` which seems to be an array of jQuery objects representing table cells.
-
-The issue might be:
-1. I'm looking at the wrong column index
-2. The way I'm extracting the text from the cell is incorrect
-3. The version extraction logic has an issue
-
-Let me fix this by following the existing patterns more closely.
-
-Looking at the existing code structure, I can see the issue. Let me fix the contract version filtering by following the existing patterns more closely.
-
-Here's the corrected JavaScript code for the `StatusFilterModule`:
-
-```javascript
-const StatusFilterModule = {
-    activeStatusFilters: {},
+const TxtGenerationModal = {
+    modalId: 'txtGenerationModal',
+    currentData: [],
+    selectedIds: [],
     
     init: function() {
-        this.activeStatusFilters = {};
+        this.createModal();
         this.attachEventListeners();
     },
     
+    createModal: function() {
+        // Remove existing modal if it exists
+        $(`#${this.modalId}`).remove();
+        
+        const modalHtml = `
+            <div class="modal fade" id="${this.modalId}" tabindex="-1" role="dialog" aria-labelledby="${this.modalId}Label">
+                <div class="modal-dialog modal-lg" role="document">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
+                            <h4 class="modal-title" id="${this.modalId}Label">
+                                <i class="fa fa-file-text-o"></i> Geração de TXT - Seleção de Registros
+                            </h4>
+                        </div>
+                        <div class="modal-body">
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label>
+                                            <input type="checkbox" id="selectAllTxtModal" class="form-check-input"> 
+                                            Selecionar Todos
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 text-right">
+                                    <span class="badge badge-info" id="selectedCountTxt">0 selecionados</span>
+                                </div>
+                            </div>
+                            
+                            <div id="txtModalLoading" class="text-center" style="padding: 40px; display: none;">
+                                <i class="fa fa-spinner fa-spin fa-2x"></i>
+                                <p>Carregando dados...</p>
+                            </div>
+                            
+                            <div id="txtModalError" class="alert alert-danger" style="display: none;">
+                                <i class="fa fa-exclamation-triangle"></i>
+                                <span id="txtModalErrorMessage">Erro ao carregar dados</span>
+                            </div>
+                            
+                            <div id="txtModalContent" style="max-height: 400px; overflow-y: auto;">
+                                <table class="table table-striped table-bordered">
+                                    <thead>
+                                        <tr>
+                                            <th width="50">
+                                                <input type="checkbox" id="headerSelectAll" class="form-check-input">
+                                            </th>
+                                            <th>Código Empresa</th>
+                                            <th>Código Loja</th>
+                                            <th>Nome Loja</th>
+                                            <th>Tipo Correspondente</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="txtModalTableBody">
+                                        <!-- Content will be populated here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-default" data-dismiss="modal">
+                                <i class="fa fa-times"></i> Cancelar
+                            </button>
+                            <button type="button" class="btn btn-primary" id="generateTxtBtn" disabled>
+                                <i class="fa fa-download"></i> Gerar TXT (<span id="selectedCountFooter">0</span>)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        $('body').append(modalHtml);
+    },
+    
     attachEventListeners: function() {
-        $('.status-filter-btn').off('click.statusFilter').on('click.statusFilter', this.handleStatusFilterClick.bind(this));
+        const self = this;
+        
+        // Select all functionality
+        $(document).on('change', `#selectAllTxtModal, #headerSelectAll`, function() {
+            const isChecked = $(this).is(':checked');
+            $(`#${self.modalId} .record-checkbox`).prop('checked', isChecked);
+            self.updateSelectedCount();
+        });
+        
+        // Individual checkbox change
+        $(document).on('change', `#${self.modalId} .record-checkbox`, function() {
+            self.updateSelectAllState();
+            self.updateSelectedCount();
+        });
+        
+        // Generate TXT button
+        $(document).on('click', '#generateTxtBtn', function() {
+            self.generateTXT();
+        });
+        
+        // Modal cleanup on hide
+        $(`#${self.modalId}`).on('hidden.bs.modal', function() {
+            self.cleanup();
+        });
     },
     
-    handleStatusFilterClick: function(e) {
-        const button = $(e.currentTarget);
-        const fieldName = button.data('field');
+    show: function(selectedIds, filter) {
+        this.selectedIds = selectedIds;
+        this.currentFilter = filter;
         
-        if (this.activeStatusFilters[fieldName]) {
-            delete this.activeStatusFilters[fieldName];
-            button.removeClass('active');
-        } else {
-            this.activeStatusFilters[fieldName] = true;
-            button.addClass('active');
-        }
+        // Show modal
+        $(`#${this.modalId}`).modal('show');
         
-        this.updateFilterIndicator();
-        this.applyStatusFilters();
+        // Load data
+        this.loadData();
     },
     
-    updateFilterIndicator: function() {
-        const activeCount = Object.keys(this.activeStatusFilters).length;
-        const indicator = $('#statusFilterIndicator');
+    loadData: function() {
+        const self = this;
         
-        if (activeCount > 0) {
-            const filterNames = {
-                'AVANCADO': 'Avançado',
-                'ORGAO_PAGADOR': 'Órgão Pagador', 
-                'PRESENCA': 'Presença',
-                'UNIDADE_NEGOCIO': 'Unidade Negócio',
-                'CONTRATO_10': 'Contrato >= 10.1',
-                'CONTRATO_8': 'Contrato >= 8.1'
-            };
-            
-            const activeFilterNames = Object.keys(this.activeStatusFilters)
-                .map(field => filterNames[field])
-                .join(', ');
-                
-            indicator.find('#activeStatusFilters').text(activeFilterNames);
-            indicator.fadeIn();
-        } else {
-            indicator.fadeOut();
-        }
-    },
-    
-    applyStatusFilters: function() {
-        PaginationModule.currentPage = 1;
-        PaginationModule.updateTable();
+        // Show loading
+        $('#txtModalLoading').show();
+        $('#txtModalContent').hide();
+        $('#txtModalError').hide();
         
-        setTimeout(() => {
-            CheckboxModule.updateSelectAllState();
-            CheckboxModule.updateExportButton();
-        }, 100);
-    },
-    
-    filterRowData: function(rowData) {
-        if (Object.keys(this.activeStatusFilters).length === 0) {
-            return true;
-        }
+        // Prepare URL with selected IDs
+        const idsParam = this.selectedIds.join(',');
+        const url = `wxkd.php?action=getTxtModalData&filter=${this.currentFilter}&ids=${encodeURIComponent(idsParam)}`;
         
-        for (const fieldName in this.activeStatusFilters) {
-            if (fieldName === 'CONTRATO_10' || fieldName === 'CONTRATO_8') {
-                // Handle contract version filtering - TIPO_CONTRATO is in column 17
-                if (!this.isContractVersionActive(rowData, fieldName)) {
-                    return false;
+        $.get(url)
+            .done(function(xmlData) {
+                try {
+                    const $xml = $(xmlData);
+                    const success = $xml.find('success').text() === 'true';
+                    
+                    if (success) {
+                        self.populateModal($xml);
+                    } else {
+                        const errorMsg = $xml.find('e').text() || 'Erro ao carregar dados';
+                        self.showError(errorMsg);
+                    }
+                } catch (e) {
+                    console.error('Error parsing XML:', e);
+                    self.showError('Erro ao processar resposta do servidor');
                 }
-            } else {
-                // Handle existing status filtering - status indicators are in column 6
-                const statusCell = rowData[6];
-                if (!statusCell) return false;
-                
-                if (!this.isFieldActive(statusCell, fieldName)) {
-                    return false;
+            })
+            .fail(function(xhr, status, error) {
+                console.error('AJAX failed:', status, error);
+                self.showError('Erro na comunicação com o servidor');
+            })
+            .always(function() {
+                $('#txtModalLoading').hide();
+            });
+    },
+    
+    populateModal: function($xml) {
+        const self = this;
+        this.currentData = [];
+        let tableHtml = '';
+        
+        $xml.find('row').each(function(index) {
+            const row = {};
+            
+            // Extract data from XML
+            row.cod_empresa = $(this).find('cod_empresa').text() || '';
+            row.cod_loja = $(this).find('cod_loja').text() || '';
+            row.nome_loja = $(this).find('nome_loja').text() || '';
+            row.chave_loja = $(this).find('chave_loja').text() || '';
+            
+            // Determine tipo correspondente based on dates (similar to original logic)
+            row.tipo_correspondente = self.getTipoCorrespondenteFromXML($(this));
+            
+            // Store complete row data
+            self.currentData.push(row);
+            
+            // Generate table row
+            const rowId = `txtrow_${index}`;
+            tableHtml += `
+                <tr>
+                    <td>
+                        <label>
+                            <input type="checkbox" class="form-check-input record-checkbox" 
+                                   value="${index}" id="${rowId}" data-index="${index}">
+                            <span class="text"></span>
+                        </label>
+                    </td>
+                    <td><strong>${self.escapeHtml(row.cod_empresa)}</strong></td>
+                    <td><strong>${self.escapeHtml(row.cod_loja)}</strong></td>
+                    <td>${self.escapeHtml(row.nome_loja)}</td>
+                    <td>
+                        <span class="badge ${self.getTipoBadgeClass(row.tipo_correspondente)}">
+                            ${row.tipo_correspondente}
+                        </span>
+                    </td>
+                </tr>
+            `;
+        });
+        
+        $('#txtModalTableBody').html(tableHtml);
+        $('#txtModalContent').show();
+        
+        // Auto-check all records initially
+        $('.record-checkbox').prop('checked', true);
+        $('#selectAllTxtModal, #headerSelectAll').prop('checked', true);
+        this.updateSelectedCount();
+    },
+    
+    getTipoCorrespondenteFromXML: function($row) {
+        const tipoCampos = {
+            'AVANCADO': 'AV',
+            'PRESENCA': 'PR', 
+            'UNIDADE_NEGOCIO': 'UN',
+            'ORGAO_PAGADOR': 'OP'
+        };
+        
+        const cutoff = new Date(2025, 5, 1);
+        let mostRecentDate = null;
+        let mostRecentType = '';
+        
+        // Check each field for dates after cutoff
+        for (const campo in tipoCampos) {
+            const raw = $row.find(campo.toLowerCase()).text();
+            if (raw) {
+                const date = this.parseDate(raw);
+                if (date && date > cutoff) {
+                    if (mostRecentDate === null || date > mostRecentDate) {
+                        mostRecentDate = date;
+                        mostRecentType = tipoCampos[campo];
+                    }
                 }
             }
         }
         
-        return true;
+        return mostRecentType || 'N/A';
     },
     
-    isContractVersionActive: function(rowData, fieldName) {
-        // TIPO_CONTRATO is in column 17 (last column)
-        const contractCell = rowData[17];
-        if (!contractCell) return false;
-        
-        const contractText = $(contractCell).text().trim();
-        console.log('Contract text:', contractText); // Debug log
-        
-        if (!contractText || contractText === '' || contractText.includes('NULL')) {
-            return false;
-        }
-        
-        const version = this.extractVersionFromContract(contractText);
-        console.log('Extracted version:', version, 'for field:', fieldName); // Debug log
-        
-        if (version === null) return false;
-        
-        if (fieldName === 'CONTRATO_10') {
-            return version >= 10.1;
-        } else if (fieldName === 'CONTRATO_8') {
-            return version >= 8.1;
-        }
-        
-        return false;
-    },
-    
-    extractVersionFromContract: function(tipoContrato) {
-        if (!tipoContrato || typeof tipoContrato !== 'string') {
+    parseDate: function(dateString) {
+        if (!dateString || typeof dateString !== 'string') {
             return null;
         }
         
-        const match = tipoContrato.match(/(\d+\.\d+)/);
-        if (match) {
-            const version = parseFloat(match[1]);
-            console.log('Parsed version:', version, 'from:', tipoContrato); // Debug log
-            return !isNaN(version) && version >= 8.1 ? version : null;
+        const parts = dateString.trim().split('/');
+        if (parts.length !== 3) {
+            return null;
         }
-        return null;
+        
+        const day = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1;
+        const year = parseInt(parts[2], 10);
+        
+        if (isNaN(day) || isNaN(month) || isNaN(year)) {
+            return null;
+        }
+        
+        return new Date(year, month, day);
     },
     
-    isFieldActive: function(statusCell, fieldName) {
-        const cellHtml = statusCell.html();
-        const fieldLabels = {
-            'AVANCADO': 'AV',
-            'ORGAO_PAGADOR': 'OP',
-            'PRESENCA': 'PR', 
-            'UNIDADE_NEGOCIO': 'UN'
+    getTipoBadgeClass: function(tipo) {
+        const classes = {
+            'AV': 'badge-success',
+            'PR': 'badge-info',
+            'UN': 'badge-warning',
+            'OP': 'badge-primary'
         };
+        return classes[tipo] || 'badge-default';
+    },
+    
+    updateSelectAllState: function() {
+        const totalCheckboxes = $('.record-checkbox').length;
+        const checkedCheckboxes = $('.record-checkbox:checked').length;
         
-        const label = fieldLabels[fieldName];
-        if (!label) return false;
+        const selectAllCheckboxes = $('#selectAllTxtModal, #headerSelectAll');
         
-        const regex = new RegExp(`background-color:\\s*green[^>]*>${label}<`, 'i');
-        return regex.test(cellHtml);
+        if (checkedCheckboxes === 0) {
+            selectAllCheckboxes.prop('indeterminate', false).prop('checked', false);
+        } else if (checkedCheckboxes === totalCheckboxes) {
+            selectAllCheckboxes.prop('indeterminate', false).prop('checked', true);
+        } else {
+            selectAllCheckboxes.prop('indeterminate', true).prop('checked', false);
+        }
+    },
+    
+    updateSelectedCount: function() {
+        const checkedCount = $('.record-checkbox:checked').length;
+        $('#selectedCountTxt').text(`${checkedCount} selecionados`);
+        $('#selectedCountFooter').text(checkedCount);
+        
+        $('#generateTxtBtn').prop('disabled', checkedCount === 0);
+    },
+    
+    generateTXT: function() {
+        const self = this;
+        const selectedIndexes = [];
+        
+        $('.record-checkbox:checked').each(function() {
+            selectedIndexes.push(parseInt($(this).data('index')));
+        });
+        
+        if (selectedIndexes.length === 0) {
+            alert('Selecione pelo menos um registro');
+            return;
+        }
+        
+        // Generate TXT content
+        let txtContent = '';
+        
+        selectedIndexes.forEach(index => {
+            const row = this.currentData[index];
+            const empresa = row.cod_empresa;
+            const codigoLoja = row.cod_loja;
+            const tipoCorrespondente = row.tipo_correspondente;
+            
+            console.log(`Processing: Empresa=${empresa}, Loja=${codigoLoja}, Tipo=${tipoCorrespondente}`);
+            
+            // Apply the same logic as extractTXTFromXML
+            if (['AV', 'PR', 'UN'].includes(tipoCorrespondente)) {
+                let limits;
+                if (tipoCorrespondente === 'AV' || tipoCorrespondente === 'UN') {
+                    limits = { dinheiro: '1000000', cheque: '1000000', retirada: '350000', saque: '350000' };
+                } else if (tipoCorrespondente === 'PR') {
+                    limits = { dinheiro: '300000', cheque: '500000', retirada: '200000', saque: '200000' };
+                }
+
+                txtContent += this.formatToTXTLine(empresa, codigoLoja, 19, '01', 500, limits.dinheiro, 1, 0, 2, 0) + '\r\n';
+                txtContent += this.formatToTXTLine(empresa, codigoLoja, 19, '02', 500, limits.cheque, 1, 0, 2, 0) + '\r\n';
+                txtContent += this.formatToTXTLine(empresa, codigoLoja, 28, '04', 1000, limits.retirada, 1, 0, 2, 0) + '\r\n';
+                txtContent += this.formatToTXTLine(empresa, codigoLoja, 29, '04', 1000, limits.saque, 1, 0, 2, 0) + '\r\n';
+                
+            } else if (tipoCorrespondente === 'OP') {
+                // For OP type, we'd need contract info - simplified for now
+                const limits = { dinheiro: '300000', cheque: '500000', retirada: '200000', saque: '200000' };
+                txtContent += this.formatToTXTLine(empresa, codigoLoja, 14, '04', 0, 0, 1, 0, 1, 0) + '\r\n';
+                txtContent += this.formatToTXTLine(empresa, codigoLoja, 18, '04', 0, 0, 1, 0, 1, 0) + '\r\n';
+                txtContent += this.formatToTXTLine(empresa, codigoLoja, 29, '04', 1000, limits.saque, 1, 0, 1, 0) + '\r\n';
+            }
+        });
+        
+        if (txtContent) {
+            const filename = `custom_txt_${getCurrentTimestamp()}.txt`;
+            this.downloadTXTFile(txtContent, filename);
+            
+            // Close modal
+            $(`#${this.modalId}`).modal('hide');
+            
+            // Show success message
+            this.showSuccessMessage(`TXT gerado com sucesso!\n${selectedIndexes.length} registros processados.`);
+        } else {
+            alert('Erro ao gerar conteúdo TXT');
+        }
+    },
+    
+    formatToTXTLine: function(empresa, codigoLoja, codTransacao, meioPagamento, valorMinimo, valorMaximo, situacaoMeioPagamento, valorTotalMaxDiario, tipoManutencao, quantidadeTotalMaxDiaria) {
+        const empresaTXT = this.padLeft(this.cleanNumeric(empresa), 10, '0'); 
+        const codigoLojaTXT = this.padLeft(this.cleanNumeric(codigoLoja), 5, '0'); 
+        const fixo = this.padRight("", 10, ' '); 
+        const codTransacaoTXT = this.padLeft(this.cleanNumeric(codTransacao), 5, '0'); 
+        const meioPagamTXT = this.padLeft(this.cleanNumeric(meioPagamento), 2, '0'); 
+        const valorMinTXT = this.padLeft(this.cleanNumeric(valorMinimo), 17, '0'); 
+        const valorMaxTXT = this.padLeft(this.cleanNumeric(valorMaximo), 17, '0'); 
+        const sitMeioPTXT = this.padLeft(this.cleanNumeric(situacaoMeioPagamento), 1, '0'); 
+        const valorTotalMaxTXT = this.padLeft(this.cleanNumeric(valorTotalMaxDiario), 18, '0'); 
+        const tipoManutTXT = this.padLeft(this.cleanNumeric(tipoManutencao), 1, '0'); 
+        const quantTotalMaxTXT = this.padLeft(this.cleanNumeric(quantidadeTotalMaxDiaria), 15, '0'); 
+
+        const linha = empresaTXT + codigoLojaTXT + fixo + codTransacaoTXT + meioPagamTXT + 
+            valorMinTXT + valorMaxTXT + sitMeioPTXT + valorTotalMaxTXT + 
+            tipoManutTXT + quantTotalMaxTXT;
+
+        if (linha.length > 101) {
+            return linha.substring(0, 101);
+        } else if (linha.length < 101) {
+            return this.padRight(linha, 101, ' ');
+        }
+
+        return linha;
+    },
+    
+    // Helper functions
+    cleanNumeric: function(value) {
+        return String(value).replace(/[^0-9]/g, '') || '0';
+    },
+    
+    padLeft: function(str, length, char) {
+        str = String(str);
+        while (str.length < length) {
+            str = char + str;
+        }
+        return str.length > length ? str.slice(-length) : str;
+    },
+    
+    padRight: function(str, length, char) {
+        str = String(str);
+        while (str.length < length) {
+            str = str + char;
+        }
+        return str.substring(0, length);
+    },
+    
+    escapeHtml: function(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    },
+    
+    downloadTXTFile: function(txtContent, filename) {
+        const txtWithBOM = '\uFEFF' + txtContent;
+        const blob = new Blob([txtWithBOM], { type: 'text/plain;charset=utf-8;' });
+        
+        const link = document.createElement('a');
+        if (link.download !== undefined) {
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', filename);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            setTimeout(() => {
+                URL.revokeObjectURL(url);
+            }, 1000);
+        } else {
+            alert('Seu navegador não suporta download automático.');
+        }
+    },
+    
+    showError: function(message) {
+        $('#txtModalErrorMessage').text(message);
+        $('#txtModalError').show();
+        $('#txtModalContent').hide();
+    },
+    
+    showSuccessMessage: function(message) {
+        const alertHtml = `
+            <div class="alert alert-success success-alert" style="
+                position: fixed; 
+                top: 50%; 
+                left: 50%; 
+                transform: translate(-50%, -50%); 
+                z-index: 10000; 
+                min-width: 400px;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                border-radius: 5px;
+            ">
+                <button class="close" onclick="$(this).parent().remove()" style="
+                    color: #3c763d !important; 
+                    opacity: 0.7; 
+                    position: absolute; 
+                    top: 10px; 
+                    right: 15px;
+                ">
+                    <i class="fa fa-times"></i>
+                </button>
+                <div style="padding: 20px 40px 20px 20px;">
+                    <i class="fa fa-check-circle" style="color: #3c763d; font-size: 20px; margin-right: 10px;"></i>
+                    <strong>Sucesso!</strong>
+                    <pre style="background: none; border: none; color: #3c763d; margin-top: 10px; white-space: pre-wrap;">${message}</pre>
+                </div>
+            </div>
+        `;
+        
+        $('body').append(alertHtml);
+        
+        setTimeout(() => {
+            $('.success-alert').fadeOut(300, function() {
+                $(this).remove();
+            });
+        }, 5000);
+    },
+    
+    cleanup: function() {
+        this.currentData = [];
+        $('#txtModalTableBody').empty();
+        $('#txtModalError').hide();
     }
 };
-```
 
-Also, I noticed that you need to make sure the contract version filtering works with the existing `PaginationModule`. The issue might be that the contract column index is different. 
+// Initialize the modal when document is ready
+$(document).ready(function() {
+    TxtGenerationModal.init();
+});
 
-Let me check the table structure again. Looking at the HTML, the columns are:
+// Example usage function - call this instead of the original exportSelectedTXT
+function showTxtGenerationModal() {
+    const currentFilter = getCurrentFilter();
+    const selectedIds = (currentFilter === 'historico')
+        ? HistoricoCheckboxModule.getSelectedIds()
+        : CheckboxModule.getSelectedIds();
 
-1. Checkbox (0)
-2. Chave_Loja (1)  
-3. Nome_Loja (2)
-4. Cod_Empresa (3)
-5. Cod_Loja (4)
-6. QUANT_LOJAS (5)
-7. TIPO_CORRESPONDENTE (6) - Status indicators
-8. DATA_CONCLUSAO (7)
-9. DATA_SOLICITACAO (8)
-10. Dep_Dinheiro (9)
-11. Dep_Cheque (10)
-12. Rec_Retirada (11)
-13. Saque_Cheque (12)
-14. 2Via_Cartao (13)
-15. Holerite_INSS (14)
-16. Cons_Inss (15)
-17. Prova_de_vida (16)
-18. Data_Contrato (17)
-19. Tipo_Contrato (18) - This should be the contract type
-
-So the contract type should be in column 18, not 17. Let me update that:
-
-```javascript
-isContractVersionActive: function(rowData, fieldName) {
-    // TIPO_CONTRATO is in column 18 (0-based indexing)
-    const contractCell = rowData[18];
-    if (!contractCell) return false;
-    
-    const contractText = $(contractCell).text().trim();
-    console.log('Contract text:', contractText); // Debug log
-    
-    if (!contractText || contractText === '' || contractText.includes('NULL')) {
-        return false;
+    if (selectedIds.length === 0) {
+        alert('Selecione pelo menos um registro');
+        return;
     }
-    
-    const version = this.extractVersionFromContract(contractText);
-    console.log('Extracted version:', version, 'for field:', fieldName); // Debug log
-    
-    if (version === null) return false;
-    
-    if (fieldName === 'CONTRATO_10') {
-        return version >= 10.1;
-    } else if (fieldName === 'CONTRATO_8') {
-        return version >= 8.1;
-    }
-    
-    return false;
-},
-```
 
-Try this updated code and check the browser console for the debug logs to see what's happening with the contract text extraction.
+    TxtGenerationModal.show(selectedIds, currentFilter);
+}
