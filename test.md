@@ -1,256 +1,204 @@
-# TXT Generation Modal Class Documentation
+# TxtModal - Super Easy Integration Guide
 
-## Overview
+## 🚀 Quick Setup (3 steps only!)
 
-The `TxtGenerationModal` class creates an interactive modal that allows users to selectively generate TXT files by choosing which `COD_EMPRESA` and `COD_LOJA` records to include. This provides more granular control compared to the automatic `extractTXTfromXML` function.
-
-## Features
-
-- **Interactive Selection**: Users can check/uncheck individual records
-- **Select All/None**: Bulk selection options
-- **Real-time Counter**: Shows selected record count
-- **Type Indicators**: Visual badges showing correspondence type (AV, PR, UN, OP)
-- **Error Handling**: Proper error display and loading states
-- **File Download**: Automatic TXT file download with proper formatting
-
-## Integration Steps
-
-### 1. Include the JavaScript Class
-
-Add the class to your existing JavaScript file or include it separately:
-
-```javascript
-// The TxtGenerationModal class code goes here
-```
-
-### 2. Replace Export Function Call
-
-Instead of calling `exportSelectedTXT()`, use:
-
-```javascript
-// Old way
-// exportSelectedTXT();
-
-// New way
-showTxtGenerationModal();
-```
-
-### 3. Update HTML Button
-
-Update your export button to call the new function:
-
-```html
-<button onclick="showTxtGenerationModal()" class="btn btn-primary">
-    <i class="fa fa-file-text-o"></i> Gerar TXT Customizado
-</button>
-```
-
-### 4. PHP Backend Changes
-
-Create a new action in your `wxkd.php` file to handle the modal data request:
-
+### Step 1: Download and Include
 ```php
 <?php
-// In your wxkd.php file, add this new action
-if ($action === 'getTxtModalData') {
-    $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
-    $ids = isset($_GET['ids']) ? $_GET['ids'] : '';
-    
-    // Start XML response
-    header('Content-Type: text/xml; charset=utf-8');
-    echo '<?xml version="1.0" encoding="UTF-8"?>';
-    echo '<response>';
-    
-    try {
-        // Your existing logic to get data based on filter and ids
-        // This should be similar to your existing export logic
-        
-        if ($filter === 'historico') {
-            // Handle historico data
-            $idsArray = explode(',', $ids);
-            // Query your database for historico records
-            // Example:
-            $sql = "SELECT chave_loja, nome_loja, cod_empresa, cod_loja, 
-                           avancado, presenca, unidade_negocio, orgao_pagador,
-                           tipo_contrato
-                    FROM your_historico_table 
-                    WHERE chave_lote IN (" . implode(',', array_map('intval', $idsArray)) . ")";
-        } else {
-            // Handle normal data
-            $idsArray = explode(',', $ids);
-            // Query your database for normal records
-            // Example:
-            $sql = "SELECT chave_loja, nome_loja, cod_empresa, cod_loja,
-                           avancado, presenca, unidade_negocio, orgao_pagador,
-                           tipo_contrato
-                    FROM your_main_table 
-                    WHERE id IN (" . implode(',', array_map('intval', $idsArray)) . ")";
-        }
-        
-        // Execute query (adjust based on your database connection method)
-        $result = mysql_query($sql); // or mysqli_query, etc.
-        
-        if ($result) {
-            echo '<success>true</success>';
-            echo '<data>';
-            
-            while ($row = mysql_fetch_assoc($result)) {
-                echo '<row>';
-                echo '<cod_empresa>' . htmlspecialchars($row['cod_empresa']) . '</cod_empresa>';
-                echo '<cod_loja>' . htmlspecialchars($row['cod_loja']) . '</cod_loja>';
-                echo '<nome_loja>' . htmlspecialchars($row['nome_loja']) . '</nome_loja>';
-                echo '<chave_loja>' . htmlspecialchars($row['chave_loja']) . '</chave_loja>';
-                
-                // Include date fields for tipo correspondente calculation
-                echo '<avancado>' . htmlspecialchars($row['avancado']) . '</avancado>';
-                echo '<presenca>' . htmlspecialchars($row['presenca']) . '</presenca>';
-                echo '<unidade_negocio>' . htmlspecialchars($row['unidade_negocio']) . '</unidade_negocio>';
-                echo '<orgao_pagador>' . htmlspecialchars($row['orgao_pagador']) . '</orgao_pagador>';
-                
-                echo '<tipo_contrato>' . htmlspecialchars($row['tipo_contrato']) . '</tipo_contrato>';
-                echo '</row>';
-            }
-            
-            echo '</data>';
-        } else {
-            echo '<success>false</success>';
-            echo '<e>Erro ao consultar dados</e>';
-        }
-        
-    } catch (Exception $e) {
-        echo '<success>false</success>';
-        echo '<e>' . htmlspecialchars($e->getMessage()) . '</e>';
-    }
-    
-    echo '</response>';
-    exit;
-}
+// At the top of your main page
+require_once 'TxtModal.php';
 ?>
 ```
 
-## Class Methods
-
-### Core Methods
-
-- **`init()`**: Initializes the modal and event listeners
-- **`show(selectedIds, filter)`**: Opens the modal with specified data
-- **`loadData()`**: Fetches data from the server
-- **`populateModal($xml)`**: Populates the modal with fetched data
-- **`generateTXT()`**: Generates and downloads the TXT file
-
-### Helper Methods
-
-- **`updateSelectedCount()`**: Updates the selection counter
-- **`updateSelectAllState()`**: Manages select all checkbox state
-- **`getTipoCorrespondenteFromXML($row)`**: Determines correspondence type
-- **`formatToTXTLine(...)`**: Formats data into TXT line format
-- **`downloadTXTFile(content, filename)`**: Handles file download
-
-## Usage Example
-
-```javascript
-// Initialize (done automatically on document ready)
-TxtGenerationModal.init();
-
-// Show modal with selected records
-const selectedIds = CheckboxModule.getSelectedIds();
-const currentFilter = 'cadastramento';
-TxtGenerationModal.show(selectedIds, currentFilter);
+### Step 2: Initialize (one line!)
+```php
+<?php
+// Somewhere in your page (after database connection)
+$txtModal = new TxtModal($your_db_connection);
+$txtModal->setConfig('table_name', 'your_actual_table_name'); // Optional: customize table name
+$txtModal->render(); // This outputs everything needed
+?>
 ```
 
-## Modal Structure
+### Step 3: Replace Your Export Button
+```html
+<!-- OLD: -->
+<button onclick="exportSelectedTXT()">Export TXT</button>
 
-The modal includes:
-
-1. **Header**: Title and close button
-2. **Body**: 
-   - Select all checkbox and counter
-   - Loading indicator
-   - Error display area
-   - Data table with checkboxes
-3. **Footer**: Cancel and Generate buttons
-
-## Data Flow
-
-1. User selects records and clicks export button
-2. `showTxtGenerationModal()` is called
-3. Modal opens and sends AJAX request to `wxkd.php?action=getTxtModalData`
-4. PHP returns XML with record data
-5. Modal populates with checkboxes for each record
-6. User selects desired records
-7. `generateTXT()` processes selected records
-8. TXT file is generated and downloaded
-
-## Error Handling
-
-- **Loading States**: Shows spinner while fetching data
-- **Server Errors**: Displays server error messages
-- **Client Errors**: Handles XML parsing and validation errors
-- **Empty Selection**: Prevents generation with no records selected
-
-## Customization
-
-### Styling
-The modal uses Bootstrap classes and can be customized with additional CSS:
-
-```css
-#txtGenerationModal .modal-dialog {
-    max-width: 900px; /* Adjust modal width */
-}
-
-.record-checkbox {
-    transform: scale(1.2); /* Larger checkboxes */
-}
+<!-- NEW: -->
+<button onclick="TxtModal.show()">Export TXT</button>
 ```
 
-### Behavior
-Modify the `generateTXT()` method to change TXT generation logic:
+## ✅ That's it! You're done!
 
-```javascript
-generateTXT: function() {
-    // Custom logic here
-    // Access selected data via this.currentData[index]
-}
+---
+
+## Configuration Options (Optional)
+
+If you need to customize, you can set these options:
+
+```php
+$txtModal = new TxtModal($db_connection, array(
+    'table_name' => 'lojas',                    // Your main table
+    'historico_table' => 'lojas_historico',     // Your historico table  
+    'id_field' => 'id',                         // Primary key field
+    'chave_lote_field' => 'chave_lote',         // Historico batch field
+    'debug' => true                             // Enable SQL logging
+));
+
+// Or set individually:
+$txtModal->setConfig('table_name', 'my_stores');
+$txtModal->setConfig('debug', true);
 ```
 
-## Browser Compatibility
+## Database Field Requirements
 
-- Requires jQuery
-- Bootstrap modal support
-- Modern browsers with Blob and URL.createObjectURL support
-- File download API support
+Your table should have these fields:
+- `chave_loja` - Store key
+- `nome_loja` - Store name  
+- `cod_empresa` - Company code
+- `cod_loja` - Store code
+- `avancado` - Advanced date field
+- `presenca` - Presence date field
+- `unidade_negocio` - Business unit date field
+- `orgao_pagador` - Paying agency date field
+- `tipo_contrato` - Contract type
 
-## Security Considerations
+## Supported Database Types
 
-- Input sanitization in PHP backend
-- SQL injection prevention with prepared statements
-- XSS prevention with `htmlspecialchars()`
-- Validate user permissions before data access
+Works automatically with:
+- **MySQL** (resource): `mysql_connect()`
+- **MySQLi** (object): `new mysqli()`  
+- **PDO**: `new PDO()`
+
+```php
+// Examples:
+$db = mysql_connect('localhost', 'user', 'pass');
+$txtModal = new TxtModal($db);
+
+// OR
+$db = new mysqli('localhost', 'user', 'pass', 'database');
+$txtModal = new TxtModal($db);
+
+// OR  
+$db = new PDO('mysql:host=localhost;dbname=test', 'user', 'pass');
+$txtModal = new TxtModal($db);
+```
+
+## Advanced Customization
+
+### Custom Data Fetching
+```php
+class MyTxtModal extends TxtModal {
+    protected function fetchData($filter, $ids) {
+        // Your custom query logic here
+        // Must return array of associative arrays
+        
+        // Example:
+        $sql = "SELECT * FROM my_custom_view WHERE id IN ($ids)";
+        return $this->executeQuery($sql);
+    }
+}
+
+$txtModal = new MyTxtModal($db);
+```
+
+### Custom Table Structure
+```php
+$txtModal->setConfig('table_name', 'stores');
+$txtModal->setConfig('historico_table', 'store_history'); 
+$txtModal->setConfig('id_field', 'store_id');
+$txtModal->setConfig('chave_lote_field', 'batch_key');
+```
 
 ## Troubleshooting
 
-### Common Issues
-
-1. **Modal doesn't open**: Check if `TxtGenerationModal.init()` was called
-2. **No data loads**: Verify PHP action name and XML response format
-3. **Download fails**: Check browser file download permissions
-4. **Select all not working**: Ensure event delegation is properly set up
-
-### Debug Mode
-
-Add debug logging:
-
-```javascript
-// Add to loadData method
-.done(function(xmlData) {
-    console.log('XML Response:', xmlData); // Debug line
-    // ... rest of code
-})
+### "Database connection not set"
+```php
+// Make sure you pass your DB connection:
+$txtModal = new TxtModal($your_db_connection);
 ```
 
-## Performance Notes
+### "Table doesn't exist"  
+```php
+// Set your actual table name:
+$txtModal->setConfig('table_name', 'your_real_table');
+```
 
-- Modal reuses DOM elements for efficiency
-- Large datasets (>1000 records) may impact performance
-- Consider pagination for very large result sets
-- XML parsing is synchronous and may block UI briefly
+### "No data appears"
+```php
+// Enable debug mode to see SQL queries:
+$txtModal->setConfig('debug', true);
+// Check error_log for SQL queries
+```
+
+### Modal doesn't open
+- Make sure you have jQuery and Bootstrap 3 loaded
+- Check browser console for JavaScript errors
+- Ensure you called `$txtModal->render()`
+
+## What It Does Automatically
+
+✅ **Handles AJAX requests** - No need to modify your main PHP file  
+✅ **Detects selected records** - Works with your existing checkboxes  
+✅ **Auto-detects filter type** - Works with historico and normal modes  
+✅ **Generates proper TXT format** - Same logic as your original function  
+✅ **Cross-browser compatible** - Works on all modern browsers  
+✅ **Mobile responsive** - Bootstrap modal scales properly  
+
+## Requirements
+
+- PHP 5.3+ (works with older PHP!)
+- jQuery 1.7+
+- Bootstrap 3.x
+- Font Awesome (for icons)
+
+## File Size
+
+- **TxtModal.php**: ~15KB
+- **Zero dependencies** - Everything included in one file
+- **No external libraries** needed
+
+---
+
+## Complete Working Example
+
+```php
+<!DOCTYPE html>
+<html>
+<head>
+    <title>My System</title>
+    <link rel="stylesheet" href="bootstrap.css">
+    <link rel="stylesheet" href="font-awesome.css">
+</head>
+<body>
+    <?php
+    require_once 'TxtModal.php';
+    
+    // Your existing database connection
+    $db = mysql_connect('localhost', 'user', 'pass');
+    mysql_select_db('your_database', $db);
+    
+    // Initialize TXT Modal (one line!)
+    $txtModal = new TxtModal($db);
+    $txtModal->setConfig('table_name', 'stores');
+    $txtModal->render();
+    ?>
+    
+    <!-- Your existing page content -->
+    <table>
+        <!-- Your existing table with checkboxes -->
+    </table>
+    
+    <!-- Updated export button -->
+    <button onclick="TxtModal.show()" class="btn btn-primary">
+        Export TXT
+    </button>
+    
+    <script src="jquery.js"></script>
+    <script src="bootstrap.js"></script>
+</body>
+</html>
+```
+
+That's literally all you need! The class handles everything else automatically.
