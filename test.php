@@ -1,30 +1,29 @@
 <?php
 /**
- * TxtModal - Easy TXT Generation Modal
+ * TxtModal - MVC Compatible Version
  * 
- * Drop-in PHP class for interactive TXT file generation
- * Requires: jQuery, Bootstrap 3
+ * Works with custom database classes and MVC structures
+ * Supports: Custom MSSQL class, Model objects, etc.
  * 
  * Usage:
  * 1. Include this file: require_once 'TxtModal.php';
- * 2. Initialize: $txtModal = new TxtModal($your_db_connection);
- * 3. Add to page: $txtModal->render();
+ * 2. Initialize: $txtModal = new TxtModal($this->model);
+ * 3. Add to controller: $txtModal->render();
  * 4. Replace export button onclick: TxtModal.show()
  */
 
 class TxtModal {
     
-    private $db_connection;
-    private $table_name;
+    private $model;
     private $config;
     
     /**
      * Constructor
-     * @param mixed $db_connection Your database connection (mysql, mysqli, or PDO)
+     * @param mixed $model Your model object with database connection
      * @param array $config Configuration options
      */
-    public function __construct($db_connection = null, $config = array()) {
-        $this->db_connection = $db_connection;
+    public function __construct($model = null, $config = array()) {
+        $this->model = $model;
         
         // Default configuration
         $this->config = array_merge(array(
@@ -41,10 +40,10 @@ class TxtModal {
     }
     
     /**
-     * Set database connection
+     * Set model
      */
-    public function setConnection($connection) {
-        $this->db_connection = $connection;
+    public function setModel($model) {
+        $this->model = $model;
     }
     
     /**
@@ -85,14 +84,14 @@ class TxtModal {
             
             $data = $this->fetchData($filter, $ids);
             
-            if ($data !== false) {
+            if ($data !== false && is_array($data)) {
                 echo '<success>true</success>';
                 echo '<data>';
                 
                 foreach ($data as $row) {
                     echo '<row>';
                     foreach ($row as $key => $value) {
-                        echo '<' . $key . '>' . htmlspecialchars($value) . '</' . $key . '>';
+                        echo '<' . strtolower($key) . '>' . htmlspecialchars($value) . '</' . strtolower($key) . '>';
                     }
                     echo '</row>';
                 }
@@ -112,14 +111,27 @@ class TxtModal {
     }
     
     /**
-     * Fetch data from database
+     * Fetch data from database via model
      * Override this method to customize data fetching
      */
     protected function fetchData($filter, $ids) {
-        if (!$this->db_connection) {
-            throw new Exception('Database connection not set');
+        if (!$this->model) {
+            throw new Exception('Model not set');
         }
         
+        // Try to use model method if it exists
+        if (method_exists($this->model, 'getTxtModalData')) {
+            return $this->model->getTxtModalData($filter, $ids);
+        }
+        
+        // Fallback to direct SQL execution
+        return $this->executeDirectSQL($filter, $ids);
+    }
+    
+    /**
+     * Execute SQL directly via model's SQL connection
+     */
+    private function executeDirectSQL($filter, $ids) {
         $idsArray = explode(',', $ids);
         $idsArray = array_map('intval', $idsArray);
         $idsString = implode(',', $idsArray);
@@ -142,7 +154,7 @@ class TxtModal {
     }
     
     /**
-     * Execute database query - supports multiple connection types
+     * Execute database query - works with various model types
      */
     private function executeQuery($sql) {
         if ($this->config['debug']) {
@@ -151,47 +163,96 @@ class TxtModal {
         
         $result = array();
         
-        // Handle different connection types
-        if (is_resource($this->db_connection)) {
-            // MySQL resource
-            $query_result = mysql_query($sql, $this->db_connection);
-            if ($query_result) {
-                while ($row = mysql_fetch_assoc($query_result)) {
-                    $result[] = $row;
+        try {
+            // Check if model has sql property (like your MSSQL class)
+            if (isset($this->model->sql)) {
+                $connection = $this->model->sql;
+                
+                // Try common methods for custom database classes
+                if (method_exists($connection, 'query')) {
+                    $queryResult = $connection->query($sql);
+                    if (is_array($queryResult)) {
+                        return $queryResult;
+                    }
+                } elseif (method_exists($connection, 'fetch_all')) {
+                    $queryResult = $connection->fetch_all($sql);
+                    if (is_array($queryResult)) {
+                        return $queryResult;
+                    }
+                } elseif (method_exists($connection, 'get_results')) {
+                    $queryResult = $connection->get_results($sql);
+                    if (is_array($queryResult)) {
+                        // Convert objects to arrays if needed
+                        foreach ($queryResult as $row) {
+                            if (is_object($row)) {
+                                $result[] = (array) $row;
+                            } else {
+                                $result[] = $row;
+                            }
+                        }
+                        return $result;
+                    }
                 }
-                mysql_free_result($query_result);
-            } else {
-                return false;
             }
-        } elseif ($this->db_connection instanceof mysqli) {
-            // MySQLi
-            $query_result = $this->db_connection->query($sql);
-            if ($query_result) {
-                while ($row = $query_result->fetch_assoc()) {
-                    $result[] = $row;
+            
+            // Try if model itself has query methods
+            if (method_exists($this->model, 'query')) {
+                $queryResult = $this->model->query($sql);
+                if (is_array($queryResult)) {
+                    return $queryResult;
                 }
-                $query_result->free();
-            } else {
-                return false;
             }
-        } elseif ($this->db_connection instanceof PDO) {
-            // PDO
-            $stmt = $this->db_connection->query($sql);
-            if ($stmt) {
-                $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            } else {
-                return false;
+            
+            // Try if model has executeQuery method
+            if (method_exists($this->model, 'executeQuery')) {
+                $queryResult = $this->model->executeQuery($sql);
+                if (is_array($queryResult)) {
+                    return $queryResult;
+                }
             }
-        } else {
-            throw new Exception('Unsupported database connection type');
+            
+            // If model is actually a direct connection object
+            if (is_resource($this->model)) {
+                // MySQL resource
+                $query_result = mysql_query($sql, $this->model);
+                if ($query_result) {
+                    while ($row = mysql_fetch_assoc($query_result)) {
+                        $result[] = $row;
+                    }
+                    mysql_free_result($query_result);
+                }
+            } elseif ($this->model instanceof mysqli) {
+                // MySQLi
+                $query_result = $this->model->query($sql);
+                if ($query_result) {
+                    while ($row = $query_result->fetch_assoc()) {
+                        $result[] = $row;
+                    }
+                    $query_result->free();
+                }
+            } elseif ($this->model instanceof PDO) {
+                // PDO
+                $stmt = $this->model->query($sql);
+                if ($stmt) {
+                    $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                }
+            }
+            
+            return $result;
+            
+        } catch (Exception $e) {
+            if ($this->config['debug']) {
+                error_log("TxtModal Query Error: " . $e->getMessage());
+            }
+            throw $e;
         }
         
-        return $result;
+        return false;
     }
     
     /**
      * Render the complete modal and JavaScript
-     * Call this once in your page where you want the modal to be available
+     * Call this once in your controller/view where you want the modal to be available
      */
     public function render() {
         $this->renderModal();
@@ -343,7 +404,7 @@ class TxtModal {
                     })
                     .fail(function(xhr, status, error) {
                         console.error('AJAX failed:', status, error);
-                        self.showError('Erro na comunicação com o servidor');
+                        self.showError('Erro na comunicação com o servidor: ' + error);
                     })
                     .always(function() {
                         $('#txtModalLoading').hide();
