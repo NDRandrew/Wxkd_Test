@@ -1,26 +1,32 @@
-# TxtModal - Super Easy Integration Guide
+# TxtModal - MVC Integration Guide
 
-## 🚀 Quick Setup (3 steps only!)
+## 🎯 Perfect for Your Setup!
 
-### Step 1: Download and Include
+The updated TxtModal works seamlessly with your MVC structure and custom MSSQL class.
+
+## 🚀 Integration Steps
+
+### Step 1: Add TxtModal to Your Controller
+
+**Your current controller:**
 ```php
-<?php
-// At the top of your main page
-require_once 'TxtModal.php';
-?>
+public function index() {
+    $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
+    
+    // ADD THESE 3 LINES:
+    $txtModal = new TxtModal($this->model);
+    $txtModal->setConfig('table_name', 'your_actual_table_name'); 
+    $txtModal->render(); 
+    
+    $cardData = $this->model->getCardData();
+    $tableData = $this->model->getTableDataByFilter($filter);
+    $contractData = $this->model->contractDateCheck();
+}
 ```
 
-### Step 2: Initialize (one line!)
-```php
-<?php
-// Somewhere in your page (after database connection)
-$txtModal = new TxtModal($your_db_connection);
-$txtModal->setConfig('table_name', 'your_actual_table_name'); // Optional: customize table name
-$txtModal->render(); // This outputs everything needed
-?>
-```
+### Step 2: Update Your Export Button
 
-### Step 3: Replace Your Export Button
+**In your view/template:**
 ```html
 <!-- OLD: -->
 <button onclick="exportSelectedTXT()">Export TXT</button>
@@ -29,176 +35,197 @@ $txtModal->render(); // This outputs everything needed
 <button onclick="TxtModal.show()">Export TXT</button>
 ```
 
-## ✅ That's it! You're done!
+### Step 3: Add Method to Your Model (Optional but Recommended)
+
+**Add this to your `Wxkd_DashboardModel`:**
+```php
+public function getTxtModalData($filter, $ids) {
+    $idsArray = explode(',', $ids);
+    $idsArray = array_map('intval', $idsArray);
+    $idsString = implode(',', $idsArray);
+    
+    if ($filter === 'historico') {
+        $sql = "SELECT chave_loja, nome_loja, cod_empresa, cod_loja, 
+                       avancado, presenca, unidade_negocio, orgao_pagador,
+                       tipo_contrato, data_conclusao, tipo_correspondente
+                FROM your_historico_table 
+                WHERE chave_lote IN ($idsString)";
+    } else {
+        $sql = "SELECT chave_loja, nome_loja, cod_empresa, cod_loja,
+                       avancado, presenca, unidade_negocio, orgao_pagador,
+                       tipo_contrato
+                FROM your_main_table 
+                WHERE id IN ($idsString)";
+    }
+    
+    // Use your existing MSSQL connection
+    return $this->sql->query($sql); // or whatever method your MSSQL class uses
+}
+```
+
+## ✅ That's it! Zero additional changes needed.
 
 ---
 
-## Configuration Options (Optional)
-
-If you need to customize, you can set these options:
+## 📋 Configuration for Your Setup
 
 ```php
-$txtModal = new TxtModal($db_connection, array(
-    'table_name' => 'lojas',                    // Your main table
-    'historico_table' => 'lojas_historico',     // Your historico table  
-    'id_field' => 'id',                         // Primary key field
-    'chave_lote_field' => 'chave_lote',         // Historico batch field
-    'debug' => true                             // Enable SQL logging
-));
+$txtModal = new TxtModal($this->model);
 
-// Or set individually:
-$txtModal->setConfig('table_name', 'my_stores');
+// Configure table names
+$txtModal->setConfig('table_name', 'lojas');
+$txtModal->setConfig('historico_table', 'lojas_historico');
+
+// Configure field names if different
+$txtModal->setConfig('id_field', 'id');
+$txtModal->setConfig('chave_lote_field', 'chave_lote');
+
+// Enable debug to see SQL queries
 $txtModal->setConfig('debug', true);
+
+$txtModal->render();
 ```
 
-## Database Field Requirements
+## 🔧 How It Works with Your MSSQL Class
 
-Your table should have these fields:
-- `chave_loja` - Store key
-- `nome_loja` - Store name  
-- `cod_empresa` - Company code
-- `cod_loja` - Store code
-- `avancado` - Advanced date field
-- `presenca` - Presence date field
-- `unidade_negocio` - Business unit date field
-- `orgao_pagador` - Paying agency date field
-- `tipo_contrato` - Contract type
+The TxtModal automatically detects your setup:
 
-## Supported Database Types
+1. **Finds your model**: `$this->model`
+2. **Finds your MSSQL connection**: `$this->model->sql`
+3. **Tries common methods**: `query()`, `fetch_all()`, `get_results()`
+4. **Falls back gracefully**: If methods don't exist, shows helpful error
 
-Works automatically with:
-- **MySQL** (resource): `mysql_connect()`
-- **MySQLi** (object): `new mysqli()`  
-- **PDO**: `new PDO()`
+### Supported MSSQL Class Methods
+
+The class will try these methods on your `$this->model->sql` object:
 
 ```php
-// Examples:
-$db = mysql_connect('localhost', 'user', 'pass');
-$txtModal = new TxtModal($db);
+// Method 1: Direct query returning array
+$result = $connection->query($sql);
 
-// OR
-$db = new mysqli('localhost', 'user', 'pass', 'database');
-$txtModal = new TxtModal($db);
+// Method 2: Fetch all method
+$result = $connection->fetch_all($sql);
 
-// OR  
-$db = new PDO('mysql:host=localhost;dbname=test', 'user', 'pass');
-$txtModal = new TxtModal($db);
+// Method 3: Get results (returns objects, auto-converted to arrays)
+$result = $connection->get_results($sql);
 ```
 
-## Advanced Customization
+## 🐛 Troubleshooting Your Setup
 
-### Custom Data Fetching
+### 1. "Database connection not set"
 ```php
-class MyTxtModal extends TxtModal {
-    protected function fetchData($filter, $ids) {
-        // Your custom query logic here
-        // Must return array of associative arrays
+// Make sure you pass your model:
+$txtModal = new TxtModal($this->model);
+```
+
+### 2. "Method not found" or no data
+**Add the recommended method to your model (Step 3 above), or:**
+
+Check what methods your MSSQL class has:
+```php
+// Enable debug to see what's happening
+$txtModal->setConfig('debug', true);
+
+// Check your MSSQL class methods
+var_dump(get_class_methods($this->model->sql));
+```
+
+### 3. SQL Server specific syntax
+Update the model method to use proper SQL Server syntax:
+```php
+public function getTxtModalData($filter, $ids) {
+    // Use SQL Server syntax
+    $sql = "SELECT TOP 1000 chave_loja, nome_loja, cod_empresa, cod_loja
+            FROM your_table 
+            WHERE id IN ($idsString)";
+    
+    return $this->sql->query($sql);
+}
+```
+
+## 📁 Complete Example
+
+**Your Controller (`DashboardController.php`):**
+```php
+<?php
+require_once 'TxtModal.php';
+
+class DashboardController {
+    private $model;
+    
+    public function __construct() {
+        $this->model = new Wxkd_DashboardModel();
+        $this->model->Wxkd_Construct(); 
+    }
+    
+    public function index() {
+        $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
         
-        // Example:
-        $sql = "SELECT * FROM my_custom_view WHERE id IN ($ids)";
-        return $this->executeQuery($sql);
+        // Initialize TXT Modal
+        $txtModal = new TxtModal($this->model);
+        $txtModal->setConfig('table_name', 'lojas');
+        $txtModal->setConfig('historico_table', 'lojas_historico');
+        $txtModal->setConfig('debug', false); // Set to true for debugging
+        $txtModal->render();
+        
+        // Your existing code
+        $cardData = $this->model->getCardData();
+        $tableData = $this->model->getTableDataByFilter($filter);
+        $contractData = $this->model->contractDateCheck();
+        
+        // Load your view
+        $this->loadView('dashboard', compact('cardData', 'tableData', 'contractData'));
     }
 }
-
-$txtModal = new MyTxtModal($db);
+?>
 ```
 
-### Custom Table Structure
+**Your Model Addition (`Wxkd_DashboardModel.php`):**
 ```php
-$txtModal->setConfig('table_name', 'stores');
-$txtModal->setConfig('historico_table', 'store_history'); 
-$txtModal->setConfig('id_field', 'store_id');
-$txtModal->setConfig('chave_lote_field', 'batch_key');
+public function getTxtModalData($filter, $ids) {
+    try {
+        $idsArray = explode(',', $ids);
+        $idsArray = array_map('intval', $idsArray);
+        $idsString = implode(',', $idsArray);
+        
+        if ($filter === 'historico') {
+            $sql = "SELECT chave_loja, nome_loja, cod_empresa, cod_loja, 
+                           avancado, presenca, unidade_negocio, orgao_pagador,
+                           tipo_contrato, data_conclusao, tipo_correspondente
+                    FROM historico_lojas 
+                    WHERE chave_lote IN ($idsString)";
+        } else {
+            $sql = "SELECT chave_loja, nome_loja, cod_empresa, cod_loja,
+                           avancado, presenca, unidade_negocio, orgao_pagador,
+                           tipo_contrato
+                    FROM lojas 
+                    WHERE id IN ($idsString)";
+        }
+        
+        // Use your MSSQL connection
+        return $this->sql->query($sql);
+        
+    } catch (Exception $e) {
+        error_log("TxtModal Query Error: " . $e->getMessage());
+        return false;
+    }
+}
 ```
 
-## Troubleshooting
-
-### "Database connection not set"
-```php
-// Make sure you pass your DB connection:
-$txtModal = new TxtModal($your_db_connection);
+**Your View Button:**
+```html
+<button onclick="TxtModal.show()" class="btn btn-primary">
+    <i class="fa fa-file-text-o"></i> Gerar TXT Customizado
+</button>
 ```
 
-### "Table doesn't exist"  
-```php
-// Set your actual table name:
-$txtModal->setConfig('table_name', 'your_real_table');
-```
+## 🎉 Benefits for Your Architecture
 
-### "No data appears"
-```php
-// Enable debug mode to see SQL queries:
-$txtModal->setConfig('debug', true);
-// Check error_log for SQL queries
-```
+- **Zero breaking changes** - Your existing code remains untouched
+- **MVC compliant** - Follows your existing patterns
+- **Database agnostic** - Works with your custom MSSQL class
+- **Auto-detection** - Finds your checkboxes and data automatically
+- **Error handling** - Graceful fallbacks if methods don't exist
+- **Debug friendly** - Enable debug mode to see exactly what's happening
 
-### Modal doesn't open
-- Make sure you have jQuery and Bootstrap 3 loaded
-- Check browser console for JavaScript errors
-- Ensure you called `$txtModal->render()`
-
-## What It Does Automatically
-
-✅ **Handles AJAX requests** - No need to modify your main PHP file  
-✅ **Detects selected records** - Works with your existing checkboxes  
-✅ **Auto-detects filter type** - Works with historico and normal modes  
-✅ **Generates proper TXT format** - Same logic as your original function  
-✅ **Cross-browser compatible** - Works on all modern browsers  
-✅ **Mobile responsive** - Bootstrap modal scales properly  
-
-## Requirements
-
-- PHP 5.3+ (works with older PHP!)
-- jQuery 1.7+
-- Bootstrap 3.x
-- Font Awesome (for icons)
-
-## File Size
-
-- **TxtModal.php**: ~15KB
-- **Zero dependencies** - Everything included in one file
-- **No external libraries** needed
-
----
-
-## Complete Working Example
-
-```php
-<!DOCTYPE html>
-<html>
-<head>
-    <title>My System</title>
-    <link rel="stylesheet" href="bootstrap.css">
-    <link rel="stylesheet" href="font-awesome.css">
-</head>
-<body>
-    <?php
-    require_once 'TxtModal.php';
-    
-    // Your existing database connection
-    $db = mysql_connect('localhost', 'user', 'pass');
-    mysql_select_db('your_database', $db);
-    
-    // Initialize TXT Modal (one line!)
-    $txtModal = new TxtModal($db);
-    $txtModal->setConfig('table_name', 'stores');
-    $txtModal->render();
-    ?>
-    
-    <!-- Your existing page content -->
-    <table>
-        <!-- Your existing table with checkboxes -->
-    </table>
-    
-    <!-- Updated export button -->
-    <button onclick="TxtModal.show()" class="btn btn-primary">
-        Export TXT
-    </button>
-    
-    <script src="jquery.js"></script>
-    <script src="bootstrap.js"></script>
-</body>
-</html>
-```
-
-That's literally all you need! The class handles everything else automatically.
+This integration respects your existing MVC structure and works with your custom database abstraction layer!
