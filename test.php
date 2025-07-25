@@ -21,8 +21,13 @@ class TxtModal {
      * @param array $config Configuration options
      */
     public function __construct($config = array()) {
+        // Ensure config is an array
+        if (!is_array($config)) {
+            $config = array();
+        }
+        
         // Default configuration
-        $this->config = array_merge(array(
+        $defaults = array(
             'modal_title' => 'Geração Manual de TXT',
             'max_records' => 50, // Maximum number of records user can add
             'default_limits' => array(
@@ -31,7 +36,9 @@ class TxtModal {
                 'PR' => array('dinheiro' => '300000', 'cheque' => '500000', 'retirada' => '200000', 'saque' => '200000'),
                 'OP' => array('dinheiro' => '300000', 'cheque' => '500000', 'retirada' => '200000', 'saque' => '200000')
             )
-        ), $config);
+        );
+        
+        $this->config = array_merge($defaults, $config);
     }
     
     /**
@@ -229,7 +236,17 @@ class TxtModal {
      * Render JavaScript
      */
     public function renderJavaScript() {
-        $defaultLimits = json_encode($this->config['default_limits']);
+        // Convert PHP array to JavaScript object (PHP 5.3 compatible)
+        $defaultLimits = '{';
+        foreach ($this->config['default_limits'] as $type => $limits) {
+            $defaultLimits .= '"' . $type . '": {';
+            foreach ($limits as $key => $value) {
+                $defaultLimits .= '"' . $key . '": "' . $value . '",';
+            }
+            $defaultLimits = rtrim($defaultLimits, ',') . '},';
+        }
+        $defaultLimits = rtrim($defaultLimits, ',') . '}';
+        
         $maxRecords = $this->config['max_records'];
         ?>
         <script type="text/javascript">
