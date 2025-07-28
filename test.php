@@ -221,8 +221,8 @@ class TxtGeneratorModal {
                 // Skip dropdown fields for left column
                 if (!fieldMappings[fieldKey]) {
                     leftColumnHtml += `
-                        <div class="form-group">
-                            <label for="${fieldKey}_${lineCounter}">${fieldLabel}:</label>
+                        <div class="form-group" style="margin-bottom: 20px;">
+                            <label for="${fieldKey}_${lineCounter}" style="display: block; margin-bottom: 5px;">${fieldLabel}:</label>
                             <input type="number" 
                                    class="form-control input-sm txt-field" 
                                    id="${fieldKey}_${lineCounter}" 
@@ -230,7 +230,8 @@ class TxtGeneratorModal {
                                    step="any"
                                    data-field="${fieldKey}"
                                    data-line="${lineCounter}"
-                                   placeholder="Digite o valor numérico">
+                                   placeholder="Digite o valor numérico"
+                                   style="height: 34px; min-height: 34px; width: 100%; display: block;">
                         </div>
                     `;
                 }
@@ -262,8 +263,8 @@ class TxtGeneratorModal {
                     }
                     
                     rightColumnHtml += `
-                        <div class="form-group">
-                            <label for="${fieldKey}_${lineCounter}">${fieldLabel}:</label>
+                        <div class="form-group" style="margin-bottom: 20px;">
+                            <label for="${fieldKey}_${lineCounter}" style="display: block; margin-bottom: 5px;">${fieldLabel}:</label>
                             <div class="dropdown">
                                 <button class="btn btn-default dropdown-toggle form-control txt-field" 
                                         type="button" 
@@ -272,7 +273,7 @@ class TxtGeneratorModal {
                                         data-field="${fieldKey}"
                                         data-line="${lineCounter}"
                                         data-value=""
-                                        style="text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">
+                                        style="text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; height: 34px; min-height: 34px; line-height: 20px; display: block; width: 100%;">
                                     <span class="dropdown-text" style="overflow: hidden; white-space: nowrap; text-overflow: ellipsis; display: inline-block; max-width: calc(100% - 20px);">${placeholderText}</span>
                                     <span class="caret" style="float: right; margin-top: 8px;"></span>
                                 </button>
@@ -289,7 +290,7 @@ class TxtGeneratorModal {
                                     </li>
                                 </ul>
                             </div>
-                            <small class="help-block">Código será: <span id="${fieldKey}_${lineCounter}_code">--</span></small>
+                            <small class="help-block" style="display: block; margin-top: 5px;">Código será: <span id="${fieldKey}_${lineCounter}_code">--</span></small>
                         </div>
                     `;
                 }
@@ -311,7 +312,7 @@ class TxtGeneratorModal {
                     </div>
                     <div class="row">
                         <div class="col-md-6">
-                            <div class="widget-header" style="margin-bottom: 10px;">
+                            <div class="widget-header" style="margin-bottom: 15px; height: 30px; display: flex; align-items: center;">
                                 <span class="widget-caption" style="font-size: 14px;">
                                     <i class="fa fa-edit"></i> Campos Editáveis
                                 </span>
@@ -319,7 +320,7 @@ class TxtGeneratorModal {
                             ${leftColumnHtml}
                         </div>
                         <div class="col-md-6">
-                            <div class="widget-header" style="margin-bottom: 10px;">
+                            <div class="widget-header" style="margin-bottom: 15px; height: 30px; display: flex; align-items: center;">
                                 <span class="widget-caption" style="font-size: 14px;">
                                     <i class="fa fa-list-ul"></i> Seleções
                                 </span>
@@ -356,6 +357,15 @@ class TxtGeneratorModal {
             $button.attr('data-value', code);
             $button.removeClass('btn-default').addClass('btn-info');
             
+            // Maintain consistent button height and layout
+            $button.css({
+                'height': '34px',
+                'min-height': '34px',
+                'line-height': '20px',
+                'display': 'block',
+                'width': '100%'
+            });
+            
             // Add tooltip if text is truncated
             if ($dropdownText[0].scrollWidth > $dropdownText[0].clientWidth) {
                 $button.attr('title', label);
@@ -376,6 +386,15 @@ class TxtGeneratorModal {
             $button.attr('data-value', '');
             $button.removeClass('btn-info').addClass('btn-default');
             $button.removeAttr('title'); // Remove tooltip when clearing
+            
+            // Maintain consistent button height and layout
+            $button.css({
+                'height': '34px',
+                'min-height': '34px',
+                'line-height': '20px',
+                'display': 'block',
+                'width': '100%'
+            });
             
             // Clear the code display
             $('#' + fieldId + '_code').text('--');
