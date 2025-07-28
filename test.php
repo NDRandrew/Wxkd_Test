@@ -2,7 +2,7 @@
 /**
  * TXT Generator Modal Class
  * Compatible with PHP 5.3
- * Generates a modal for creating custom TXT files
+ * Generates a modal for creating custom TXT files with multiple lines
  */
 class TxtGeneratorModal {
     
@@ -25,39 +25,53 @@ class TxtGeneratorModal {
     public function displayModal() {
         ?>
         <div id="txtGeneratorModal" class="modal modal-primary">
-            <div class="modal-dialog">
+            <div class="modal-dialog modal-lg">
                 <div class="modal-content">
                     <div class="modal-header">
                         <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
-                        <h4 class="modal-title">Gerador de Arquivo TXT Personalizado</h4>
+                        <h4 class="modal-title">
+                            <i class="fa fa-file-text"></i> Gerador de Arquivo TXT Personalizado
+                        </h4>
                     </div>
-                    <div class="modal-body">
-                        <form id="txtGeneratorForm" method="post" action="">
-                            <input type="hidden" name="action" value="generate_txt">
-                            
-                            <?php foreach ($this->fields as $fieldKey => $fieldLabel): ?>
-                            <div class="form-group">
-                                <label for="<?php echo $fieldKey; ?>"><?php echo $fieldLabel; ?>:</label>
-                                <input type="number" 
-                                       class="form-control" 
-                                       id="<?php echo $fieldKey; ?>" 
-                                       name="<?php echo $fieldKey; ?>" 
-                                       step="any"
-                                       required>
+                    <div class="modal-body" style="max-height: 500px; overflow-y: auto;">
+                        <div class="row mb-3">
+                            <div class="col-md-8">
+                                <div class="form-group">
+                                    <label for="filename">Nome do Arquivo:</label>
+                                    <input type="text" 
+                                           class="form-control" 
+                                           id="filename" 
+                                           name="filename" 
+                                           value="arquivo_personalizado"
+                                           placeholder="Digite o nome do arquivo">
+                                    <small class="help-block">Arquivo será salvo como [nome].txt</small>
+                                </div>
                             </div>
-                            <?php endforeach; ?>
-                            
-                            <div class="form-group">
-                                <label for="filename">Nome do Arquivo:</label>
-                                <input type="text" 
-                                       class="form-control" 
-                                       id="filename" 
-                                       name="filename" 
-                                       value="arquivo_personalizado"
-                                       required>
-                                <small class="help-block">Arquivo será salvo como [nome].txt</small>
+                            <div class="col-md-4" style="padding-top: 25px;">
+                                <button type="button" class="btn btn-success btn-sm" onclick="addNewLine()">
+                                    <i class="fa fa-plus"></i> Adicionar Linha
+                                </button>
+                                <button type="button" class="btn btn-warning btn-sm" onclick="clearAllLines()">
+                                    <i class="fa fa-trash"></i> Limpar Tudo
+                                </button>
                             </div>
-                        </form>
+                        </div>
+                        
+                        <div class="widget-header">
+                            <span class="widget-caption">Linhas do Arquivo TXT</span>
+                            <div class="widget-buttons">
+                                <span class="badge" id="lineCounter">1</span>
+                            </div>
+                        </div>
+                        
+                        <div id="txtLinesContainer" class="widget-body">
+                            <!-- First line will be added by JavaScript -->
+                        </div>
+                        
+                        <div class="alert alert-info" style="margin-top: 15px;">
+                            <i class="fa fa-info-circle"></i>
+                            <strong>Dica:</strong> Cada linha representa uma entrada no arquivo TXT. Use o botão "Adicionar Linha" para criar múltiplas entradas.
+                        </div>
                         
                         <?php if (isset($_SESSION['txt_message'])): ?>
                         <div class="alert alert-<?php echo $_SESSION['txt_message_type']; ?>">
@@ -69,43 +83,410 @@ class TxtGeneratorModal {
                         <?php endif; ?>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-warning" data-dismiss="modal">Cancelar</button>
-                        <button type="button" class="btn btn-primary" onclick="submitTxtForm()">Gerar TXT</button>
+                        <button type="button" class="btn btn-warning" data-dismiss="modal">
+                            <i class="fa fa-times"></i> Cancelar
+                        </button>
+                        <button type="button" class="btn btn-info" onclick="previewTXT()">
+                            <i class="fa fa-eye"></i> Visualizar
+                        </button>
+                        <button type="button" class="btn btn-primary" onclick="generateAndDownloadTXT()">
+                            <i class="fa fa-download"></i> Gerar e Baixar TXT
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Preview Modal -->
+        <div id="txtPreviewModal" class="modal modal-info">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+                        <h4 class="modal-title">
+                            <i class="fa fa-eye"></i> Visualização do Arquivo TXT
+                        </h4>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label>Conteúdo do Arquivo:</label>
+                            <textarea id="txtPreviewContent" class="form-control" rows="15" readonly 
+                                      style="font-family: 'Courier New', monospace; font-size: 12px; background-color: #f5f5f5;"></textarea>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <small class="text-muted">
+                                    Total de linhas: <span id="previewLineCount">0</span>
+                                </small>
+                            </div>
+                            <div class="col-md-6 text-right">
+                                <small class="text-muted">
+                                    Caracteres por linha: 101
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-warning" data-dismiss="modal">
+                            <i class="fa fa-arrow-left"></i> Voltar
+                        </button>
+                        <button type="button" class="btn btn-primary" onclick="downloadPreviewedTXT()">
+                            <i class="fa fa-download"></i> Baixar Arquivo
+                        </button>
                     </div>
                 </div>
             </div>
         </div>
         
         <script>
-        function submitTxtForm() {
-            var form = document.getElementById('txtGeneratorForm');
-            var isValid = true;
+        var lineCounter = 0;
+        var txtPreviewContent = '';
+        
+        // Add first line when modal opens
+        $(document).ready(function() {
+            addNewLine();
+        });
+        
+        function addNewLine() {
+            lineCounter++;
+            updateLineCounter();
             
-            // Validate all number inputs
-            var inputs = form.querySelectorAll('input[type="number"]');
-            for (var i = 0; i < inputs.length; i++) {
-                if (!inputs[i].value || isNaN(inputs[i].value)) {
-                    inputs[i].style.borderColor = 'red';
-                    isValid = false;
+            var lineHtml = `
+                <div class="txt-line-container" data-line="${lineCounter}" style="border: 1px solid #ddd; border-radius: 4px; padding: 15px; margin-bottom: 15px; background-color: #fafafa;">
+                    <div class="row">
+                        <div class="col-md-10">
+                            <h5 style="margin-top: 0; color: #337ab7;">
+                                <i class="fa fa-file-text-o"></i> Linha ${lineCounter}
+                            </h5>
+                        </div>
+                        <div class="col-md-2 text-right">
+                            <button type="button" class="btn btn-danger btn-xs" onclick="removeLine(${lineCounter})" ${lineCounter === 1 ? 'style="display:none;"' : ''}>
+                                <i class="fa fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <?php foreach ($this->fields as $fieldKey => $fieldLabel): ?>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="${fieldKey}_${lineCounter}"><?php echo $fieldLabel; ?>:</label>
+                                <input type="number" 
+                                       class="form-control input-sm txt-field" 
+                                       id="${fieldKey}_${lineCounter}" 
+                                       name="${fieldKey}_${lineCounter}" 
+                                       step="any"
+                                       data-field="${fieldKey}"
+                                       data-line="${lineCounter}"
+                                       placeholder="Digite o valor numérico">
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            `;
+            
+            $('#txtLinesContainer').append(lineHtml);
+            
+            // Auto-focus on first field of new line
+            setTimeout(function() {
+                $(`#empresa_${lineCounter}`).focus();
+            }, 100);
+        }
+        
+        function removeLine(lineNumber) {
+            if ($('.txt-line-container').length <= 1) {
+                alert('Deve haver pelo menos uma linha.');
+                return;
+            }
+            
+            $(`.txt-line-container[data-line="${lineNumber}"]`).fadeOut(300, function() {
+                $(this).remove();
+                updateLineCounter();
+                renumberLines();
+            });
+        }
+        
+        function clearAllLines() {
+            if (confirm('Tem certeza que deseja limpar todas as linhas?')) {
+                $('#txtLinesContainer').empty();
+                lineCounter = 0;
+                addNewLine();
+            }
+        }
+        
+        function updateLineCounter() {
+            var totalLines = $('.txt-line-container').length;
+            $('#lineCounter').text(totalLines);
+        }
+        
+        function renumberLines() {
+            var counter = 1;
+            $('.txt-line-container').each(function() {
+                var $container = $(this);
+                var oldLine = $container.data('line');
+                
+                // Update container
+                $container.attr('data-line', counter);
+                $container.find('h5').html(`<i class="fa fa-file-text-o"></i> Linha ${counter}`);
+                
+                // Update remove button
+                $container.find('.btn-danger').attr('onclick', `removeLine(${counter})`);
+                if (counter === 1) {
+                    $container.find('.btn-danger').hide();
                 } else {
-                    inputs[i].style.borderColor = '';
+                    $container.find('.btn-danger').show();
                 }
+                
+                // Update input fields
+                $container.find('.txt-field').each(function() {
+                    var $input = $(this);
+                    var fieldName = $input.data('field');
+                    var newId = fieldName + '_' + counter;
+                    var newName = fieldName + '_' + counter;
+                    
+                    $input.attr('id', newId);
+                    $input.attr('name', newName);
+                    $input.data('line', counter);
+                    
+                    // Update label
+                    $input.closest('.form-group').find('label').attr('for', newId);
+                });
+                
+                counter++;
+            });
+            
+            lineCounter = counter - 1;
+        }
+        
+        function collectTxtData() {
+            var txtData = [];
+            var isValid = true;
+            var filename = $('#filename').val().trim();
+            
+            if (!filename) {
+                alert('Nome do arquivo é obrigatório.');
+                $('#filename').focus();
+                return null;
             }
             
-            // Validate filename
-            var filename = document.getElementById('filename');
-            if (!filename.value.trim()) {
-                filename.style.borderColor = 'red';
-                isValid = false;
-            } else {
-                filename.style.borderColor = '';
+            $('.txt-line-container').each(function() {
+                var lineNumber = $(this).data('line');
+                var lineData = {};
+                var hasData = false;
+                
+                $(this).find('.txt-field').each(function() {
+                    var $field = $(this);
+                    var fieldName = $field.data('field');
+                    var value = $field.val().trim();
+                    
+                    if (value !== '') {
+                        if (!$.isNumeric(value)) {
+                            alert(`Linha ${lineNumber}: Campo "${$field.closest('.form-group').find('label').text().replace(':', '')}" deve ser numérico.`);
+                            $field.focus();
+                            isValid = false;
+                            return false;
+                        }
+                        lineData[fieldName] = parseFloat(value);
+                        hasData = true;
+                    } else {
+                        lineData[fieldName] = 0;
+                    }
+                });
+                
+                if (!isValid) return false;
+                
+                if (hasData) {
+                    txtData.push(lineData);
+                }
+            });
+            
+            if (!isValid) return null;
+            
+            if (txtData.length === 0) {
+                alert('Adicione pelo menos uma linha com dados válidos.');
+                return null;
             }
             
-            if (isValid) {
-                form.submit();
-            } else {
-                alert('Por favor, preencha todos os campos corretamente com valores numéricos.');
+            return {
+                filename: filename,
+                lines: txtData
+            };
+        }
+        
+        function previewTXT() {
+            var data = collectTxtData();
+            if (!data) return;
+            
+            var txtContent = generateTxtContent(data.lines);
+            txtPreviewContent = txtContent;
+            
+            $('#txtPreviewContent').val(txtContent);
+            $('#previewLineCount').text(data.lines.length);
+            
+            $('#txtGeneratorModal').modal('hide');
+            $('#txtPreviewModal').modal('show');
+        }
+        
+        function generateAndDownloadTXT() {
+            var data = collectTxtData();
+            if (!data) return;
+            
+            var txtContent = generateTxtContent(data.lines);
+            var filename = data.filename;
+            
+            if (!filename.toLowerCase().endsWith('.txt')) {
+                filename += '.txt';
             }
+            
+            downloadTXTFile(txtContent, filename);
+            
+            // Show success message
+            showSuccessMessage(`Arquivo "${filename}" gerado com sucesso!\\nTotal de linhas: ${data.lines.length}`);
+            
+            $('#txtGeneratorModal').modal('hide');
+        }
+        
+        function downloadPreviewedTXT() {
+            var filename = $('#filename').val().trim();
+            if (!filename.toLowerCase().endsWith('.txt')) {
+                filename += '.txt';
+            }
+            
+            downloadTXTFile(txtPreviewContent, filename);
+            showSuccessMessage(`Arquivo "${filename}" baixado com sucesso!`);
+            
+            $('#txtPreviewModal').modal('hide');
+        }
+        
+        function generateTxtContent(lines) {
+            var txtContent = '';
+            
+            lines.forEach(function(line) {
+                var txtLine = formatToTXTLine(
+                    line.empresa || 0,
+                    line.codigoLoja || 0,
+                    line.codTransacao || 0,
+                    line.meioPagamento || 0,
+                    line.valorMinimo || 0,
+                    line.valorMaximo || 0,
+                    line.situacaoMeioPagamento || 0,
+                    line.valorTotalMaxDiario || 0,
+                    line.TipoManutencao || 0,
+                    line.quantidadeTotalMaxDiaria || 0
+                );
+                txtContent += txtLine + '\\r\\n';
+            });
+            
+            return txtContent;
+        }
+        
+        // Utility functions (copied from your existing code)
+        function formatToTXTLine(empresa, codigoLoja, codTransacao, meioPagamento, valorMinimo, valorMaximo, situacaoMeioPagamento, valorTotalMaxDiario, tipoManutencao, quantidadeTotalMaxDiaria) {
+            var empresaTXT = padLeft(cleanNumeric(empresa), 10, '0');
+            var codigoLojaTXT = padLeft(cleanNumeric(codigoLoja), 5, '0');
+            var fixo = padRight("", 10, ' ');
+            var codTransacaoTXT = padLeft(cleanNumeric(codTransacao), 5, '0');
+            var meioPagamTXT = padLeft(cleanNumeric(meioPagamento), 2, '0');
+            var valorMinTXT = padLeft(cleanNumeric(valorMinimo), 17, '0');
+            var valorMaxTXT = padLeft(cleanNumeric(valorMaximo), 17, '0');
+            var sitMeioPTXT = padLeft(cleanNumeric(situacaoMeioPagamento), 1, '0');
+            var valorTotalMaxTXT = padLeft(cleanNumeric(valorTotalMaxDiario), 18, '0');
+            var tipoManutTXT = padLeft(cleanNumeric(tipoManutencao), 1, '0');
+            var quantTotalMaxTXT = padLeft(cleanNumeric(quantidadeTotalMaxDiaria), 15, '0');
+
+            var linha = empresaTXT + codigoLojaTXT + fixo + codTransacaoTXT + meioPagamTXT + 
+                       valorMinTXT + valorMaxTXT + sitMeioPTXT + valorTotalMaxTXT + 
+                       tipoManutTXT + quantTotalMaxTXT;
+
+            if (linha.length > 101) {
+                return linha.substring(0, 101);
+            } else if (linha.length < 101) {
+                return padRight(linha, 101, ' ');
+            }
+            return linha;
+        }
+        
+        function cleanNumeric(value) {
+            return String(value).replace(/[^0-9]/g, '') || '0';
+        }
+        
+        function padLeft(str, length, char) {
+            str = String(str);
+            while (str.length < length) {
+                str = char + str;
+            }
+            return str.length > length ? str.slice(-length) : str;
+        }
+        
+        function padRight(str, length, char) {
+            str = String(str);
+            while (str.length < length) {
+                str = str + char;
+            }
+            return str.substring(0, length);
+        }
+        
+        function downloadTXTFile(txtContent, filename) {
+            var txtWithBOM = '\\uFEFF' + txtContent;
+            var blob = new Blob([txtWithBOM], { type: 'text/plain;charset=utf-8;' });
+            downloadFile(blob, filename);
+        }
+        
+        function downloadFile(blob, filename) {
+            var link = document.createElement('a');
+            if (link.download !== undefined) {
+                var url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', filename);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                setTimeout(function() {
+                    URL.revokeObjectURL(url);
+                }, 1000);
+            } else {
+                alert('Seu navegador não suporta download automático.');
+            }
+        }
+        
+        function showSuccessMessage(message) {
+            var alertHtml = `
+                <div class="alert alert-success success-alert" style="
+                    position: fixed; 
+                    top: 50%; 
+                    left: 50%; 
+                    transform: translate(-50%, -50%); 
+                    z-index: 9999; 
+                    min-width: 400px;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                    border-radius: 5px;
+                ">
+                    <button class="close" onclick="$(this).parent().remove()" style="
+                        color: #3c763d !important; 
+                        opacity: 0.7; 
+                        position: absolute; 
+                        top: 10px; 
+                        right: 15px;
+                    ">
+                        <i class="fa fa-times"></i>
+                    </button>
+                    <div style="padding: 20px 40px 20px 20px;">
+                        <i class="fa fa-check-circle" style="color: #3c763d; font-size: 20px; margin-right: 10px;"></i>
+                        <strong>Sucesso!</strong>
+                        <pre style="background: none; border: none; color: #3c763d; margin-top: 10px; white-space: pre-wrap;">${message}</pre>
+                    </div>
+                </div>
+            `;
+            
+            $('body').append(alertHtml);
+            
+            setTimeout(function() {
+                $('.success-alert').fadeOut(300, function() {
+                    $(this).remove();
+                });
+            }, 5000);
         }
         
         function openTxtGeneratorModal() {
@@ -116,149 +497,24 @@ class TxtGeneratorModal {
     }
     
     /**
-     * Process form submission and generate TXT file
-     */
-    public function processForm() {
-        if ($_POST && isset($_POST['action']) && $_POST['action'] === 'generate_txt') {
-            
-            // Validate and sanitize input data
-            $data = array();
-            $hasErrors = false;
-            
-            foreach ($this->fields as $fieldKey => $fieldLabel) {
-                if (!isset($_POST[$fieldKey]) || $_POST[$fieldKey] === '') {
-                    $_SESSION['txt_message'] = "Campo '$fieldLabel' é obrigatório.";
-                    $_SESSION['txt_message_type'] = 'danger';
-                    $hasErrors = true;
-                    break;
-                }
-                
-                $value = $_POST[$fieldKey];
-                if (!is_numeric($value)) {
-                    $_SESSION['txt_message'] = "Campo '$fieldLabel' deve ser um valor numérico.";
-                    $_SESSION['txt_message_type'] = 'danger';
-                    $hasErrors = true;
-                    break;
-                }
-                
-                $data[$fieldKey] = floatval($value);
-            }
-            
-            // Validate filename
-            $filename = trim($_POST['filename']);
-            if (empty($filename)) {
-                $_SESSION['txt_message'] = "Nome do arquivo é obrigatório.";
-                $_SESSION['txt_message_type'] = 'danger';
-                $hasErrors = true;
-            }
-            
-            if (!$hasErrors) {
-                $result = $this->generateTxtFile($data, $filename);
-                if ($result['success']) {
-                    $_SESSION['txt_message'] = $result['message'];
-                    $_SESSION['txt_message_type'] = 'success';
-                } else {
-                    $_SESSION['txt_message'] = $result['message'];
-                    $_SESSION['txt_message_type'] = 'danger';
-                }
-            }
-            
-            // Redirect to avoid form resubmission
-            $this->redirect($_SERVER['REQUEST_URI']);
-        }
-    }
-    
-    /**
-     * Generate TXT file with user data
-     */
-    private function generateTxtFile($data, $filename) {
-        try {
-            // Create TXT content (similar to extractTXTfromXML format)
-            $txtContent = $this->createTxtContent($data);
-            
-            // Ensure filename has .txt extension
-            if (!preg_match('/\.txt$/i', $filename)) {
-                $filename .= '.txt';
-            }
-            
-            // Create safe filename
-            $safeFilename = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $filename);
-            
-            // Define file path (adjust as needed)
-            $filePath = 'generated_files/' . $safeFilename;
-            
-            // Create directory if it doesn't exist
-            $dir = dirname($filePath);
-            if (!file_exists($dir)) {
-                mkdir($dir, 0755, true);
-            }
-            
-            // Write file
-            if (file_put_contents($filePath, $txtContent) !== false) {
-                return array(
-                    'success' => true,
-                    'message' => "Arquivo '$safeFilename' gerado com sucesso!"
-                );
-            } else {
-                return array(
-                    'success' => false,
-                    'message' => "Erro ao criar o arquivo."
-                );
-            }
-            
-        } catch (Exception $e) {
-            return array(
-                'success' => false,
-                'message' => "Erro: " . $e->getMessage()
-            );
-        }
-    }
-    
-    /**
-     * Create TXT content from data array
-     */
-    private function createTxtContent($data) {
-        $content = "# Arquivo TXT Personalizado\n";
-        $content .= "# Gerado em: " . date('Y-m-d H:i:s') . "\n\n";
-        
-        foreach ($this->fields as $fieldKey => $fieldLabel) {
-            $value = isset($data[$fieldKey]) ? $data[$fieldKey] : 0;
-            $content .= sprintf("%-30s: %s\n", $fieldLabel, $value);
-        }
-        
-        $content .= "\n# Fim do arquivo\n";
-        
-        return $content;
-    }
-    
-    /**
-     * Simple redirect function (PHP 5.3 compatible)
-     */
-    private function redirect($url) {
-        echo "<script>window.location.href = '$url';</script>";
-        exit;
-    }
-    
-    /**
      * Display trigger button for the modal
      */
     public function displayTriggerButton() {
         ?>
-        <button type="button" class="btn btn-success" onclick="openTxtGeneratorModal()">
+        <button type="button" class="btn btn-success btn-sm" onclick="openTxtGeneratorModal()" style="margin-bottom:10px;position:relative; left:20px;">
             <i class="fa fa-file-text"></i> Gerar TXT Personalizado
         </button>
         <?php
     }
     
     /**
-     * Initialize and handle everything
+     * Initialize the class
      */
     public function init() {
         if (!isset($_SESSION)) {
             session_start();
         }
-        
-        $this->processForm();
+        // No server-side processing needed anymore - everything is handled by JavaScript
     }
 }
 
