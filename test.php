@@ -1,782 +1,491 @@
 <?php
 /**
- * TXT Generator Modal Class
- * Compatible with PHP 5.3
- * Generates a modal for creating custom TXT files with multiple lines
+ * TXT Generator Class
+ * Mass produces TXT lines with fixed-width formatting
+ * Compatible with PHP 5.3+
  */
-class TxtGeneratorModal {
+class TxtGenerator {
     
-    private $fields = array(
-        'empresa' => 'Empresa',
-        'codigoLoja' => 'Código Loja', 
-        'codTransacao' => 'Código Transação',
-        'meioPagamento' => 'Meio Pagamento',
-        'valorMinimo' => 'Valor Mínimo',
-        'valorMaximo' => 'Valor Máximo',
-        'situacaoMeioPagamento' => 'Situação Meio Pagamento',
-        'valorTotalMaxDiario' => 'Valor Total Max Diário',
-        'TipoManutencao' => 'Tipo Manutenção',
-        'quantidadeTotalMaxDiaria' => 'Quantidade Total Max Diária'
+    /**
+     * Field mappings for validation and code lookup
+     */
+    private $transactionCodes = array(
+        'abertura' => '01',
+        'aberturaNova' => '41',
+        'aberturaDigital' => '37',
+        'acertoFinanceiro' => '49',
+        'acertoFinanceiroQRCODE' => '48',
+        'antecipacaoRendaINSS' => '02',
+        'cartaoDeCreditoNova' => '44',
+        'cartaoPrePagoIn' => '04',
+        'cartaoPrePagoDe' => '05',
+        'cartaoPrePagoEx' => '06',
+        'cartaoPrePagoSal' => '08',
+        'cartaoPrePagoSaq' => '09',
+        'cartaoPrePagoTr' => '10',
+        'cestaDeServicos' => '11',
+        'cestaDeManutencao' => '33',
+        'cobrancaTitulos' => '12',
+        'concessionarias' => '13',
+        'consultaSDO' => '47',
+        'consultaINSS' => '14',
+        'consultaExtrato' => '15',
+        'consultaSaldo' => '16',
+        'darf' => '17',
+        'demonstrativoDeCreditoINSS' => '18',
+        'deposito' => '19',
+        'depositoIdentificado' => '20',
+        'desbloqueioCheques' => '21',
+        'emprestimoConsignado' => '34',
+        'emprestimoConsignadoINSS' => '45',
+        'emprestimoParcelado' => '36',
+        'emprestimoPreAprov' => '22',
+        'gps' => '23',
+        'licenciamentoBahia' => '24',
+        'licenciamentoMinas' => '32',
+        'limeNova' => '46',
+        'microsseguro' => '40',
+        'pagueFacil' => '25',
+        'pedidoCart' => '31',
+        'provaDeVida' => '26',
+        'recebimentos' => '35',
+        'saqueEmp' => '30',
+        'saqueCar' => '27',
+        'saqueDin' => '28',
+        'saqueRecRet' => '29',
+        'saquePix' => '38',
+        'seguroDeVida' => '43',
+        'transfEntreContas' => '03',
+        'tributos' => '07',
+        'vendaCartaoNova' => '42',
+        'vendaCartao' => '39'
     );
     
+    private $paymentMethods = array(
+        'dinheiro' => '01',
+        'cheque' => '02',
+        'cartao' => '03',
+        'nao_se_aplica' => '04'
+    );
+    
+    private $paymentStatus = array(
+        'ativo' => '1',
+        'inativo' => '2'
+    );
+    
+    private $maintenanceTypes = array(
+        'inclusao' => '1',
+        'alteracao' => '2',
+        'exclusao' => '3'
+    );
+    
+    private $errors = array();
+    
     /**
-     * Display the modal HTML
+     * Generate a single TXT line from data array
+     * 
+     * @param array $data Associative array with line data
+     * @return string|false Formatted TXT line or false on error
      */
-    public function displayModal() {
-        ?>
-        <div id="txtGeneratorModal" class="modal modal-primary">
-            <div class="modal-dialog modal-lg">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
-                        <h4 class="modal-title">
-                            <i class="fa fa-file-text"></i> Gerador de Arquivo TXT Personalizado
-                        </h4>
-                    </div>
-                    <div class="modal-body" style="max-height: 500px; overflow-y: auto;">
-                        <div class="row mb-3">
-                            <div class="col-md-8">
-                                <div class="form-group">
-                                    <label for="filename">Nome do Arquivo:</label>
-                                    <input type="text" 
-                                           class="form-control" 
-                                           id="filename" 
-                                           name="filename" 
-                                           value="arquivo_personalizado"
-                                           placeholder="Digite o nome do arquivo">
-                                    <small class="help-block">Arquivo será salvo como [nome].txt</small>
-                                </div>
-                            </div>
-                            <div class="col-md-4" style="padding-top: 25px;">
-                                <button type="button" class="btn btn-success btn-sm" onclick="addNewLine()">
-                                    <i class="fa fa-plus"></i> Adicionar Linha
-                                </button>
-                                <button type="button" class="btn btn-warning btn-sm" onclick="clearAllLines()">
-                                    <i class="fa fa-trash"></i> Limpar Tudo
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <div class="widget-header">
-                            <span class="widget-caption">Linhas do Arquivo TXT</span>
-                            <div class="widget-buttons">
-                                <span class="badge" id="lineCounter">1</span>
-                            </div>
-                        </div>
-                        
-                        <div id="txtLinesContainer" class="widget-body">
-                            <!-- First line will be added by JavaScript -->
-                        </div>
-                        
-                        <div class="alert alert-info" style="margin-top: 15px;">
-                            <i class="fa fa-info-circle"></i>
-                            <strong>Dica:</strong> Cada linha representa uma entrada no arquivo TXT. Use o botão "Adicionar Linha" para criar múltiplas entradas.
-                        </div>
-                        
-                        <?php if (isset($_SESSION['txt_message'])): ?>
-                        <div class="alert alert-<?php echo $_SESSION['txt_message_type']; ?>">
-                            <?php 
-                            echo $_SESSION['txt_message']; 
-                            unset($_SESSION['txt_message'], $_SESSION['txt_message_type']);
-                            ?>
-                        </div>
-                        <?php endif; ?>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-warning" data-dismiss="modal">
-                            <i class="fa fa-times"></i> Cancelar
-                        </button>
-                        <button type="button" class="btn btn-info" onclick="previewTXT()">
-                            <i class="fa fa-eye"></i> Visualizar
-                        </button>
-                        <button type="button" class="btn btn-primary" onclick="generateAndDownloadTXT()">
-                            <i class="fa fa-download"></i> Gerar e Baixar TXT
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Preview Modal -->
-        <div id="txtPreviewModal" class="modal modal-info">
-            <div class="modal-dialog modal-lg">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
-                        <h4 class="modal-title">
-                            <i class="fa fa-eye"></i> Visualização do Arquivo TXT
-                        </h4>
-                    </div>
-                    <div class="modal-body">
-                        <div class="form-group">
-                            <label>Conteúdo do Arquivo:</label>
-                            <textarea id="txtPreviewContent" class="form-control" rows="15" readonly 
-                                      style="font-family: 'Courier New', monospace; font-size: 12px; background-color: #f5f5f5;"></textarea>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-6">
-                                <small class="text-muted">
-                                    Total de linhas: <span id="previewLineCount">0</span>
-                                </small>
-                            </div>
-                            <div class="col-md-6 text-right">
-                                <small class="text-muted">
-                                    Caracteres por linha: 101
-                                </small>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-warning" data-dismiss="modal">
-                            <i class="fa fa-arrow-left"></i> Voltar
-                        </button>
-                        <button type="button" class="btn btn-primary" onclick="downloadPreviewedTXT()">
-                            <i class="fa fa-download"></i> Baixar Arquivo
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <script>
-        var lineCounter = 0;
-        var txtPreviewContent = '';
-        
-        // Field definitions in JavaScript
-        var txtFields = {
-            'empresa': 'Empresa',
-            'codigoLoja': 'Código Loja',
-            'codTransacao': 'Código Transação',
-            'meioPagamento': 'Meio Pagamento',
-            'valorMinimo': 'Valor Mínimo',
-            'valorMaximo': 'Valor Máximo',
-            'situacaoMeioPagamento': 'Situação Meio Pagamento',
-            'valorTotalMaxDiario': 'Valor Total Max Diário',
-            'TipoManutencao': 'Tipo Manutenção',
-            'quantidadeTotalMaxDiaria': 'Quantidade Total Max Diária'
-        };
-        
-        // Transaction code mapping
-        var transactionCodes = {
-            'deposito': { label: 'Depósito', code: '10' },
-            'saque': { label: 'Saque', code: '20' },
-            'transferencia': { label: 'Transferência', code: '30' },
-            'pagamento': { label: 'Pagamento', code: '40' },
-            'consulta': { label: 'Consulta', code: '50' },
-            'retirada': { label: 'Retirada', code: '60' },
-            'recarga': { label: 'Recarga', code: '70' },
-            'segunda_via': { label: 'Segunda Via', code: '80' },
-            'cadastro': { label: 'Cadastro', code: '90' },
-            'outros': { label: 'Outros', code: '99' }
-        };
-        
-        // Payment method mapping
-        var paymentMethods = {
-            'dinheiro': { label: 'Dinheiro', code: '01' },
-            'cheque': { label: 'Cheque', code: '02' },
-            'cartao': { label: 'Cartão', code: '03' },
-            'nao_se_aplica': { label: 'Não se Aplica', code: '04' },
-            'pix': { label: 'PIX', code: '05' },
-            'ted': { label: 'TED', code: '06' },
-            'boleto': { label: 'Boleto', code: '07' }
-        };
-        
-        // Payment status mapping
-        var paymentStatus = {
-            'ativo': { label: 'Ativo', code: '1' },
-            'inativo': { label: 'Inativo', code: '2' }
-        };
-        
-        // Maintenance type mapping
-        var maintenanceTypes = {
-            'inclusao': { label: 'Inclusão', code: '1' },
-            'alteracao': { label: 'Alteração', code: '2' },
-            'exclusao': { label: 'Exclusão', code: '3' }
-        };
-        
-        // Field mappings configuration
-        var fieldMappings = {
-            'codTransacao': transactionCodes,
-            'meioPagamento': paymentMethods,
-            'situacaoMeioPagamento': paymentStatus,
-            'TipoManutencao': maintenanceTypes
-        };
-        
-        // Add first line when modal opens
-        $(document).ready(function() {
-            addNewLine();
-        });
-        
-        function addNewLine() {
-            lineCounter++;
-            updateLineCounter();
-            
-            var leftColumnHtml = ''; // Input fields
-            var rightColumnHtml = ''; // Dropdown fields
-            
-            // Generate input fields (left column)
-            for (var fieldKey in txtFields) {
-                var fieldLabel = txtFields[fieldKey];
-                
-                // Skip dropdown fields for left column
-                if (!fieldMappings[fieldKey]) {
-                    leftColumnHtml += `
-                        <div class="form-group" style="margin-bottom: 20px;">
-                            <label for="${fieldKey}_${lineCounter}" style="display: block; margin-bottom: 5px;">${fieldLabel}:</label>
-                            <input type="number" 
-                                   class="form-control input-sm txt-field" 
-                                   id="${fieldKey}_${lineCounter}" 
-                                   name="${fieldKey}_${lineCounter}" 
-                                   step="any"
-                                   data-field="${fieldKey}"
-                                   data-line="${lineCounter}"
-                                   placeholder="Digite o valor numérico"
-                                   style="height: 34px; min-height: 34px; width: 100%; display: block;">
-                        </div>
-                    `;
-                }
-            }
-            
-            // Generate dropdown fields (right column)
-            for (var fieldKey in txtFields) {
-                var fieldLabel = txtFields[fieldKey];
-                
-                // Only process dropdown fields for right column
-                if (fieldMappings[fieldKey]) {
-                    var mapping = fieldMappings[fieldKey];
-                    var dropdownOptions = '';
-                    var placeholderText = getPlaceholderText(fieldKey);
-                    
-                    for (var mapKey in mapping) {
-                        var item = mapping[mapKey];
-                        var fullText = `${item.label} (${item.code})`;
-                        dropdownOptions += `
-                            <li>
-                                <a href="#" tabindex="-1" 
-                                   onclick="selectDropdownOption('${fieldKey}_${lineCounter}', '${mapKey}', '${item.label}', '${item.code}'); return false;"
-                                   title="${fullText}"
-                                   style="overflow: hidden; white-space: nowrap; text-overflow: ellipsis; display: block; max-width: 100%; padding: 3px 20px;">
-                                    ${fullText}
-                                </a>
-                            </li>
-                        `;
-                    }
-                    
-                    rightColumnHtml += `
-                        <div class="form-group" style="margin-bottom: 20px;">
-                            <label for="${fieldKey}_${lineCounter}" style="display: block; margin-bottom: 5px;">${fieldLabel}:</label>
-                            <div class="dropdown">
-                                <button class="btn btn-default dropdown-toggle form-control txt-field" 
-                                        type="button" 
-                                        id="${fieldKey}_${lineCounter}" 
-                                        data-toggle="dropdown" 
-                                        data-field="${fieldKey}"
-                                        data-line="${lineCounter}"
-                                        data-value=""
-                                        style="text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; height: 34px; min-height: 34px; line-height: 20px; display: block; width: 100%;">
-                                    <span class="dropdown-text" style="overflow: hidden; white-space: nowrap; text-overflow: ellipsis; display: inline-block; max-width: calc(100% - 20px);">${placeholderText}</span>
-                                    <span class="caret" style="float: right; margin-top: 8px;"></span>
-                                </button>
-                                <ul class="dropdown-menu" style="width: 100%; max-width: 100%; box-sizing: border-box;">
-                                    ${dropdownOptions}
-                                    <li class="divider"></li>
-                                    <li>
-                                        <a href="#" tabindex="-1" 
-                                           onclick="clearDropdownOption('${fieldKey}_${lineCounter}'); return false;" 
-                                           style="color: #d9534f; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; display: block; max-width: 100%; padding: 3px 20px;"
-                                           title="Limpar Seleção">
-                                            <i class="fa fa-times"></i> Limpar Seleção
-                                        </a>
-                                    </li>
-                                </ul>
-                            </div>
-                            <small class="help-block" style="display: block; margin-top: 5px;">Código será: <span id="${fieldKey}_${lineCounter}_code">--</span></small>
-                        </div>
-                    `;
-                }
-            }
-            
-            var lineHtml = `
-                <div class="txt-line-container" data-line="${lineCounter}" style="border: 1px solid #ddd; border-radius: 4px; padding: 15px; margin-bottom: 15px; background-color: #fafafa;">
-                    <div class="row">
-                        <div class="col-md-10">
-                            <h5 style="margin-top: 0; color: #337ab7;">
-                                <i class="fa fa-file-text-o"></i> Linha ${lineCounter}
-                            </h5>
-                        </div>
-                        <div class="col-md-2 text-right">
-                            <button type="button" class="btn btn-danger btn-xs" onclick="removeLine(${lineCounter})" ${lineCounter === 1 ? 'style="display:none;"' : ''}>
-                                <i class="fa fa-trash"></i>
-                            </button>
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="widget-header" style="margin-bottom: 15px; height: 30px; display: flex; align-items: center;">
-                                <span class="widget-caption" style="font-size: 14px;">
-                                    <i class="fa fa-edit"></i> Campos Editáveis
-                                </span>
-                            </div>
-                            ${leftColumnHtml}
-                        </div>
-                        <div class="col-md-6">
-                            <div class="widget-header" style="margin-bottom: 15px; height: 30px; display: flex; align-items: center;">
-                                <span class="widget-caption" style="font-size: 14px;">
-                                    <i class="fa fa-list-ul"></i> Seleções
-                                </span>
-                            </div>
-                            ${rightColumnHtml}
-                        </div>
-                    </div>
-                </div>
-            `;
-            
-            $('#txtLinesContainer').append(lineHtml);
-            
-            // Auto-focus on first input field of new line
-            setTimeout(function() {
-                $(`#empresa_${lineCounter}`).focus();
-            }, 100);
+    public function generateLine($data) {
+        if (!$this->validateLineData($data)) {
+            return false;
         }
         
-        function getPlaceholderText(fieldKey) {
-            var placeholders = {
-                'codTransacao': 'Selecione uma transação',
-                'meioPagamento': 'Selecione meio de pagamento',
-                'situacaoMeioPagamento': 'Selecione situação',
-                'TipoManutencao': 'Selecione tipo de manutenção'
-            };
-            return placeholders[fieldKey] || 'Selecione uma opção';
-        }
-        
-        function selectDropdownOption(fieldId, optionKey, label, code) {
-            var $button = $('#' + fieldId);
-            var $dropdownText = $button.find('.dropdown-text');
-            
-            $dropdownText.text(label);
-            $button.attr('data-value', code);
-            $button.removeClass('btn-default').addClass('btn-info');
-            
-            // Maintain consistent button height and layout
-            $button.css({
-                'height': '34px',
-                'min-height': '34px',
-                'line-height': '20px',
-                'display': 'block',
-                'width': '100%'
-            });
-            
-            // Add tooltip if text is truncated
-            if ($dropdownText[0].scrollWidth > $dropdownText[0].clientWidth) {
-                $button.attr('title', label);
-            } else {
-                $button.removeAttr('title');
-            }
-            
-            // Update the code display
-            $('#' + fieldId + '_code').text(code);
-        }
-        
-        function clearDropdownOption(fieldId) {
-            var $button = $('#' + fieldId);
-            var fieldName = $button.data('field');
-            var placeholderText = getPlaceholderText(fieldName);
-            
-            $button.find('.dropdown-text').text(placeholderText);
-            $button.attr('data-value', '');
-            $button.removeClass('btn-info').addClass('btn-default');
-            $button.removeAttr('title'); // Remove tooltip when clearing
-            
-            // Maintain consistent button height and layout
-            $button.css({
-                'height': '34px',
-                'min-height': '34px',
-                'line-height': '20px',
-                'display': 'block',
-                'width': '100%'
-            });
-            
-            // Clear the code display
-            $('#' + fieldId + '_code').text('--');
-        }
-        
-        function removeLine(lineNumber) {
-            if ($('.txt-line-container').length <= 1) {
-                alert('Deve haver pelo menos uma linha.');
-                return;
-            }
-            
-            $(`.txt-line-container[data-line="${lineNumber}"]`).fadeOut(300, function() {
-                $(this).remove();
-                updateLineCounter();
-                renumberLines();
-            });
-        }
-        
-        function clearAllLines() {
-            if (confirm('Tem certeza que deseja limpar todas as linhas?')) {
-                $('#txtLinesContainer').empty();
-                lineCounter = 0;
-                addNewLine();
-            }
-        }
-        
-        function updateLineCounter() {
-            var totalLines = $('.txt-line-container').length;
-            $('#lineCounter').text(totalLines);
-        }
-        
-        function renumberLines() {
-            var counter = 1;
-            $('.txt-line-container').each(function() {
-                var $container = $(this);
-                var oldLine = $container.data('line');
-                
-                // Update container
-                $container.attr('data-line', counter);
-                $container.find('h5').html(`<i class="fa fa-file-text-o"></i> Linha ${counter}`);
-                
-                // Update remove button
-                $container.find('.btn-danger').attr('onclick', `removeLine(${counter})`);
-                if (counter === 1) {
-                    $container.find('.btn-danger').hide();
-                } else {
-                    $container.find('.btn-danger').show();
-                }
-                
-                // Update input fields and dropdowns
-                $container.find('.txt-field').each(function() {
-                    var $field = $(this);
-                    var fieldName = $field.data('field');
-                    var newId = fieldName + '_' + counter;
-                    var newName = fieldName + '_' + counter;
-                    
-                    $field.attr('id', newId);
-                    $field.attr('name', newName);
-                    $field.data('line', counter);
-                    
-                    // Update label
-                    $field.closest('.form-group').find('label').attr('for', newId);
-                    
-                    // Handle dropdown fields
-                    if (fieldMappings[fieldName]) {
-                        var mapping = fieldMappings[fieldName];
-                        
-                        // Update dropdown menu onclick events
-                        $field.siblings('.dropdown-menu').find('a').each(function() {
-                            var $link = $(this);
-                            var onclick = $link.attr('onclick');
-                            if (onclick && onclick.includes('selectDropdownOption')) {
-                                // Extract option key, label, and code from onclick
-                                var matches = onclick.match(/selectDropdownOption\('[^']+', '([^']+)', '([^']+)', '([^']+)'\)/);
-                                if (matches) {
-                                    var optionKey = matches[1];
-                                    var label = matches[2];
-                                    var code = matches[3];
-                                    var fullText = `${label} (${code})`;
-                                    $link.attr('onclick', `selectDropdownOption('${newId}', '${optionKey}', '${label}', '${code}'); return false;`);
-                                    $link.attr('title', fullText);
-                                }
-                            } else if (onclick && onclick.includes('clearDropdownOption')) {
-                                $link.attr('onclick', `clearDropdownOption('${newId}'); return false;`);
-                            }
-                        });
-                        
-                        // Update code display element id
-                        var $codeDisplay = $field.closest('.form-group').find('span[id$="_code"]');
-                        $codeDisplay.attr('id', newId + '_code');
-                    }
-                });
-                
-                counter++;
-            });
-            
-            lineCounter = counter - 1;
-        }
-        
-        function collectTxtData() {
-            var txtData = [];
-            var isValid = true;
-            var filename = $('#filename').val().trim();
-            
-            if (!filename) {
-                alert('Nome do arquivo é obrigatório.');
-                $('#filename').focus();
-                return null;
-            }
-            
-            $('.txt-line-container').each(function() {
-                var lineNumber = $(this).data('line');
-                var lineData = {};
-                var hasData = false;
-                
-                $(this).find('.txt-field').each(function() {
-                    var $field = $(this);
-                    var fieldName = $field.data('field');
-                    var value;
-                    
-                    // Check if this is a dropdown field
-                    if (fieldMappings[fieldName]) {
-                        // Handle dropdown field
-                        value = $field.attr('data-value') || '';
-                        if (value === '') {
-                            var fieldLabel = txtFields[fieldName] || fieldName;
-                            alert(`Linha ${lineNumber}: Selecione uma opção para o campo "${fieldLabel}".`);
-                            isValid = false;
-                            return false;
-                        }
-                        lineData[fieldName] = parseInt(value);
-                        hasData = true;
-                    } else {
-                        // Handle regular number inputs
-                        value = $field.val().trim();
-                        if (value !== '') {
-                            if (!$.isNumeric(value)) {
-                                alert(`Linha ${lineNumber}: Campo "${$field.closest('.form-group').find('label').text().replace(':', '')}" deve ser numérico.`);
-                                $field.focus();
-                                isValid = false;
-                                return false;
-                            }
-                            lineData[fieldName] = parseFloat(value);
-                            hasData = true;
-                        } else {
-                            lineData[fieldName] = 0;
-                        }
-                    }
-                });
-                
-                if (!isValid) return false;
-                
-                if (hasData) {
-                    txtData.push(lineData);
-                }
-            });
-            
-            if (!isValid) return null;
-            
-            if (txtData.length === 0) {
-                alert('Adicione pelo menos uma linha com dados válidos.');
-                return null;
-            }
-            
-            return {
-                filename: filename,
-                lines: txtData
-            };
-        }
-        
-        function previewTXT() {
-            var data = collectTxtData();
-            if (!data) return;
-            
-            var txtContent = generateTxtContent(data.lines);
-            txtPreviewContent = txtContent;
-            
-            $('#txtPreviewContent').val(txtContent);
-            $('#previewLineCount').text(data.lines.length);
-            
-            $('#txtGeneratorModal').modal('hide');
-            $('#txtPreviewModal').modal('show');
-        }
-        
-        function generateAndDownloadTXT() {
-            var data = collectTxtData();
-            if (!data) return;
-            
-            var txtContent = generateTxtContent(data.lines);
-            var filename = data.filename;
-            
-            if (!filename.toLowerCase().endsWith('.txt')) {
-                filename += '.txt';
-            }
-            
-            downloadTXTFile(txtContent, filename);
-            
-            // Show success message
-            showSuccessMessage(`Arquivo "${filename}" gerado com sucesso!\\nTotal de linhas: ${data.lines.length}`);
-            
-            $('#txtGeneratorModal').modal('hide');
-        }
-        
-        function downloadPreviewedTXT() {
-            var filename = $('#filename').val().trim();
-            if (!filename.toLowerCase().endsWith('.txt')) {
-                filename += '.txt';
-            }
-            
-            downloadTXTFile(txtPreviewContent, filename);
-            showSuccessMessage(`Arquivo "${filename}" baixado com sucesso!`);
-            
-            $('#txtPreviewModal').modal('hide');
-        }
-        
-        function generateTxtContent(lines) {
-            var txtContent = '';
-            
-            lines.forEach(function(line) {
-                var txtLine = formatToTXTLine(
-                    line.empresa || 0,
-                    line.codigoLoja || 0,
-                    line.codTransacao || 0,
-                    line.meioPagamento || 0,
-                    line.valorMinimo || 0,
-                    line.valorMaximo || 0,
-                    line.situacaoMeioPagamento || 0,
-                    line.valorTotalMaxDiario || 0,
-                    line.TipoManutencao || 0,
-                    line.quantidadeTotalMaxDiaria || 0
-                );
-                txtContent += txtLine + '\\r\\n';
-            });
-            
-            return txtContent;
-        }
-        
-        // Utility functions (copied from your existing code)
-        function formatToTXTLine(empresa, codigoLoja, codTransacao, meioPagamento, valorMinimo, valorMaximo, situacaoMeioPagamento, valorTotalMaxDiario, tipoManutencao, quantidadeTotalMaxDiaria) {
-            var empresaTXT = padLeft(cleanNumeric(empresa), 10, '0');
-            var codigoLojaTXT = padLeft(cleanNumeric(codigoLoja), 5, '0');
-            var fixo = padRight("", 10, ' ');
-            var codTransacaoTXT = padLeft(cleanNumeric(codTransacao), 5, '0');
-            var meioPagamTXT = padLeft(cleanNumeric(meioPagamento), 2, '0');
-            var valorMinTXT = padLeft(cleanNumeric(valorMinimo), 17, '0');
-            var valorMaxTXT = padLeft(cleanNumeric(valorMaximo), 17, '0');
-            var sitMeioPTXT = padLeft(cleanNumeric(situacaoMeioPagamento), 1, '0');
-            var valorTotalMaxTXT = padLeft(cleanNumeric(valorTotalMaxDiario), 18, '0');
-            var tipoManutTXT = padLeft(cleanNumeric(tipoManutencao), 1, '0');
-            var quantTotalMaxTXT = padLeft(cleanNumeric(quantidadeTotalMaxDiaria), 15, '0');
-
-            var linha = empresaTXT + codigoLojaTXT + fixo + codTransacaoTXT + meioPagamTXT + 
-                       valorMinTXT + valorMaxTXT + sitMeioPTXT + valorTotalMaxTXT + 
-                       tipoManutTXT + quantTotalMaxTXT;
-
-            if (linha.length > 101) {
-                return linha.substring(0, 101);
-            } else if (linha.length < 101) {
-                return padRight(linha, 101, ' ');
-            }
-            return linha;
-        }
-        
-        function cleanNumeric(value) {
-            return String(value).replace(/[^0-9]/g, '') || '0';
-        }
-        
-        function padLeft(str, length, char) {
-            str = String(str);
-            while (str.length < length) {
-                str = char + str;
-            }
-            return str.length > length ? str.slice(-length) : str;
-        }
-        
-        function padRight(str, length, char) {
-            str = String(str);
-            while (str.length < length) {
-                str = str + char;
-            }
-            return str.substring(0, length);
-        }
-        
-        function downloadTXTFile(txtContent, filename) {
-            var txtWithBOM = '\\uFEFF' + txtContent;
-            var blob = new Blob([txtWithBOM], { type: 'text/plain;charset=utf-8;' });
-            downloadFile(blob, filename);
-        }
-        
-        function downloadFile(blob, filename) {
-            var link = document.createElement('a');
-            if (link.download !== undefined) {
-                var url = URL.createObjectURL(blob);
-                link.setAttribute('href', url);
-                link.setAttribute('download', filename);
-                link.style.visibility = 'hidden';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                
-                setTimeout(function() {
-                    URL.revokeObjectURL(url);
-                }, 1000);
-            } else {
-                alert('Seu navegador não suporta download automático.');
-            }
-        }
-        
-        function showSuccessMessage(message) {
-            var alertHtml = `
-                <div class="alert alert-success success-alert" style="
-                    position: fixed; 
-                    top: 50%; 
-                    left: 50%; 
-                    transform: translate(-50%, -50%); 
-                    z-index: 9999; 
-                    min-width: 400px;
-                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                    border-radius: 5px;
-                ">
-                    <button class="close" onclick="$(this).parent().remove()" style="
-                        color: #3c763d !important; 
-                        opacity: 0.7; 
-                        position: absolute; 
-                        top: 10px; 
-                        right: 15px;
-                    ">
-                        <i class="fa fa-times"></i>
-                    </button>
-                    <div style="padding: 20px 40px 20px 20px;">
-                        <i class="fa fa-check-circle" style="color: #3c763d; font-size: 20px; margin-right: 10px;"></i>
-                        <strong>Sucesso!</strong>
-                        <pre style="background: none; border: none; color: #3c763d; margin-top: 10px; white-space: pre-wrap;">${message}</pre>
-                    </div>
-                </div>
-            `;
-            
-            $('body').append(alertHtml);
-            
-            setTimeout(function() {
-                $('.success-alert').fadeOut(300, function() {
-                    $(this).remove();
-                });
-            }, 5000);
-        }
-        
-        function openTxtGeneratorModal() {
-            $('#txtGeneratorModal').modal('show');
-        }
-        </script>
-        <?php
+        return $this->formatToTXTLine(
+            isset($data['empresa']) ? $data['empresa'] : 0,
+            isset($data['codigoLoja']) ? $data['codigoLoja'] : 0,
+            isset($data['codTransacao']) ? $this->resolveTransactionCode($data['codTransacao']) : 0,
+            isset($data['meioPagamento']) ? $this->resolvePaymentMethod($data['meioPagamento']) : 0,
+            isset($data['valorMinimo']) ? $data['valorMinimo'] : 0,
+            isset($data['valorMaximo']) ? $data['valorMaximo'] : 0,
+            isset($data['situacaoMeioPagamento']) ? $this->resolvePaymentStatus($data['situacaoMeioPagamento']) : 0,
+            isset($data['valorTotalMaxDiario']) ? $data['valorTotalMaxDiario'] : 0,
+            isset($data['TipoManutencao']) ? $this->resolveMaintenanceType($data['TipoManutencao']) : 0,
+            isset($data['quantidadeTotalMaxDiaria']) ? $data['quantidadeTotalMaxDiaria'] : 0
+        );
     }
     
     /**
-     * Display trigger button for the modal
+     * Generate multiple TXT lines from array of data
+     * 
+     * @param array $dataArray Array of associative arrays
+     * @return string|false Complete TXT content or false on error
      */
-    public function displayTriggerButton() {
-        ?>
-        <button type="button" class="btn btn-success btn-sm" onclick="openTxtGeneratorModal()" style="margin-bottom:10px;position:relative; left:20px;">
-            <i class="fa fa-file-text"></i> Gerar TXT Personalizado
-        </button>
-        <?php
+    public function generateLines($dataArray) {
+        if (!is_array($dataArray) || empty($dataArray)) {
+            $this->addError('Data array is empty or invalid');
+            return false;
+        }
+        
+        $txtContent = '';
+        $lineNumber = 1;
+        
+        foreach ($dataArray as $data) {
+            $line = $this->generateLine($data);
+            if ($line === false) {
+                $this->addError("Error in line {$lineNumber}");
+                return false;
+            }
+            $txtContent .= $line . "\r\n";
+            $lineNumber++;
+        }
+        
+        return $txtContent;
     }
     
     /**
-     * Initialize the class
+     * Generate TXT file and save to disk
+     * 
+     * @param array $dataArray Array of data
+     * @param string $filename Output filename
+     * @param bool $withBOM Include BOM in file
+     * @return bool Success status
      */
-    public function init() {
-        if (!isset($_SESSION)) {
-            session_start();
+    public function generateFile($dataArray, $filename, $withBOM = true) {
+        $content = $this->generateLines($dataArray);
+        if ($content === false) {
+            return false;
         }
-        // No server-side processing needed anymore - everything is handled by JavaScript
+        
+        if ($withBOM) {
+            $content = "\xEF\xBB\xBF" . $content;
+        }
+        
+        $result = file_put_contents($filename, $content);
+        if ($result === false) {
+            $this->addError("Failed to write file: {$filename}");
+            return false;
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Validate line data
+     * 
+     * @param array $data Line data
+     * @return bool Validation result
+     */
+    private function validateLineData($data) {
+        if (!is_array($data)) {
+            $this->addError('Data must be an array');
+            return false;
+        }
+        
+        // Validate transaction code if provided
+        if (isset($data['codTransacao']) && !is_numeric($data['codTransacao'])) {
+            if (!isset($this->transactionCodes[$data['codTransacao']])) {
+                $this->addError("Invalid transaction code: {$data['codTransacao']}");
+                return false;
+            }
+        }
+        
+        // Validate payment method if provided
+        if (isset($data['meioPagamento']) && !is_numeric($data['meioPagamento'])) {
+            if (!isset($this->paymentMethods[$data['meioPagamento']])) {
+                $this->addError("Invalid payment method: {$data['meioPagamento']}");
+                return false;
+            }
+        }
+        
+        // Validate payment status if provided
+        if (isset($data['situacaoMeioPagamento']) && !is_numeric($data['situacaoMeioPagamento'])) {
+            if (!isset($this->paymentStatus[$data['situacaoMeioPagamento']])) {
+                $this->addError("Invalid payment status: {$data['situacaoMeioPagamento']}");
+                return false;
+            }
+        }
+        
+        // Validate maintenance type if provided
+        if (isset($data['TipoManutencao']) && !is_numeric($data['TipoManutencao'])) {
+            if (!isset($this->maintenanceTypes[$data['TipoManutencao']])) {
+                $this->addError("Invalid maintenance type: {$data['TipoManutencao']}");
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Resolve transaction code (accept both numeric codes and string keys)
+     */
+    private function resolveTransactionCode($value) {
+        if (is_numeric($value)) {
+            return intval($value);
+        }
+        return isset($this->transactionCodes[$value]) ? intval($this->transactionCodes[$value]) : 0;
+    }
+    
+    /**
+     * Resolve payment method
+     */
+    private function resolvePaymentMethod($value) {
+        if (is_numeric($value)) {
+            return intval($value);
+        }
+        return isset($this->paymentMethods[$value]) ? intval($this->paymentMethods[$value]) : 0;
+    }
+    
+    /**
+     * Resolve payment status
+     */
+    private function resolvePaymentStatus($value) {
+        if (is_numeric($value)) {
+            return intval($value);
+        }
+        return isset($this->paymentStatus[$value]) ? intval($this->paymentStatus[$value]) : 0;
+    }
+    
+    /**
+     * Resolve maintenance type
+     */
+    private function resolveMaintenanceType($value) {
+        if (is_numeric($value)) {
+            return intval($value);
+        }
+        return isset($this->maintenanceTypes[$value]) ? intval($this->maintenanceTypes[$value]) : 0;
+    }
+    
+    /**
+     * Format data into fixed-width TXT line (101 characters)
+     * 
+     * @param mixed $empresa Company code
+     * @param mixed $codigoLoja Store code
+     * @param mixed $codTransacao Transaction code
+     * @param mixed $meioPagamento Payment method
+     * @param mixed $valorMinimo Minimum value
+     * @param mixed $valorMaximo Maximum value
+     * @param mixed $situacaoMeioPagamento Payment status
+     * @param mixed $valorTotalMaxDiario Max daily total value
+     * @param mixed $tipoManutencao Maintenance type
+     * @param mixed $quantidadeTotalMaxDiaria Max daily quantity
+     * @return string Fixed-width formatted line
+     */
+    private function formatToTXTLine($empresa, $codigoLoja, $codTransacao, $meioPagamento, $valorMinimo, $valorMaximo, $situacaoMeioPagamento, $valorTotalMaxDiario, $tipoManutencao, $quantidadeTotalMaxDiaria) {
+        $empresaTXT = $this->padLeft($this->cleanNumeric($empresa), 10, '0');
+        $codigoLojaTXT = $this->padLeft($this->cleanNumeric($codigoLoja), 5, '0');
+        $fixo = $this->padRight("", 10, ' ');
+        $codTransacaoTXT = $this->padLeft($this->cleanNumeric($codTransacao), 5, '0');
+        $meioPagamTXT = $this->padLeft($this->cleanNumeric($meioPagamento), 2, '0');
+        $valorMinTXT = $this->padLeft($this->cleanNumeric($valorMinimo), 17, '0');
+        $valorMaxTXT = $this->padLeft($this->cleanNumeric($valorMaximo), 17, '0');
+        $sitMeioPTXT = $this->padLeft($this->cleanNumeric($situacaoMeioPagamento), 1, '0');
+        $valorTotalMaxTXT = $this->padLeft($this->cleanNumeric($valorTotalMaxDiario), 18, '0');
+        $tipoManutTXT = $this->padLeft($this->cleanNumeric($tipoManutencao), 1, '0');
+        $quantTotalMaxTXT = $this->padLeft($this->cleanNumeric($quantidadeTotalMaxDiaria), 15, '0');
+
+        $linha = $empresaTXT . $codigoLojaTXT . $fixo . $codTransacaoTXT . $meioPagamTXT . 
+                $valorMinTXT . $valorMaxTXT . $sitMeioPTXT . $valorTotalMaxTXT . 
+                $tipoManutTXT . $quantTotalMaxTXT;
+
+        if (strlen($linha) > 101) {
+            return substr($linha, 0, 101);
+        } else if (strlen($linha) < 101) {
+            return $this->padRight($linha, 101, ' ');
+        }
+        
+        return $linha;
+    }
+    
+    /**
+     * Clean numeric value (remove non-numeric characters)
+     * 
+     * @param mixed $value Input value
+     * @return string Cleaned numeric string
+     */
+    private function cleanNumeric($value) {
+        return preg_replace('/[^0-9]/', '', (string)$value) ?: '0';
+    }
+    
+    /**
+     * Pad string to the left
+     * 
+     * @param string $str Input string
+     * @param int $length Target length
+     * @param string $char Padding character
+     * @return string Padded string
+     */
+    private function padLeft($str, $length, $char) {
+        $str = (string)$str;
+        while (strlen($str) < $length) {
+            $str = $char . $str;
+        }
+        return strlen($str) > $length ? substr($str, -$length) : $str;
+    }
+    
+    /**
+     * Pad string to the right
+     * 
+     * @param string $str Input string
+     * @param int $length Target length
+     * @param string $char Padding character
+     * @return string Padded string
+     */
+    private function padRight($str, $length, $char) {
+        $str = (string)$str;
+        while (strlen($str) < $length) {
+            $str = $str . $char;
+        }
+        return substr($str, 0, $length);
+    }
+    
+    /**
+     * Add error message
+     * 
+     * @param string $message Error message
+     */
+    private function addError($message) {
+        $this->errors[] = $message;
+    }
+    
+    /**
+     * Get all errors
+     * 
+     * @return array Array of error messages
+     */
+    public function getErrors() {
+        return $this->errors;
+    }
+    
+    /**
+     * Get last error
+     * 
+     * @return string|null Last error message
+     */
+    public function getLastError() {
+        return empty($this->errors) ? null : end($this->errors);
+    }
+    
+    /**
+     * Clear all errors
+     */
+    public function clearErrors() {
+        $this->errors = array();
+    }
+    
+    /**
+     * Get available transaction codes
+     * 
+     * @return array Transaction codes mapping
+     */
+    public function getTransactionCodes() {
+        return $this->transactionCodes;
+    }
+    
+    /**
+     * Get available payment methods
+     * 
+     * @return array Payment methods mapping
+     */
+    public function getPaymentMethods() {
+        return $this->paymentMethods;
+    }
+    
+    /**
+     * Get available payment status options
+     * 
+     * @return array Payment status mapping
+     */
+    public function getPaymentStatus() {
+        return $this->paymentStatus;
+    }
+    
+    /**
+     * Get available maintenance types
+     * 
+     * @return array Maintenance types mapping
+     */
+    public function getMaintenanceTypes() {
+        return $this->maintenanceTypes;
     }
 }
 
-// Usage example:
-/*
-$txtGenerator = new TxtGeneratorModal();
-$txtGenerator->init();
+// Usage Examples:
 
-// Display the button and modal somewhere in your HTML
-$txtGenerator->displayTriggerButton();
-$txtGenerator->displayModal();
+/*
+// Example 1: Generate single line
+$generator = new TxtGenerator();
+
+$lineData = array(
+    'empresa' => 123,
+    'codigoLoja' => 456,
+    'codTransacao' => 'deposito', // or numeric code like 19
+    'meioPagamento' => 'dinheiro', // or numeric code like 01
+    'valorMinimo' => 1000,
+    'valorMaximo' => 5000,
+    'situacaoMeioPagamento' => 'ativo', // or numeric code like 1
+    'valorTotalMaxDiario' => 10000,
+    'TipoManutencao' => 'inclusao', // or numeric code like 1
+    'quantidadeTotalMaxDiaria' => 100
+);
+
+$line = $generator->generateLine($lineData);
+if ($line !== false) {
+    echo $line . "\n";
+} else {
+    echo "Error: " . $generator->getLastError() . "\n";
+}
+
+// Example 2: Generate multiple lines
+$multipleData = array(
+    array(
+        'empresa' => 123,
+        'codigoLoja' => 456,
+        'codTransacao' => 'deposito',
+        'meioPagamento' => 'dinheiro',
+        'valorMinimo' => 1000,
+        'valorMaximo' => 5000,
+        'situacaoMeioPagamento' => 'ativo',
+        'valorTotalMaxDiario' => 10000,
+        'TipoManutencao' => 'inclusao',
+        'quantidadeTotalMaxDiaria' => 100
+    ),
+    array(
+        'empresa' => 789,
+        'codigoLoja' => 101,
+        'codTransacao' => 'saque',
+        'meioPagamento' => 'cartao',
+        'valorMinimo' => 500,
+        'valorMaximo' => 2000,
+        'situacaoMeioPagamento' => 'ativo',
+        'valorTotalMaxDiario' => 8000,
+        'TipoManutencao' => 'alteracao',
+        'quantidadeTotalMaxDiaria' => 50
+    )
+);
+
+$txtContent = $generator->generateLines($multipleData);
+if ($txtContent !== false) {
+    echo $txtContent;
+} else {
+    echo "Error: " . $generator->getLastError() . "\n";
+}
+
+// Example 3: Generate and save to file
+$success = $generator->generateFile($multipleData, 'output.txt');
+if ($success) {
+    echo "File generated successfully!\n";
+} else {
+    echo "Error generating file: " . $generator->getLastError() . "\n";
+}
+
+// Example 4: Using numeric codes directly
+$numericData = array(
+    'empresa' => 123,
+    'codigoLoja' => 456,
+    'codTransacao' => 19, // numeric code for 'deposito'
+    'meioPagamento' => 1,  // numeric code for 'dinheiro'
+    'valorMinimo' => 1000,
+    'valorMaximo' => 5000,
+    'situacaoMeioPagamento' => 1, // numeric code for 'ativo'
+    'valorTotalMaxDiario' => 10000,
+    'TipoManutencao' => 1, // numeric code for 'inclusao'
+    'quantidadeTotalMaxDiaria' => 100
+);
+
+$line = $generator->generateLine($numericData);
+echo $line . "\n";
 */
 ?>
