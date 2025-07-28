@@ -170,6 +170,38 @@ class TxtGeneratorModal {
             'outros': { label: 'Outros', code: '99' }
         };
         
+        // Payment method mapping
+        var paymentMethods = {
+            'dinheiro': { label: 'Dinheiro', code: '01' },
+            'cheque': { label: 'Cheque', code: '02' },
+            'cartao': { label: 'Cartão', code: '03' },
+            'nao_se_aplica': { label: 'Não se Aplica', code: '04' },
+            'pix': { label: 'PIX', code: '05' },
+            'ted': { label: 'TED', code: '06' },
+            'boleto': { label: 'Boleto', code: '07' }
+        };
+        
+        // Payment status mapping
+        var paymentStatus = {
+            'ativo': { label: 'Ativo', code: '1' },
+            'inativo': { label: 'Inativo', code: '2' }
+        };
+        
+        // Maintenance type mapping
+        var maintenanceTypes = {
+            'inclusao': { label: 'Inclusão', code: '1' },
+            'alteracao': { label: 'Alteração', code: '2' },
+            'exclusao': { label: 'Exclusão', code: '3' }
+        };
+        
+        // Field mappings configuration
+        var fieldMappings = {
+            'codTransacao': transactionCodes,
+            'meioPagamento': paymentMethods,
+            'situacaoMeioPagamento': paymentStatus,
+            'TipoManutencao': maintenanceTypes
+        };
+        
         // Add first line when modal opens
         $(document).ready(function() {
             addNewLine();
@@ -183,15 +215,18 @@ class TxtGeneratorModal {
             for (var fieldKey in txtFields) {
                 var fieldLabel = txtFields[fieldKey];
                 
-                if (fieldKey === 'codTransacao') {
-                    // Create dropdown for transaction code
+                // Check if this field should be a dropdown
+                if (fieldMappings[fieldKey]) {
+                    var mapping = fieldMappings[fieldKey];
                     var dropdownOptions = '';
-                    for (var transKey in transactionCodes) {
-                        var trans = transactionCodes[transKey];
+                    var placeholderText = getPlaceholderText(fieldKey);
+                    
+                    for (var mapKey in mapping) {
+                        var item = mapping[mapKey];
                         dropdownOptions += `
                             <li>
-                                <a href="#" tabindex="-1" onclick="selectTransactionCode('${fieldKey}_${lineCounter}', '${transKey}', '${trans.label}', '${trans.code}'); return false;">
-                                    ${trans.label} (${trans.code})
+                                <a href="#" tabindex="-1" onclick="selectDropdownOption('${fieldKey}_${lineCounter}', '${mapKey}', '${item.label}', '${item.code}'); return false;">
+                                    ${item.label} (${item.code})
                                 </a>
                             </li>
                         `;
@@ -210,14 +245,14 @@ class TxtGeneratorModal {
                                             data-line="${lineCounter}"
                                             data-value=""
                                             style="text-align: left;">
-                                        <span class="dropdown-text">Selecione uma transação</span>
+                                        <span class="dropdown-text">${placeholderText}</span>
                                         <span class="caret" style="float: right; margin-top: 8px;"></span>
                                     </button>
                                     <ul class="dropdown-menu" style="width: 100%;">
                                         ${dropdownOptions}
                                         <li class="divider"></li>
                                         <li>
-                                            <a href="#" tabindex="-1" onclick="clearTransactionCode('${fieldKey}_${lineCounter}'); return false;" style="color: #d9534f;">
+                                            <a href="#" tabindex="-1" onclick="clearDropdownOption('${fieldKey}_${lineCounter}'); return false;" style="color: #d9534f;">
                                                 <i class="fa fa-times"></i> Limpar Seleção
                                             </a>
                                         </li>
@@ -275,7 +310,17 @@ class TxtGeneratorModal {
             }, 100);
         }
         
-        function selectTransactionCode(fieldId, transKey, label, code) {
+        function getPlaceholderText(fieldKey) {
+            var placeholders = {
+                'codTransacao': 'Selecione uma transação',
+                'meioPagamento': 'Selecione meio de pagamento',
+                'situacaoMeioPagamento': 'Selecione situação',
+                'TipoManutencao': 'Selecione tipo de manutenção'
+            };
+            return placeholders[fieldKey] || 'Selecione uma opção';
+        }
+        
+        function selectDropdownOption(fieldId, optionKey, label, code) {
             var $button = $('#' + fieldId);
             $button.find('.dropdown-text').text(label);
             $button.attr('data-value', code);
@@ -285,9 +330,12 @@ class TxtGeneratorModal {
             $('#' + fieldId + '_code').text(code);
         }
         
-        function clearTransactionCode(fieldId) {
+        function clearDropdownOption(fieldId) {
             var $button = $('#' + fieldId);
-            $button.find('.dropdown-text').text('Selecione uma transação');
+            var fieldName = $button.data('field');
+            var placeholderText = getPlaceholderText(fieldName);
+            
+            $button.find('.dropdown-text').text(placeholderText);
             $button.attr('data-value', '');
             $button.removeClass('btn-info').addClass('btn-default');
             
@@ -353,23 +401,25 @@ class TxtGeneratorModal {
                     // Update label
                     $field.closest('.form-group').find('label').attr('for', newId);
                     
-                    // Handle dropdown fields specifically
-                    if (fieldName === 'codTransacao') {
+                    // Handle dropdown fields
+                    if (fieldMappings[fieldName]) {
+                        var mapping = fieldMappings[fieldName];
+                        
                         // Update dropdown menu onclick events
                         $field.siblings('.dropdown-menu').find('a').each(function() {
                             var $link = $(this);
                             var onclick = $link.attr('onclick');
-                            if (onclick && onclick.includes('selectTransactionCode')) {
-                                // Extract transaction key, label, and code from onclick
-                                var matches = onclick.match(/selectTransactionCode\('[^']+', '([^']+)', '([^']+)', '([^']+)'\)/);
+                            if (onclick && onclick.includes('selectDropdownOption')) {
+                                // Extract option key, label, and code from onclick
+                                var matches = onclick.match(/selectDropdownOption\('[^']+', '([^']+)', '([^']+)', '([^']+)'\)/);
                                 if (matches) {
-                                    var transKey = matches[1];
+                                    var optionKey = matches[1];
                                     var label = matches[2];
                                     var code = matches[3];
-                                    $link.attr('onclick', `selectTransactionCode('${newId}', '${transKey}', '${label}', '${code}'); return false;`);
+                                    $link.attr('onclick', `selectDropdownOption('${newId}', '${optionKey}', '${label}', '${code}'); return false;`);
                                 }
-                            } else if (onclick && onclick.includes('clearTransactionCode')) {
-                                $link.attr('onclick', `clearTransactionCode('${newId}'); return false;`);
+                            } else if (onclick && onclick.includes('clearDropdownOption')) {
+                                $link.attr('onclick', `clearDropdownOption('${newId}'); return false;`);
                             }
                         });
                         
@@ -406,11 +456,13 @@ class TxtGeneratorModal {
                     var fieldName = $field.data('field');
                     var value;
                     
-                    if (fieldName === 'codTransacao') {
+                    // Check if this is a dropdown field
+                    if (fieldMappings[fieldName]) {
                         // Handle dropdown field
                         value = $field.attr('data-value') || '';
                         if (value === '') {
-                            alert(`Linha ${lineNumber}: Selecione um tipo de transação.`);
+                            var fieldLabel = txtFields[fieldName] || fieldName;
+                            alert(`Linha ${lineNumber}: Selecione uma opção para o campo "${fieldLabel}".`);
                             isValid = false;
                             return false;
                         }
