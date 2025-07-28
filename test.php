@@ -142,6 +142,20 @@ class TxtGeneratorModal {
         var lineCounter = 0;
         var txtPreviewContent = '';
         
+        // Field definitions in JavaScript
+        var txtFields = {
+            'empresa': 'Empresa',
+            'codigoLoja': 'Código Loja',
+            'codTransacao': 'Código Transação',
+            'meioPagamento': 'Meio Pagamento',
+            'valorMinimo': 'Valor Mínimo',
+            'valorMaximo': 'Valor Máximo',
+            'situacaoMeioPagamento': 'Situação Meio Pagamento',
+            'valorTotalMaxDiario': 'Valor Total Max Diário',
+            'TipoManutencao': 'Tipo Manutenção',
+            'quantidadeTotalMaxDiaria': 'Quantidade Total Max Diária'
+        };
+        
         // Add first line when modal opens
         $(document).ready(function() {
             addNewLine();
@@ -150,6 +164,26 @@ class TxtGeneratorModal {
         function addNewLine() {
             lineCounter++;
             updateLineCounter();
+            
+            var fieldsHtml = '';
+            for (var fieldKey in txtFields) {
+                var fieldLabel = txtFields[fieldKey];
+                fieldsHtml += `
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="${fieldKey}_${lineCounter}">${fieldLabel}:</label>
+                            <input type="number" 
+                                   class="form-control input-sm txt-field" 
+                                   id="${fieldKey}_${lineCounter}" 
+                                   name="${fieldKey}_${lineCounter}" 
+                                   step="any"
+                                   data-field="${fieldKey}"
+                                   data-line="${lineCounter}"
+                                   placeholder="Digite o valor numérico">
+                        </div>
+                    </div>
+                `;
+            }
             
             var lineHtml = `
                 <div class="txt-line-container" data-line="${lineCounter}" style="border: 1px solid #ddd; border-radius: 4px; padding: 15px; margin-bottom: 15px; background-color: #fafafa;">
@@ -166,21 +200,7 @@ class TxtGeneratorModal {
                         </div>
                     </div>
                     <div class="row">
-                        <?php foreach ($this->fields as $fieldKey => $fieldLabel): ?>
-                        <div class="col-md-6">
-                            <div class="form-group">
-                                <label for="${fieldKey}_${lineCounter}"><?php echo $fieldLabel; ?>:</label>
-                                <input type="number" 
-                                       class="form-control input-sm txt-field" 
-                                       id="${fieldKey}_${lineCounter}" 
-                                       name="${fieldKey}_${lineCounter}" 
-                                       step="any"
-                                       data-field="${fieldKey}"
-                                       data-line="${lineCounter}"
-                                       placeholder="Digite o valor numérico">
-                            </div>
-                        </div>
-                        <?php endforeach; ?>
+                        ${fieldsHtml}
                     </div>
                 </div>
             `;
