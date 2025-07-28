@@ -211,11 +211,36 @@ class TxtGeneratorModal {
             lineCounter++;
             updateLineCounter();
             
-            var fieldsHtml = '';
+            var leftColumnHtml = ''; // Input fields
+            var rightColumnHtml = ''; // Dropdown fields
+            
+            // Generate input fields (left column)
             for (var fieldKey in txtFields) {
                 var fieldLabel = txtFields[fieldKey];
                 
-                // Check if this field should be a dropdown
+                // Skip dropdown fields for left column
+                if (!fieldMappings[fieldKey]) {
+                    leftColumnHtml += `
+                        <div class="form-group">
+                            <label for="${fieldKey}_${lineCounter}">${fieldLabel}:</label>
+                            <input type="number" 
+                                   class="form-control input-sm txt-field" 
+                                   id="${fieldKey}_${lineCounter}" 
+                                   name="${fieldKey}_${lineCounter}" 
+                                   step="any"
+                                   data-field="${fieldKey}"
+                                   data-line="${lineCounter}"
+                                   placeholder="Digite o valor numérico">
+                        </div>
+                    `;
+                }
+            }
+            
+            // Generate dropdown fields (right column)
+            for (var fieldKey in txtFields) {
+                var fieldLabel = txtFields[fieldKey];
+                
+                // Only process dropdown fields for right column
                 if (fieldMappings[fieldKey]) {
                     var mapping = fieldMappings[fieldKey];
                     var dropdownOptions = '';
@@ -232,51 +257,32 @@ class TxtGeneratorModal {
                         `;
                     }
                     
-                    fieldsHtml += `
-                        <div class="col-md-6">
-                            <div class="form-group">
-                                <label for="${fieldKey}_${lineCounter}">${fieldLabel}:</label>
-                                <div class="dropdown">
-                                    <button class="btn btn-default dropdown-toggle form-control txt-field" 
-                                            type="button" 
-                                            id="${fieldKey}_${lineCounter}" 
-                                            data-toggle="dropdown" 
-                                            data-field="${fieldKey}"
-                                            data-line="${lineCounter}"
-                                            data-value=""
-                                            style="text-align: left;">
-                                        <span class="dropdown-text">${placeholderText}</span>
-                                        <span class="caret" style="float: right; margin-top: 8px;"></span>
-                                    </button>
-                                    <ul class="dropdown-menu" style="width: 100%;">
-                                        ${dropdownOptions}
-                                        <li class="divider"></li>
-                                        <li>
-                                            <a href="#" tabindex="-1" onclick="clearDropdownOption('${fieldKey}_${lineCounter}'); return false;" style="color: #d9534f;">
-                                                <i class="fa fa-times"></i> Limpar Seleção
-                                            </a>
-                                        </li>
-                                    </ul>
-                                </div>
-                                <small class="help-block">Código será: <span id="${fieldKey}_${lineCounter}_code">--</span></small>
+                    rightColumnHtml += `
+                        <div class="form-group">
+                            <label for="${fieldKey}_${lineCounter}">${fieldLabel}:</label>
+                            <div class="dropdown">
+                                <button class="btn btn-default dropdown-toggle form-control txt-field" 
+                                        type="button" 
+                                        id="${fieldKey}_${lineCounter}" 
+                                        data-toggle="dropdown" 
+                                        data-field="${fieldKey}"
+                                        data-line="${lineCounter}"
+                                        data-value=""
+                                        style="text-align: left;">
+                                    <span class="dropdown-text">${placeholderText}</span>
+                                    <span class="caret" style="float: right; margin-top: 8px;"></span>
+                                </button>
+                                <ul class="dropdown-menu" style="width: 100%;">
+                                    ${dropdownOptions}
+                                    <li class="divider"></li>
+                                    <li>
+                                        <a href="#" tabindex="-1" onclick="clearDropdownOption('${fieldKey}_${lineCounter}'); return false;" style="color: #d9534f;">
+                                            <i class="fa fa-times"></i> Limpar Seleção
+                                        </a>
+                                    </li>
+                                </ul>
                             </div>
-                        </div>
-                    `;
-                } else {
-                    // Regular number input for other fields
-                    fieldsHtml += `
-                        <div class="col-md-6">
-                            <div class="form-group">
-                                <label for="${fieldKey}_${lineCounter}">${fieldLabel}:</label>
-                                <input type="number" 
-                                       class="form-control input-sm txt-field" 
-                                       id="${fieldKey}_${lineCounter}" 
-                                       name="${fieldKey}_${lineCounter}" 
-                                       step="any"
-                                       data-field="${fieldKey}"
-                                       data-line="${lineCounter}"
-                                       placeholder="Digite o valor numérico">
-                            </div>
+                            <small class="help-block">Código será: <span id="${fieldKey}_${lineCounter}_code">--</span></small>
                         </div>
                     `;
                 }
@@ -297,14 +303,29 @@ class TxtGeneratorModal {
                         </div>
                     </div>
                     <div class="row">
-                        ${fieldsHtml}
+                        <div class="col-md-6">
+                            <div class="widget-header" style="margin-bottom: 10px;">
+                                <span class="widget-caption" style="font-size: 14px;">
+                                    <i class="fa fa-edit"></i> Campos Editáveis
+                                </span>
+                            </div>
+                            ${leftColumnHtml}
+                        </div>
+                        <div class="col-md-6">
+                            <div class="widget-header" style="margin-bottom: 10px;">
+                                <span class="widget-caption" style="font-size: 14px;">
+                                    <i class="fa fa-list-ul"></i> Seleções
+                                </span>
+                            </div>
+                            ${rightColumnHtml}
+                        </div>
                     </div>
                 </div>
             `;
             
             $('#txtLinesContainer').append(lineHtml);
             
-            // Auto-focus on first field of new line
+            // Auto-focus on first input field of new line
             setTimeout(function() {
                 $(`#empresa_${lineCounter}`).focus();
             }, 100);
