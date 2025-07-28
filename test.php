@@ -156,6 +156,20 @@ class TxtGeneratorModal {
             'quantidadeTotalMaxDiaria': 'Quantidade Total Max Diária'
         };
         
+        // Transaction code mapping
+        var transactionCodes = {
+            'deposito': { label: 'Depósito', code: '10' },
+            'saque': { label: 'Saque', code: '20' },
+            'transferencia': { label: 'Transferência', code: '30' },
+            'pagamento': { label: 'Pagamento', code: '40' },
+            'consulta': { label: 'Consulta', code: '50' },
+            'retirada': { label: 'Retirada', code: '60' },
+            'recarga': { label: 'Recarga', code: '70' },
+            'segunda_via': { label: 'Segunda Via', code: '80' },
+            'cadastro': { label: 'Cadastro', code: '90' },
+            'outros': { label: 'Outros', code: '99' }
+        };
+        
         // Add first line when modal opens
         $(document).ready(function() {
             addNewLine();
@@ -168,21 +182,69 @@ class TxtGeneratorModal {
             var fieldsHtml = '';
             for (var fieldKey in txtFields) {
                 var fieldLabel = txtFields[fieldKey];
-                fieldsHtml += `
-                    <div class="col-md-6">
-                        <div class="form-group">
-                            <label for="${fieldKey}_${lineCounter}">${fieldLabel}:</label>
-                            <input type="number" 
-                                   class="form-control input-sm txt-field" 
-                                   id="${fieldKey}_${lineCounter}" 
-                                   name="${fieldKey}_${lineCounter}" 
-                                   step="any"
-                                   data-field="${fieldKey}"
-                                   data-line="${lineCounter}"
-                                   placeholder="Digite o valor numérico">
+                
+                if (fieldKey === 'codTransacao') {
+                    // Create dropdown for transaction code
+                    var dropdownOptions = '';
+                    for (var transKey in transactionCodes) {
+                        var trans = transactionCodes[transKey];
+                        dropdownOptions += `
+                            <li>
+                                <a href="#" tabindex="-1" onclick="selectTransactionCode('${fieldKey}_${lineCounter}', '${transKey}', '${trans.label}', '${trans.code}'); return false;">
+                                    ${trans.label} (${trans.code})
+                                </a>
+                            </li>
+                        `;
+                    }
+                    
+                    fieldsHtml += `
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="${fieldKey}_${lineCounter}">${fieldLabel}:</label>
+                                <div class="dropdown">
+                                    <button class="btn btn-default dropdown-toggle form-control txt-field" 
+                                            type="button" 
+                                            id="${fieldKey}_${lineCounter}" 
+                                            data-toggle="dropdown" 
+                                            data-field="${fieldKey}"
+                                            data-line="${lineCounter}"
+                                            data-value=""
+                                            style="text-align: left;">
+                                        <span class="dropdown-text">Selecione uma transação</span>
+                                        <span class="caret" style="float: right; margin-top: 8px;"></span>
+                                    </button>
+                                    <ul class="dropdown-menu" style="width: 100%;">
+                                        ${dropdownOptions}
+                                        <li class="divider"></li>
+                                        <li>
+                                            <a href="#" tabindex="-1" onclick="clearTransactionCode('${fieldKey}_${lineCounter}'); return false;" style="color: #d9534f;">
+                                                <i class="fa fa-times"></i> Limpar Seleção
+                                            </a>
+                                        </li>
+                                    </ul>
+                                </div>
+                                <small class="help-block">Código será: <span id="${fieldKey}_${lineCounter}_code">--</span></small>
+                            </div>
                         </div>
-                    </div>
-                `;
+                    `;
+                } else {
+                    // Regular number input for other fields
+                    fieldsHtml += `
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="${fieldKey}_${lineCounter}">${fieldLabel}:</label>
+                                <input type="number" 
+                                       class="form-control input-sm txt-field" 
+                                       id="${fieldKey}_${lineCounter}" 
+                                       name="${fieldKey}_${lineCounter}" 
+                                       step="any"
+                                       data-field="${fieldKey}"
+                                       data-line="${lineCounter}"
+                                       placeholder="Digite o valor numérico">
+                            </div>
+                        </div>
+                    `;
+                }
             }
             
             var lineHtml = `
@@ -211,6 +273,26 @@ class TxtGeneratorModal {
             setTimeout(function() {
                 $(`#empresa_${lineCounter}`).focus();
             }, 100);
+        }
+        
+        function selectTransactionCode(fieldId, transKey, label, code) {
+            var $button = $('#' + fieldId);
+            $button.find('.dropdown-text').text(label);
+            $button.attr('data-value', code);
+            $button.removeClass('btn-default').addClass('btn-info');
+            
+            // Update the code display
+            $('#' + fieldId + '_code').text(code);
+        }
+        
+        function clearTransactionCode(fieldId) {
+            var $button = $('#' + fieldId);
+            $button.find('.dropdown-text').text('Selecione uma transação');
+            $button.attr('data-value', '');
+            $button.removeClass('btn-info').addClass('btn-default');
+            
+            // Clear the code display
+            $('#' + fieldId + '_code').text('--');
         }
         
         function removeLine(lineNumber) {
@@ -257,19 +339,44 @@ class TxtGeneratorModal {
                     $container.find('.btn-danger').show();
                 }
                 
-                // Update input fields
+                // Update input fields and dropdowns
                 $container.find('.txt-field').each(function() {
-                    var $input = $(this);
-                    var fieldName = $input.data('field');
+                    var $field = $(this);
+                    var fieldName = $field.data('field');
                     var newId = fieldName + '_' + counter;
                     var newName = fieldName + '_' + counter;
                     
-                    $input.attr('id', newId);
-                    $input.attr('name', newName);
-                    $input.data('line', counter);
+                    $field.attr('id', newId);
+                    $field.attr('name', newName);
+                    $field.data('line', counter);
                     
                     // Update label
-                    $input.closest('.form-group').find('label').attr('for', newId);
+                    $field.closest('.form-group').find('label').attr('for', newId);
+                    
+                    // Handle dropdown fields specifically
+                    if (fieldName === 'codTransacao') {
+                        // Update dropdown menu onclick events
+                        $field.siblings('.dropdown-menu').find('a').each(function() {
+                            var $link = $(this);
+                            var onclick = $link.attr('onclick');
+                            if (onclick && onclick.includes('selectTransactionCode')) {
+                                // Extract transaction key, label, and code from onclick
+                                var matches = onclick.match(/selectTransactionCode\('[^']+', '([^']+)', '([^']+)', '([^']+)'\)/);
+                                if (matches) {
+                                    var transKey = matches[1];
+                                    var label = matches[2];
+                                    var code = matches[3];
+                                    $link.attr('onclick', `selectTransactionCode('${newId}', '${transKey}', '${label}', '${code}'); return false;`);
+                                }
+                            } else if (onclick && onclick.includes('clearTransactionCode')) {
+                                $link.attr('onclick', `clearTransactionCode('${newId}'); return false;`);
+                            }
+                        });
+                        
+                        // Update code display element id
+                        var $codeDisplay = $field.closest('.form-group').find('span[id$="_code"]');
+                        $codeDisplay.attr('id', newId + '_code');
+                    }
                 });
                 
                 counter++;
@@ -297,19 +404,33 @@ class TxtGeneratorModal {
                 $(this).find('.txt-field').each(function() {
                     var $field = $(this);
                     var fieldName = $field.data('field');
-                    var value = $field.val().trim();
+                    var value;
                     
-                    if (value !== '') {
-                        if (!$.isNumeric(value)) {
-                            alert(`Linha ${lineNumber}: Campo "${$field.closest('.form-group').find('label').text().replace(':', '')}" deve ser numérico.`);
-                            $field.focus();
+                    if (fieldName === 'codTransacao') {
+                        // Handle dropdown field
+                        value = $field.attr('data-value') || '';
+                        if (value === '') {
+                            alert(`Linha ${lineNumber}: Selecione um tipo de transação.`);
                             isValid = false;
                             return false;
                         }
-                        lineData[fieldName] = parseFloat(value);
+                        lineData[fieldName] = parseInt(value);
                         hasData = true;
                     } else {
-                        lineData[fieldName] = 0;
+                        // Handle regular number inputs
+                        value = $field.val().trim();
+                        if (value !== '') {
+                            if (!$.isNumeric(value)) {
+                                alert(`Linha ${lineNumber}: Campo "${$field.closest('.form-group').find('label').text().replace(':', '')}" deve ser numérico.`);
+                                $field.focus();
+                                isValid = false;
+                                return false;
+                            }
+                            lineData[fieldName] = parseFloat(value);
+                            hasData = true;
+                        } else {
+                            lineData[fieldName] = 0;
+                        }
                     }
                 });
                 
