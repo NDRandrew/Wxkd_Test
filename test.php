@@ -248,10 +248,14 @@ class TxtGeneratorModal {
                     
                     for (var mapKey in mapping) {
                         var item = mapping[mapKey];
+                        var fullText = `${item.label} (${item.code})`;
                         dropdownOptions += `
                             <li>
-                                <a href="#" tabindex="-1" onclick="selectDropdownOption('${fieldKey}_${lineCounter}', '${mapKey}', '${item.label}', '${item.code}'); return false;">
-                                    ${item.label} (${item.code})
+                                <a href="#" tabindex="-1" 
+                                   onclick="selectDropdownOption('${fieldKey}_${lineCounter}', '${mapKey}', '${item.label}', '${item.code}'); return false;"
+                                   title="${fullText}"
+                                   style="overflow: hidden; white-space: nowrap; text-overflow: ellipsis; display: block; max-width: 100%; padding: 3px 20px;">
+                                    ${fullText}
                                 </a>
                             </li>
                         `;
@@ -272,11 +276,14 @@ class TxtGeneratorModal {
                                     <span class="dropdown-text" style="overflow: hidden; white-space: nowrap; text-overflow: ellipsis; display: inline-block; max-width: calc(100% - 20px);">${placeholderText}</span>
                                     <span class="caret" style="float: right; margin-top: 8px;"></span>
                                 </button>
-                                <ul class="dropdown-menu" style="width: 100%;">
+                                <ul class="dropdown-menu" style="width: 100%; max-width: 100%; box-sizing: border-box;">
                                     ${dropdownOptions}
                                     <li class="divider"></li>
                                     <li>
-                                        <a href="#" tabindex="-1" onclick="clearDropdownOption('${fieldKey}_${lineCounter}'); return false;" style="color: #d9534f;">
+                                        <a href="#" tabindex="-1" 
+                                           onclick="clearDropdownOption('${fieldKey}_${lineCounter}'); return false;" 
+                                           style="color: #d9534f; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; display: block; max-width: 100%; padding: 3px 20px;"
+                                           title="Limpar Seleção">
                                             <i class="fa fa-times"></i> Limpar Seleção
                                         </a>
                                     </li>
@@ -447,7 +454,9 @@ class TxtGeneratorModal {
                                     var optionKey = matches[1];
                                     var label = matches[2];
                                     var code = matches[3];
+                                    var fullText = `${label} (${code})`;
                                     $link.attr('onclick', `selectDropdownOption('${newId}', '${optionKey}', '${label}', '${code}'); return false;`);
+                                    $link.attr('title', fullText);
                                 }
                             } else if (onclick && onclick.includes('clearDropdownOption')) {
                                 $link.attr('onclick', `clearDropdownOption('${newId}'); return false;`);
