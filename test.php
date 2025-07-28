@@ -268,8 +268,8 @@ class TxtGeneratorModal {
                                         data-field="${fieldKey}"
                                         data-line="${lineCounter}"
                                         data-value=""
-                                        style="text-align: left;">
-                                    <span class="dropdown-text">${placeholderText}</span>
+                                        style="text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">
+                                    <span class="dropdown-text" style="overflow: hidden; white-space: nowrap; text-overflow: ellipsis; display: inline-block; max-width: calc(100% - 20px);">${placeholderText}</span>
                                     <span class="caret" style="float: right; margin-top: 8px;"></span>
                                 </button>
                                 <ul class="dropdown-menu" style="width: 100%;">
@@ -343,9 +343,18 @@ class TxtGeneratorModal {
         
         function selectDropdownOption(fieldId, optionKey, label, code) {
             var $button = $('#' + fieldId);
-            $button.find('.dropdown-text').text(label);
+            var $dropdownText = $button.find('.dropdown-text');
+            
+            $dropdownText.text(label);
             $button.attr('data-value', code);
             $button.removeClass('btn-default').addClass('btn-info');
+            
+            // Add tooltip if text is truncated
+            if ($dropdownText[0].scrollWidth > $dropdownText[0].clientWidth) {
+                $button.attr('title', label);
+            } else {
+                $button.removeAttr('title');
+            }
             
             // Update the code display
             $('#' + fieldId + '_code').text(code);
@@ -359,6 +368,7 @@ class TxtGeneratorModal {
             $button.find('.dropdown-text').text(placeholderText);
             $button.attr('data-value', '');
             $button.removeClass('btn-info').addClass('btn-default');
+            $button.removeAttr('title'); // Remove tooltip when clearing
             
             // Clear the code display
             $('#' + fieldId + '_code').text('--');
