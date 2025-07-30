@@ -1,83 +1,69 @@
-// Add this function to help debug and verify the descadastramento logic
-const DescadastramentoDebug = {
-    testStatusGeneration: function(sampleRow) {
-        console.log('=== TESTING DESCADASTRAMENTO STATUS GENERATION ===');
-        console.log('Sample row:', sampleRow);
-        
-        const fields = {
-            'AVANCADO': 'AV',
-            'ORGAO_PAGADOR': 'OP',
-            'ORG_PAGADOR': 'OP',
-            'PRESENCA': 'PR',
-            'UNIDADE_NEGOCIO': 'UN'
-        };
-        
-        const cutoff = new Date(2025, 5, 1);
-        const tipo = sampleRow['TIPO_CORRESPONDENTE'] ? sampleRow['TIPO_CORRESPONDENTE'].toUpperCase().trim() : '';
-        const dataConclusao = sampleRow['DATA_CONCLUSAO'] ? sampleRow['DATA_CONCLUSAO'].toString().trim() : '';
-        
-        console.log('Parsed values:');
-        console.log('- tipo:', tipo);
-        console.log('- dataConclusao:', dataConclusao);
-        console.log('- cutoff:', cutoff);
-        
-        // Test date parsing
-        const dateObj = PaginationModule.parseDate(dataConclusao);
-        console.log('- parsed date:', dateObj);
-        console.log('- is after cutoff:', dateObj ? (dateObj > cutoff) : 'null');
-        
-        // Test field matching
-        const displayFields = {
-            'AVANCADO': 'AV',
-            'ORGAO_PAGADOR': 'OP',
-            'PRESENCA': 'PR',
-            'UNIDADE_NEGOCIO': 'UN'
-        };
-        
-        console.log('\nField matching results:');
-        for (const field in displayFields) {
-            const label = displayFields[field];
-            const fieldMatches = (field === tipo) || 
-                            (field === 'ORGAO_PAGADOR' && tipo === 'ORG_PAGADOR') ||
-                            (field === 'ORG_PAGADOR' && tipo === 'ORGAO_PAGADOR');
+<?php
+// In TestH.txt, replace the existing status generation logic with this improved version:
+
+if ($activeFilter === 'descadastramento') {
+    $tipo = isset($row['TIPO_CORRESPONDENTE']) ? strtoupper(trim($row['TIPO_CORRESPONDENTE'])) : '';
+    
+    $dataConclusao = isset($row['DATA_CONCLUSAO']) ? trim($row['DATA_CONCLUSAO']) : '';
+    $dataConclusaoTimestamp = false;
+    
+    if (!empty($dataConclusao)) {
+        // Try different date parsing methods
+        $dateParts = explode('/', $dataConclusao);
+        if (count($dateParts) == 3) {
+            $day = (int)$dateParts[0];
+            $month = (int)$dateParts[1];
+            $year = (int)$dateParts[2];
             
-            const isOn = fieldMatches && dateObj !== null && dateObj > cutoff;
-            const color = isOn ? 'green' : 'gray';
-            
-            console.log(`- ${field} (${label}): matches=${fieldMatches}, isOn=${isOn}, color=${color}`);
+            if (checkdate($month, $day, $year)) {
+                $dataConclusaoTimestamp = mktime(0, 0, 0, $month, $day, $year);
+            }
+        } else {
+            // Try strtotime for other formats
+            $dataConclusaoTimestamp = strtotime($dataConclusao);
+        }
+    }
+    
+    // Only show these four fields for descadastramento (avoid duplicates)
+    $displayFields = array(
+        'AVANCADO' => 'AV',
+        'ORGAO_PAGADOR' => 'OP',
+        'PRESENCA' => 'PR',
+        'UNIDADE_NEGOCIO' => 'UN'
+    );
+    
+    foreach ($displayFields as $field => $label) {
+        $isOn = false;
+        
+        // Check if this field matches the tipo (handle both ORG_PAGADOR and ORGAO_PAGADOR for OP)
+        $fieldMatches = ($field === $tipo) || 
+                    ($field === 'ORGAO_PAGADOR' && $tipo === 'ORG_PAGADOR') ||
+                    ($field === 'ORG_PAGADOR' && $tipo === 'ORGAO_PAGADOR');
+        
+        if ($fieldMatches && $dataConclusaoTimestamp !== false && $dataConclusaoTimestamp > $cutoff) {
+            $isOn = true;
         }
         
-        console.log('=== END TEST ===');
-    },
-    
-    // Test with sample data from different scenarios
-    runTests: function() {
-        console.log('Running descadastramento tests...');
+        $color = $isOn ? 'green' : 'gray';
+        $status = $isOn ? 'active' : 'inactive';
         
-        // Test case 1: AVANCADO with recent date (should show AV as green)
-        this.testStatusGeneration({
-            'TIPO_CORRESPONDENTE': 'AVANCADO',
-            'DATA_CONCLUSAO': '15/07/2025'  // After cutoff
-        });
+        $debugTitle = "Field: $field, Tipo: $tipo, Match: " . ($fieldMatches ? 'YES' : 'NO') . 
+                    ", Date: $dataConclusao, Timestamp: $dataConclusaoTimestamp, Cutoff: $cutoff, IsOn: " . ($isOn ? 'YES' : 'NO');
         
-        // Test case 2: PRESENCA with old date (should show all gray)
-        this.testStatusGeneration({
-            'TIPO_CORRESPONDENTE': 'PRESENCA',
-            'DATA_CONCLUSAO': '15/05/2025'  // Before cutoff
-        });
-        
-        // Test case 3: ORG_PAGADOR variant (should show OP as green)
-        this.testStatusGeneration({
-            'TIPO_CORRESPONDENTE': 'ORG_PAGADOR',
-            'DATA_CONCLUSAO': '15/08/2025'  // After cutoff
-        });
-        
-        // Test case 4: ORGAO_PAGADOR variant (should show OP as green)
-        this.testStatusGeneration({
-            'TIPO_CORRESPONDENTE': 'ORGAO_PAGADOR',
-            'DATA_CONCLUSAO': '15/08/2025'  // After cutoff
-        });
+        echo '<div style="display:inline-block;width:30px;height:30px;
+                margin-right:5px;text-align:center;line-height:30px;
+                font-size:10px;font-weight:bold;color:white;
+                background-color:' . $color . ';border-radius:4px;" 
+                data-field="' . $field . '" data-status="' . $status . '" 
+                title="' . htmlspecialchars($debugTitle) . '">' . $label . '</div>';
     }
-};
-
-// Call this in browser console to test: DescadastramentoDebug.runTests();
+} else {
+    // Existing logic for other filters
+    foreach ($fields as $field => $label) {
+        if ($field === 'ORG_PAGADOR') continue; // Skip duplicate to avoid showing OP twice
+        
+        $raw = isset($row[$field]) ? trim($row[$field]) : '';
+        // ... rest of the existing logic
+    }
+}
+?>
