@@ -1,58 +1,68 @@
-// Replace the formatDate function in HistoricoModule with this:
-
-formatDate: function(dateString) {
-    if (!dateString || dateString === '') {
-        return '';
-    }
+generateDateFieldsHTML: function(row) {
+    const fields = {
+        'AVANCADO': 'AV',
+        'ORGAO_PAGADOR': 'OP', 
+        'ORG_PAGADOR': 'OP',  // Handle both variants
+        'PRESENCA': 'PR',
+        'UNIDADE_NEGOCIO': 'UN'
+    };
     
-    // Handle SQL Server format: "Jul 2 2025 11:34AM"
-    const sqlServerMatch = dateString.match(/^([A-Za-z]{3}) (\d{1,2}) (\d{4}) (.+)$/);
-    if (sqlServerMatch) {
-        const months = {
-            Jan: '01', Feb: '02', Mar: '03', Apr: '04',
-            May: '05', Jun: '06', Jul: '07', Aug: '08',
-            Sep: '09', Oct: '10', Nov: '11', Dec: '12'
-        };
+    const cutoff = new Date(2025, 5, 1);
+    const matchingDates = [];
+    
+    // Check if we're dealing with descadastramento filter
+    if (FilterModule.currentFilter === 'descadastramento') {
+        // For descadastramento, only show DATA_CONCLUSAO if it's after cutoff and matches TIPO_CORRESPONDENTE
+        const tipoCorrespondente = row['TIPO_CORRESPONDENTE'] ? row['TIPO_CORRESPONDENTE'].toUpperCase().trim() : '';
+        const dataConclusao = row['DATA_CONCLUSAO'] ? row['DATA_CONCLUSAO'].toString().trim() : '';
         
-        const monthName = sqlServerMatch[1];
-        const day = ('0' + sqlServerMatch[2]).slice(-2);
-        const year = sqlServerMatch[3];
-        const month = months[monthName];
+        console.log('DEBUG - generateDateFieldsHTML descadastramento:', {
+            tipoCorrespondente: tipoCorrespondente,
+            dataConclusao: dataConclusao
+        });
         
-        if (month) {
-            return `${day}/${month}/${year}`;
+        // Check if we have a valid tipo and date
+        if (tipoCorrespondente && dataConclusao) {
+            // Handle both ORG_PAGADOR and ORGAO_PAGADOR variants
+            const validTipos = Object.keys(fields);
+            const isValidTipo = validTipos.includes(tipoCorrespondente);
+            
+            if (isValidTipo) {
+                const dateObj = this.parseDate(dataConclusao);
+                if (dateObj && dateObj > cutoff) {
+                    // Always format as DD/MM/YYYY regardless of input format
+                    const day = ('0' + dateObj.getDate()).slice(-2);
+                    const month = ('0' + (dateObj.getMonth() + 1)).slice(-2);
+                    const year = dateObj.getFullYear();
+                    const formattedDate = `${day}/${month}/${year}`;
+                    
+                    console.log('DEBUG - Date formatting:', {
+                        original: dataConclusao,
+                        parsed: dateObj,
+                        formatted: formattedDate
+                    });
+                    
+                    matchingDates.push(formattedDate);
+                }
+            }
+        }
+    } else {
+        // For other filters, use individual date fields as before
+        for (const field in fields) {
+            if (field === 'ORG_PAGADOR') continue; // Skip duplicate
+            
+            const raw = row[field] ? row[field].toString().trim() : '';
+            const dateObj = this.parseDate(raw);
+            
+            if (dateObj && dateObj > cutoff) {
+                // Also format these as DD/MM/YYYY for consistency
+                const day = ('0' + dateObj.getDate()).slice(-2);
+                const month = ('0' + (dateObj.getMonth() + 1)).slice(-2);
+                const year = dateObj.getFullYear();
+                matchingDates.push(`${day}/${month}/${year}`);
+            }
         }
     }
     
-    // Handle existing "MMM dd yyyy time" format  
-    const parts = dateString.match(/^([A-Za-z]+) (\d{1,2}) (\d{4}) (.+)$/);
-    if (parts) {
-        const months = {
-            Jan: '01', Feb: '02', Mar: '03', Apr: '04',
-            May: '05', Jun: '06', Jul: '07', Aug: '08',
-            Sep: '09', Oct: '10', Nov: '11', Dec: '12'
-        };
-        
-        const month = months[parts[1]];
-        const day = ('0' + parts[2]).slice(-2);
-        const year = parts[3];
-        
-        return month ? `${day}/${month}/${year}` : dateString;
-    }
-    
-    // Handle dd/mm/yyyy format (already correct)
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateString)) {
-        return dateString;
-    }
-    
-    // Handle ISO format
-    const date = new Date(dateString);
-    if (!isNaN(date.getTime())) {
-        const day = ('0' + date.getDate()).slice(-2);
-        const month = ('0' + (date.getMonth() + 1)).slice(-2);
-        const year = date.getFullYear();
-        return `${day}/${month}/${year}`;
-    }
-    
-    return dateString;
+    return matchingDates.length > 0 ? matchingDates.join(' / ') : '—';
 },
