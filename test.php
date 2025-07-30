@@ -1,69 +1,74 @@
-<?php
-// In TestH.txt, replace the existing status generation logic with this improved version:
+// Replace the parseDate function in PaginationModule with this updated version:
 
-if ($activeFilter === 'descadastramento') {
-    $tipo = isset($row['TIPO_CORRESPONDENTE']) ? strtoupper(trim($row['TIPO_CORRESPONDENTE'])) : '';
+parseDate: function(dateString) {
+    if (!dateString || typeof dateString !== 'string') {
+        return null;
+    }
     
-    $dataConclusao = isset($row['DATA_CONCLUSAO']) ? trim($row['DATA_CONCLUSAO']) : '';
-    $dataConclusaoTimestamp = false;
+    dateString = dateString.trim();
     
-    if (!empty($dataConclusao)) {
-        // Try different date parsing methods
-        $dateParts = explode('/', $dataConclusao);
-        if (count($dateParts) == 3) {
-            $day = (int)$dateParts[0];
-            $month = (int)$dateParts[1];
-            $year = (int)$dateParts[2];
+    // Handle SQL Server datetime format: "Jul 2 2025 11:34AM"
+    const sqlServerMatch = dateString.match(/^([A-Za-z]{3}) (\d{1,2}) (\d{4}) (.+)$/);
+    if (sqlServerMatch) {
+        const months = {
+            Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
+            Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11
+        };
+        
+        const monthName = sqlServerMatch[1];
+        const day = parseInt(sqlServerMatch[2], 10);
+        const year = parseInt(sqlServerMatch[3], 10);
+        
+        if (months.hasOwnProperty(monthName)) {
+            const month = months[monthName];
+            const date = new Date(year, month, day);
             
-            if (checkdate($month, $day, $year)) {
-                $dataConclusaoTimestamp = mktime(0, 0, 0, $month, $day, $year);
+            // Validate the date
+            if (date.getFullYear() === year && date.getMonth() === month && date.getDate() === day) {
+                console.log(`SQL Server date parsed: ${dateString} -> ${date}`);
+                return date;
             }
-        } else {
-            // Try strtotime for other formats
-            $dataConclusaoTimestamp = strtotime($dataConclusao);
         }
     }
     
-    // Only show these four fields for descadastramento (avoid duplicates)
-    $displayFields = array(
-        'AVANCADO' => 'AV',
-        'ORGAO_PAGADOR' => 'OP',
-        'PRESENCA' => 'PR',
-        'UNIDADE_NEGOCIO' => 'UN'
-    );
-    
-    foreach ($displayFields as $field => $label) {
-        $isOn = false;
+    // Handle dd/mm/yyyy format
+    const parts = dateString.split('/');
+    if (parts.length === 3) {
+        const day = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1; // JavaScript months are 0-based
+        const year = parseInt(parts[2], 10);
         
-        // Check if this field matches the tipo (handle both ORG_PAGADOR and ORGAO_PAGADOR for OP)
-        $fieldMatches = ($field === $tipo) || 
-                    ($field === 'ORGAO_PAGADOR' && $tipo === 'ORG_PAGADOR') ||
-                    ($field === 'ORG_PAGADOR' && $tipo === 'ORGAO_PAGADOR');
-        
-        if ($fieldMatches && $dataConclusaoTimestamp !== false && $dataConclusaoTimestamp > $cutoff) {
-            $isOn = true;
+        if (isNaN(day) || isNaN(month) || isNaN(year)) {
+            return null;
         }
         
-        $color = $isOn ? 'green' : 'gray';
-        $status = $isOn ? 'active' : 'inactive';
+        const date = new Date(year, month, day);
         
-        $debugTitle = "Field: $field, Tipo: $tipo, Match: " . ($fieldMatches ? 'YES' : 'NO') . 
-                    ", Date: $dataConclusao, Timestamp: $dataConclusaoTimestamp, Cutoff: $cutoff, IsOn: " . ($isOn ? 'YES' : 'NO');
+        // Validate the date
+        if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) {
+            return null;
+        }
         
-        echo '<div style="display:inline-block;width:30px;height:30px;
-                margin-right:5px;text-align:center;line-height:30px;
-                font-size:10px;font-weight:bold;color:white;
-                background-color:' . $color . ';border-radius:4px;" 
-                data-field="' . $field . '" data-status="' . $status . '" 
-                title="' . htmlspecialchars($debugTitle) . '">' . $label . '</div>';
+        console.log(`DD/MM/YYYY date parsed: ${dateString} -> ${date}`);
+        return date;
     }
-} else {
-    // Existing logic for other filters
-    foreach ($fields as $field => $label) {
-        if ($field === 'ORG_PAGADOR') continue; // Skip duplicate to avoid showing OP twice
-        
-        $raw = isset($row[$field]) ? trim($row[$field]) : '';
-        // ... rest of the existing logic
+    
+    // Handle ISO format (YYYY-MM-DD with optional time)
+    if (dateString.match(/^\d{4}-\d{2}-\d{2}(\s+\d{2}:\d{2}:\d{2})?/)) {
+        const date = new Date(dateString);
+        if (!isNaN(date.getTime())) {
+            console.log(`ISO date parsed: ${dateString} -> ${date}`);
+            return date;
+        }
     }
-}
-?>
+    
+    // Try generic Date parsing as last resort
+    const date = new Date(dateString);
+    if (!isNaN(date.getTime())) {
+        console.log(`Generic date parsed: ${dateString} -> ${date}`);
+        return date;
+    }
+    
+    console.warn(`Could not parse date: ${dateString}`);
+    return null;
+},
