@@ -1,123 +1,83 @@
-function getTipoCorrespondenteByDataConclusao(row) {
-    const tipoCampos = {
+generateStatusHTML: function(row, activeFilter) {
+    const fields = {
         'AVANCADO': 'AV',
-        'PRESENCA': 'PR', 
-        'UNIDADE_NEGOCIO': 'UN',
         'ORGAO_PAGADOR': 'OP',
-        'ORG_PAGADOR': 'OP'  // Support both variants
+        'ORG_PAGADOR': 'OP',  // Add this missing mapping
+        'PRESENCA': 'PR',
+        'UNIDADE_NEGOCIO': 'UN'
     };
 
-    const cutoff = new Date(2025, 5, 1);
-    let mostRecentDate = null;
-    let mostRecentType = '';
-    
-    const currentFilter = getCurrentFilter();
+    const cutoff = new Date(2025, 5, 1); // June 1, 2025
+    let html = '<div class="status-container">';
 
-    function parseDate(dateString) {
-        if (!dateString || typeof dateString !== 'string') {
-            return null;
-        }
+    if (activeFilter === 'descadastramento') {
+        const tipo = row['TIPO_CORRESPONDENTE'] ? row['TIPO_CORRESPONDENTE'].toUpperCase().trim() : '';
+        const dataConclusao = row['DATA_CONCLUSAO'] ? row['DATA_CONCLUSAO'].toString().trim() : '';
         
-        const parts = dateString.trim().split('/');
-        if (parts.length !== 3) {
-            // Try parsing as YYYY-MM-DD format
-            if (dateString.match(/^\d{4}-\d{2}-\d{2}/)) {
-                const date = new Date(dateString);
-                if (!isNaN(date.getTime())) {
-                    return date;
-                }
+        console.log('DEBUG - Descadastramento:', {
+            tipo: tipo,
+            dataConclusao: dataConclusao,
+            cutoff: cutoff
+        });
+        
+        // Define the display fields (excluding ORG_PAGADOR to avoid duplicates)
+        const displayFields = {
+            'AVANCADO': 'AV',
+            'ORGAO_PAGADOR': 'OP',
+            'PRESENCA': 'PR',
+            'UNIDADE_NEGOCIO': 'UN'
+        };
+        
+        // Show all four indicators, but only the matching type should be active
+        for (const field in displayFields) {
+            const label = displayFields[field];
+            let isOn = false;
+            
+            // Check if this field matches the tipo (handle both ORG_PAGADOR and ORGAO_PAGADOR for OP)
+            const fieldMatches = (field === tipo) || 
+                            (field === 'ORGAO_PAGADOR' && tipo === 'ORG_PAGADOR') ||
+                            (field === 'ORG_PAGADOR' && tipo === 'ORGAO_PAGADOR');
+            
+            if (fieldMatches && dataConclusao) {
+                // This is the matching type, check if DATA_CONCLUSAO is after cutoff
+                const dateObj = this.parseDate(dataConclusao);
+                console.log('DEBUG - Date parsing:', {
+                    field: field,
+                    tipo: tipo,
+                    fieldMatches: fieldMatches,
+                    dataConclusao: dataConclusao,
+                    parsedDate: dateObj,
+                    cutoff: cutoff,
+                    isAfterCutoff: dateObj ? (dateObj > cutoff) : 'null'
+                });
+                
+                isOn = dateObj !== null && dateObj > cutoff;
             }
-            return null;
-        }
-        
-        const day = parseInt(parts[0], 10);
-        const month = parseInt(parts[1], 10) - 1; 
-        const year = parseInt(parts[2], 10);
-        
-        if (isNaN(day) || isNaN(month) || isNaN(year)) {
-            return null;
-        }
-        
-        const date = new Date(year, month, day);
-        
-        if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) {
-            return null;
-        }
-        
-        return date;
-    }
+            // All non-matching types remain gray (isOn = false)
+            
+            const color = isOn ? 'green' : 'gray';
+            const status = isOn ? 'active' : 'inactive';
+            
+            const debugTitle = `Field: ${field}, Tipo: ${tipo}, Match: ${fieldMatches ? 'YES' : 'NO'}, Date: ${dataConclusao}, IsOn: ${isOn ? 'YES' : 'NO'}`;
 
-    console.log('Cutoff date:', cutoff);
-    console.log('Current filter:', currentFilter);
-    
-    if (currentFilter === 'historico') {
-        const raw = getXMLNodeValue(row, 'data_conclusao');
-        
-        if (raw) {
-            const date = parseDate(raw);
-            console.log(`Parsed date for historico:`, date);
-            
-            if (date && date > cutoff) {
-                console.log(`Date ${raw} is after cutoff`);
-                mostRecentType = getXMLNodeValue(row, 'tipo_correspondente');
-                console.log(`Historico type: ${mostRecentType}`);
-            }
-        }
-    } else if (currentFilter === 'descadastramento') {
-        const tipoCorrespondente = getXMLNodeValue(row, 'tipo_correspondente');
-        const dataConclusao = getXMLNodeValue(row, 'data_conclusao') || getXMLNodeValue(row, 'DATA_CONCLUSAO');
-        
-        console.log(`Descadastramento - Tipo: ${tipoCorrespondente}, Data: ${dataConclusao}`);
-        
-        if (tipoCorrespondente && dataConclusao) {
-            const date = parseDate(dataConclusao);
-            console.log(`Parsed date for descadastramento:`, date);
-            
-            if (date && date > cutoff) {
-                console.log(`Date ${dataConclusao} is after cutoff`);
-                const upperTipo = tipoCorrespondente.toUpperCase();
-                if (tipoCampos[upperTipo]) {
-                    mostRecentType = tipoCampos[upperTipo];
-                } else {
-                    // Try to match partial strings
-                    for (const campo in tipoCampos) {
-                        if (upperTipo.includes(campo)) {
-                            mostRecentType = tipoCampos[campo];
-                            break;
-                        }
-                    }
-                }
-                console.log(`Descadastramento mapped type: ${mostRecentType}`);
-            }
+            html += `<div style="display:inline-block;width:30px;height:30px;margin-right:5px;text-align:center;line-height:30px;font-size:10px;font-weight:bold;color:white;background-color:${color};border-radius:4px;" data-field="${field}" data-status="${status}" title="${debugTitle}">${label}</div>`;
         }
     } else {
-        // For other filters (cadastramento, all), use individual date fields
-        for (const campo in tipoCampos) {
-            // Skip the duplicate ORG_PAGADOR entry for other filters
-            if (campo === 'ORG_PAGADOR') continue;
+        // For other filters, use individual date fields
+        for (const field in fields) {
+            if (field === 'ORG_PAGADOR') continue; // Skip duplicate to avoid showing OP twice
             
-            const raw = getXMLNodeValue(row, campo).trim();
-            console.log(`Checking ${campo}: raw value = "${raw}"`);
-            
-            if (raw) {
-                const date = parseDate(raw);
-                console.log(`Parsed date for ${campo}:`, date);
-                console.log(`Cutoff comparison for ${campo}: ${date} > ${cutoff} = ${date > cutoff}`);
-                
-                if (date && date > cutoff) {
-                    console.log(`Date ${raw} for ${campo} is after cutoff`);
-                    if (mostRecentDate === null || date > mostRecentDate) {
-                        mostRecentDate = date;
-                        mostRecentType = tipoCampos[campo];
-                        console.log(`New most recent: ${campo} = ${tipoCampos[campo]}, Date: ${date}`);
-                    }
-                } else if (date) {
-                    console.log(`Date ${raw} for ${campo} is NOT after cutoff (${date} <= ${cutoff})`);
-                }
-            }
+            const label = fields[field];
+            const raw = row[field] ? row[field].toString().trim() : '';
+            const dateObj = this.parseDate(raw);
+            const isOn = dateObj !== null && dateObj > cutoff;
+            const color = isOn ? 'green' : 'gray';
+            const status = isOn ? 'active' : 'inactive';
+
+            html += `<div style="display:inline-block;width:30px;height:30px;margin-right:5px;text-align:center;line-height:30px;font-size:10px;font-weight:bold;color:white;background-color:${color};border-radius:4px;" data-field="${field}" data-status="${status}">${label}</div>`;
         }
     }
 
-    console.log('Final result - Most recent type found:', mostRecentType, 'Date:', mostRecentDate);
-    return mostRecentType;
-}
+    html += '</div>';
+    return html;
+},
