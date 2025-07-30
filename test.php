@@ -1,83 +1,63 @@
-generateStatusHTML: function(row, activeFilter) {
+generateDateFieldsHTML: function(row) {
     const fields = {
         'AVANCADO': 'AV',
-        'ORGAO_PAGADOR': 'OP',
-        'ORG_PAGADOR': 'OP',  // Add this missing mapping
+        'ORGAO_PAGADOR': 'OP', 
+        'ORG_PAGADOR': 'OP',  // Handle both variants
         'PRESENCA': 'PR',
         'UNIDADE_NEGOCIO': 'UN'
     };
-
-    const cutoff = new Date(2025, 5, 1); // June 1, 2025
-    let html = '<div class="status-container">';
-
-    if (activeFilter === 'descadastramento') {
-        const tipo = row['TIPO_CORRESPONDENTE'] ? row['TIPO_CORRESPONDENTE'].toUpperCase().trim() : '';
+    
+    const cutoff = new Date(2025, 5, 1);
+    const matchingDates = [];
+    
+    // Check if we're dealing with descadastramento filter
+    if (FilterModule.currentFilter === 'descadastramento') {
+        // For descadastramento, only show DATA_CONCLUSAO if it's after cutoff and matches TIPO_CORRESPONDENTE
+        const tipoCorrespondente = row['TIPO_CORRESPONDENTE'] ? row['TIPO_CORRESPONDENTE'].toUpperCase().trim() : '';
         const dataConclusao = row['DATA_CONCLUSAO'] ? row['DATA_CONCLUSAO'].toString().trim() : '';
         
-        console.log('DEBUG - Descadastramento:', {
-            tipo: tipo,
-            dataConclusao: dataConclusao,
-            cutoff: cutoff
+        console.log('DEBUG - generateDateFieldsHTML descadastramento:', {
+            tipoCorrespondente: tipoCorrespondente,
+            dataConclusao: dataConclusao
         });
         
-        // Define the display fields (excluding ORG_PAGADOR to avoid duplicates)
-        const displayFields = {
-            'AVANCADO': 'AV',
-            'ORGAO_PAGADOR': 'OP',
-            'PRESENCA': 'PR',
-            'UNIDADE_NEGOCIO': 'UN'
-        };
-        
-        // Show all four indicators, but only the matching type should be active
-        for (const field in displayFields) {
-            const label = displayFields[field];
-            let isOn = false;
+        // Check if we have a valid tipo and date
+        if (tipoCorrespondente && dataConclusao) {
+            // Handle both ORG_PAGADOR and ORGAO_PAGADOR variants
+            const validTipos = Object.keys(fields);
+            const isValidTipo = validTipos.includes(tipoCorrespondente);
             
-            // Check if this field matches the tipo (handle both ORG_PAGADOR and ORGAO_PAGADOR for OP)
-            const fieldMatches = (field === tipo) || 
-                            (field === 'ORGAO_PAGADOR' && tipo === 'ORG_PAGADOR') ||
-                            (field === 'ORG_PAGADOR' && tipo === 'ORGAO_PAGADOR');
-            
-            if (fieldMatches && dataConclusao) {
-                // This is the matching type, check if DATA_CONCLUSAO is after cutoff
+            if (isValidTipo) {
                 const dateObj = this.parseDate(dataConclusao);
-                console.log('DEBUG - Date parsing:', {
-                    field: field,
-                    tipo: tipo,
-                    fieldMatches: fieldMatches,
-                    dataConclusao: dataConclusao,
-                    parsedDate: dateObj,
-                    cutoff: cutoff,
-                    isAfterCutoff: dateObj ? (dateObj > cutoff) : 'null'
-                });
-                
-                isOn = dateObj !== null && dateObj > cutoff;
+                if (dateObj && dateObj > cutoff) {
+                    // Format the date for display
+                    if (dataConclusao.match(/^\d{4}-\d{2}-\d{2}/)) {
+                        const date = new Date(dataConclusao);
+                        if (!isNaN(date.getTime())) {
+                            const day = ('0' + date.getDate()).slice(-2);
+                            const month = ('0' + (date.getMonth() + 1)).slice(-2);
+                            const year = date.getFullYear();
+                            matchingDates.push(`${day}/${month}/${year}`);
+                        }
+                    } else {
+                        matchingDates.push(dataConclusao);
+                    }
+                }
             }
-            // All non-matching types remain gray (isOn = false)
-            
-            const color = isOn ? 'green' : 'gray';
-            const status = isOn ? 'active' : 'inactive';
-            
-            const debugTitle = `Field: ${field}, Tipo: ${tipo}, Match: ${fieldMatches ? 'YES' : 'NO'}, Date: ${dataConclusao}, IsOn: ${isOn ? 'YES' : 'NO'}`;
-
-            html += `<div style="display:inline-block;width:30px;height:30px;margin-right:5px;text-align:center;line-height:30px;font-size:10px;font-weight:bold;color:white;background-color:${color};border-radius:4px;" data-field="${field}" data-status="${status}" title="${debugTitle}">${label}</div>`;
         }
     } else {
-        // For other filters, use individual date fields
+        // For other filters, use individual date fields as before
         for (const field in fields) {
-            if (field === 'ORG_PAGADOR') continue; // Skip duplicate to avoid showing OP twice
+            if (field === 'ORG_PAGADOR') continue; // Skip duplicate
             
-            const label = fields[field];
             const raw = row[field] ? row[field].toString().trim() : '';
             const dateObj = this.parseDate(raw);
-            const isOn = dateObj !== null && dateObj > cutoff;
-            const color = isOn ? 'green' : 'gray';
-            const status = isOn ? 'active' : 'inactive';
-
-            html += `<div style="display:inline-block;width:30px;height:30px;margin-right:5px;text-align:center;line-height:30px;font-size:10px;font-weight:bold;color:white;background-color:${color};border-radius:4px;" data-field="${field}" data-status="${status}">${label}</div>`;
+            
+            if (dateObj && dateObj > cutoff) {
+                matchingDates.push(raw);
+            }
         }
     }
-
-    html += '</div>';
-    return html;
+    
+    return matchingDates.length > 0 ? matchingDates.join(' / ') : '—';
 },
