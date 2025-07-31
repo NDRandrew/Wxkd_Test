@@ -1,4 +1,4 @@
-// FIXED: Helper method to determine TXT export type for descadastramento
+// FIXED: PHP 5.3 Compatible - Helper method to determine TXT export type for descadastramento
 private function determineDescadastroTXTType($chaveLoja, $descadastroTipo, $actualTipoData) {
     // If no actual data found, assume descadastramento tipo only
     if (!isset($actualTipoData[$chaveLoja])) {
@@ -27,9 +27,13 @@ private function determineDescadastroTXTType($chaveLoja, $descadastroTipo, $actu
     if ($hasPresenca) $actualTipos[] = 'PRESENCA';
     
     // Remove the descadastramento tipo from actual tipos (assume it's there as per requirement)
-    $additionalTipos = array_filter($actualTipos, function($tipo) use ($descadastroTipoUpper) {
-        return $tipo !== $descadastroTipoUpper;
-    });
+    // PHP 5.3 Compatible way instead of array_filter with anonymous function
+    $additionalTipos = array();
+    foreach ($actualTipos as $tipo) {
+        if ($tipo !== $descadastroTipoUpper) {
+            $additionalTipos[] = $tipo;
+        }
+    }
     
     // If no additional tipos beyond what descadastramento shows
     if (empty($additionalTipos)) {
