@@ -1,325 +1,56 @@
-case 'descadastramento':
-    $query = "
-        SELECT
-            A.CHAVE_LOJA,
-            G.NOME_LOJA,
-            G.COD_EMPRESA,
-            G.COD_LOJA,
-            A.COD_SOLICITACAO,
-            DATA_PEDIDO,
-            DATA_PEDIDO AS DATA_SOLICITACAO,
-            DATA_PEDIDO AS DATA_CONCLUSAO,
-            CASE 
-                WHEN C.DESC_SOLICITACAO = 'Incentivo Producao' THEN 'UNIDADE_NEGOCIO'
-                WHEN C.DESC_SOLICITACAO = 'Presenca' THEN 'PRESENCA'
-                WHEN C.DESC_SOLICITACAO = 'Avancado' THEN 'AVANCADO'
-                WHEN C.DESC_SOLICITACAO = 'Orgao Pagador' THEN 'ORGAO_PAGADOR'
-                WHEN C.DESC_SOLICITACAO = 'ORG_PAGADOR' THEN 'ORGAO_PAGADOR'
-                ELSE C.DESC_SOLICITACAO
-            END AS TIPO_CORRESPONDENTE,
-            CASE 
-                WHEN C.DESC_SOLICITACAO = 'Avancado' OR C.DESC_SOLICITACAO = 'Incentivo Producao' THEN 'AVANCADO/UNIDADE_NEGOCIO'
-                WHEN C.DESC_SOLICITACAO = 'Presenca' THEN 'ORGAO_PAGADOR/PRESENCA'
-                ELSE 'N/I'
-            END AS TIPO_LIMITES,
-            H.DEP_DINHEIRO_VALID,
-            H.DEP_CHEQUE_VALID,
-            H.REC_RETIRADA_VALID,
-            H.SAQUE_CHEQUE_VALID,
-            H.SEGUNDA_VIA_CARTAO_VALID,
-            H.CONSULTA_INSS_VALID,
-            H.HOLERITE_INSS_VALID,
-            H.PROVA_DE_VIDA_VALID,
-            I.DATA_CONTRATO,
-            I.TIPO AS TIPO_CONTRATO,
-            A.COD_ACAO,
-            D.DESC_ACAO,
-            B.COD_ETAPA,
-            E.DESC_ETAPA,
-            B.COD_STATUS,
-            F.DESC_STATUS,
-            J.QTD_REPETICOES AS QUANT_LOJAS,
-            -- Add actual tipos data from registration tables
-            CONVERT(VARCHAR, ACTUAL_TIPOS.AVANCADO_DT, 103) AS ACTUAL_AVANCADO,
-            CONVERT(VARCHAR, ACTUAL_TIPOS.PRESENCA_DT, 103) AS ACTUAL_PRESENCA,
-            CONVERT(VARCHAR, ACTUAL_TIPOS.UNIDADE_NEGOCIO_DT, 103) AS ACTUAL_UNIDADE_NEGOCIO,
-            CONVERT(VARCHAR, ACTUAL_TIPOS.ORGAO_PAGADOR_DT, 103) AS ACTUAL_ORGAO_PAGADOR,
-            ACTUAL_TIPOS.TIPOS_CONCATENATED AS ACTUAL_TIPOS_ALL
-            FROM PGTOCORSP.dbo.TB_PGTO_SOLICITACAO A
-                JOIN PGTOCORSP.dbo.TB_PGTO_SOLICITACAO_DETALHE B ON A.COD_SOLICITACAO=B.COD_SOLICITACAO
-                JOIN PGTOCORSP.dbo.PGTOCORSP_TB_TIPO_SOLICITACAO C ON A.COD_TIPO_PAGAMENTO=C.COD_SOLICITACAO
-                LEFT JOIN PGTOCORSP.dbo.PGTOCORSP_TB_ACAO_SOLICITACAO D ON A.COD_ACAO=D.COD_ACAO
-                LEFT JOIN PGTOCORSP.dbo.TB_PGTO_ETAPA E ON E.COD_ETAPA=B.COD_ETAPA
-                LEFT JOIN PGTOCORSP.dbo.TB_PGTO_STATUS F ON F.COD_STATUS=B.COD_STATUS
-                LEFT JOIN DATALAKE..DL_BRADESCO_EXPRESSO G ON A.CHAVE_LOJA=G.CHAVE_LOJA
-                LEFT JOIN (
-                                SELECT B.Cod_Empresa,
-                                    MAX(CASE WHEN COD_SERVICO = 'D' THEN 1 ELSE 0 END) AS DEP_DINHEIRO_VALID,
-                                    MAX(CASE WHEN COD_SERVICO = 'D' THEN 1 ELSE 0 END) AS DEP_CHEQUE_VALID,
-                                    MAX(CASE WHEN COD_SERVICO = 'R' THEN 1 ELSE 0 END) AS REC_RETIRADA_VALID,
-                                    MAX(CASE WHEN COD_SERVICO = 'K' THEN 1 ELSE 0 END) AS SAQUE_CHEQUE_VALID,
-                                    MAX(CASE WHEN COD_SERVICO = 'PC' THEN 1 ELSE 0 END) AS SEGUNDA_VIA_CARTAO_VALID,
-                                    MAX(CASE WHEN COD_SERVICO = 'CB' THEN 1 ELSE 0 END) AS CONSULTA_INSS_VALID,
-                                    MAX(CASE WHEN COD_SERVICO = 'CO' THEN 1 ELSE 0 END) AS HOLERITE_INSS_VALID,
-                                    MAX(CASE WHEN COD_SERVICO = 'Z' THEN 1 ELSE 0 END) AS PROVA_DE_VIDA_VALID
-                                FROM PGTOCORSP.DBO.PGTOCORSP_SERVICOS_VANS A
-                                JOIN (
-                                    SELECT Cod_Empresa, COD_SERVICO
-                                    FROM MESU.DBO.EMPRESAS_SERVICOS
-                                    GROUP BY COD_EMPRESA, COD_SERVICO
-                                ) B ON A.COD_SERVICO_VAN = B.COD_SERVICO
-                                WHERE COD_SERVICO_BRAD IN  (" . Wxkd_Config::getServiceCodesSQL() . ") GROUP BY B.Cod_Empresa
-                            ) H ON G.COD_EMPRESA = H.COD_EMPRESA
-                LEFT JOIN (
-                                SELECT KEY_EMPRESA, DATA_CONTRATO, TIPO
-                                FROM (
-                                    SELECT A.KEY_EMPRESA, A.DATA_CONTRATO, C.TIPO,
-                                        ROW_NUMBER() OVER (PARTITION BY A.KEY_EMPRESA ORDER BY A.DATA_CONTRATO DESC) AS rn
-                                    FROM MESU.DBO.TB_EMPRESA_VERSAO_CONTRATO2 A
-                                    LEFT JOIN MESU.DBO.TB_VERSAO C ON A.COD_VERSAO = C.COD_VERSAO
-                                    WHERE A.COD_VERSAO IS NOT NULL AND C.TIPO IS NOT NULL
-                                ) SELECIONADO
-                                WHERE rn = 1
-                            ) I ON G.COD_EMPRESA = I.KEY_EMPRESA
-                LEFT JOIN (
-                    SELECT COD_EMPRESA, COUNT(*) AS qtd_repeticoes
-                    FROM DATALAKE..DL_BRADESCO_EXPRESSO
-                    WHERE BE_INAUGURADO = 1
-                    GROUP BY COD_EMPRESA
-                ) J ON G.COD_EMPRESA = J.COD_EMPRESA
-                -- Join with actual tipos data
-                LEFT JOIN (
-                    SELECT 
-                        A.CHAVE_LOJA,
-                        B.DT_CADASTRO AS AVANCADO_DT,
-                        C.DT_CADASTRO AS PRESENCA_DT,
-                        D.DT_CADASTRO AS UNIDADE_NEGOCIO_DT,
-                        E.DT_CADASTRO AS ORGAO_PAGADOR_DT,
-                        SUBSTRING(
-                            CASE WHEN B.DT_CADASTRO IS NOT NULL THEN ', AVANCADO' ELSE '' END +
-                            CASE WHEN C.DT_CADASTRO IS NOT NULL THEN ', PRESENCA' ELSE '' END +
-                            CASE WHEN D.DT_CADASTRO IS NOT NULL THEN ', UNIDADE_NEGOCIO' ELSE '' END +
-                            CASE WHEN E.DT_CADASTRO IS NOT NULL THEN ', ORGAO_PAGADOR' ELSE '' END,
-                            3, 999
-                        ) AS TIPOS_CONCATENATED
-                    FROM DATALAKE..DL_BRADESCO_EXPRESSO A
-                        LEFT JOIN (SELECT DT_CADASTRO,CHAVE_LOJA FROM PGTOCORSP.DBO.TB_PP_AVANCADO GROUP BY CHAVE_LOJA,DT_CADASTRO) B ON A.CHAVE_LOJA=B.CHAVE_LOJA
-                        LEFT JOIN PGTOCORSP.DBO.TB_PP_PRESENCA C ON C.CHAVE_LOJA=A.CHAVE_LOJA
-                        LEFT JOIN (SELECT DT_CADASTRO,CHAVE_LOJA FROM PGTOCORSP..TB_PP_UNIDADE_NEGOCIO GROUP BY DT_CADASTRO,CHAVE_LOJA) D ON D.CHAVE_LOJA=A.CHAVE_LOJA
-                        LEFT JOIN (SELECT CHAVE_LOJA_PARA,MAX(DATA_ATT) DT_CADASTRO FROM PBEN..TB_OP_PBEN_INDICACAO WHERE APROVACAO = 1 GROUP BY CHAVE_LOJA_PARA) E ON A.CHAVE_LOJA=E.CHAVE_LOJA_PARA
-                    WHERE (B.DT_CADASTRO IS NOT NULL OR C.DT_CADASTRO IS NOT NULL OR D.DT_CADASTRO IS NOT NULL OR E.DT_CADASTRO IS NOT NULL)
-                ) ACTUAL_TIPOS ON A.CHAVE_LOJA = ACTUAL_TIPOS.CHAVE_LOJA
-            WHERE 
-                B.COD_ETAPA=4 AND A.COD_ACAO=2 AND B.COD_STATUS = 1 AND A.DATA_PEDIDO>='20250701'
-            ORDER BY A.DATA_PEDIDO";
-    break;
-
-
------------------
-
-
-
-function extractTXTFromXML(xmlDoc) {
-    let txtContent = '';
-    const rows = xmlDoc.getElementsByTagName('row');
-    const currentFilter = getCurrentFilter();
-
-    for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
-        let empresa = getXMLNodeValue(row, 'cod_empresa');
-        let codigoLoja = getXMLNodeValue(row, 'cod_loja');
-        
-        // For historico, check the original filter
-        let actualFilter = currentFilter;
-        if (currentFilter === 'historico') {
-            actualFilter = getXMLNodeValue(row, 'filtro_original') || 'cadastramento';
-            if (actualFilter === 'all') {
-                actualFilter = 'cadastramento';
-            }
-        }
-
-        if (!codigoLoja) {
-            codigoLoja = getXMLNodeValue(row, 'cod_loja_historico');
-        }
-
-        if (!empresa) {
-            empresa = getXMLNodeValue(row, 'cod_empresa_historico');
-        }
-
-        const contrato = getXMLNodeValue(row, 'tipo_contrato');
-
-        console.log(`Processing row ${i}: Empresa=${empresa}, Loja=${codigoLoja}, ActualFilter=${actualFilter}`);
-
-        if (actualFilter === 'descadastramento') {
-            // DESCADASTRAMENTO COMPLEX LOGIC
-            const shownTipo = getXMLNodeValue(row, 'tipo_correspondente'); // What's shown in descadastramento table
-            
-            // Get actual tipos available for this store
-            const actualAvancado = getXMLNodeValue(row, 'ACTUAL_AVANCADO');
-            const actualPresenca = getXMLNodeValue(row, 'ACTUAL_PRESENCA');
-            const actualUnidadeNegocio = getXMLNodeValue(row, 'ACTUAL_UNIDADE_NEGOCIO');
-            const actualOrgaoPagador = getXMLNodeValue(row, 'ACTUAL_ORGAO_PAGADOR');
-            
-            // Build array of actual tipos available
-            const actualTipos = [];
-            if (actualAvancado && actualAvancado !== '') actualTipos.push('AVANCADO');
-            if (actualPresenca && actualPresenca !== '') actualTipos.push('PRESENCA');
-            if (actualUnidadeNegocio && actualUnidadeNegocio !== '') actualTipos.push('UNIDADE_NEGOCIO');
-            if (actualOrgaoPagador && actualOrgaoPagador !== '') actualTipos.push('ORGAO_PAGADOR');
-            
-            console.log(`Row ${i} - Shown: ${shownTipo}, Actual: [${actualTipos.join(', ')}]`);
-            
-            // Find additional tipos (not shown in descadastramento)
-            const additionalTipos = actualTipos.filter(tipo => tipo !== shownTipo);
-            
-            let exportTipo = shownTipo; // Default to shown tipo
-            let isAdditionalTipo = false;
-            
-            if (additionalTipos.length > 0) {
-                // Apply hierarchy: AVANCADO/UNIDADE_NEGOCIO > ORGAO_PAGADOR/PRESENCA
-                if (additionalTipos.includes('AVANCADO')) {
-                    exportTipo = 'AVANCADO';
-                    isAdditionalTipo = true;
-                } else if (additionalTipos.includes('UNIDADE_NEGOCIO')) {
-                    exportTipo = 'UNIDADE_NEGOCIO';
-                    isAdditionalTipo = true;
-                } else if (additionalTipos.includes('ORGAO_PAGADOR')) {
-                    exportTipo = 'ORGAO_PAGADOR';
-                    isAdditionalTipo = true;
-                } else if (additionalTipos.includes('PRESENCA')) {
-                    exportTipo = 'PRESENCA';
-                    isAdditionalTipo = true;
-                }
-            }
-            
-            console.log(`Row ${i} - Export Tipo: ${exportTipo}, IsAdditional: ${isAdditionalTipo}`);
-            
-            // Generate TXT based on export tipo and whether it's additional
-            txtContent += generateDescadastramentoTXT(empresa, codigoLoja, exportTipo, isAdditionalTipo, contrato);
-            
-        } else {
-            // CADASTRAMENTO/ALL/HISTORICO FORMAT (original logic)
-            const tipoCorrespondente = getTipoCorrespondenteByDataConclusao(row);
-            
-            if (actualFilter === 'cadastramento' || actualFilter === 'all' || currentFilter === 'historico') {
-                const tipoMapping = {
-                    'AV': 'AVANCADO',
-                    'PR': 'PRESENCA', 
-                    'UN': 'UNIDADE_NEGOCIO',
-                    'OP': 'ORGAO_PAGADOR'
-                };
-                
-                const tipoCompleto = Object.keys(tipoMapping).find(key => tipoMapping[key] === tipoCorrespondente) || tipoCorrespondente;
-                console.log('Cadastramento - Tipo completo: ' + tipoCompleto);
-                
-                if (['AV', 'PR', 'UN'].includes(tipoCompleto) || ['AVANCADO', 'PRESENCA', 'UNIDADE_NEGOCIO'].includes(tipoCorrespondente)) {
-                    let limits;
-                    if (tipoCompleto === 'AV' || tipoCorrespondente === 'AVANCADO' || tipoCompleto === 'UN' || tipoCorrespondente === 'UNIDADE_NEGOCIO') {
-                        limits = { dinheiro: '1000000', cheque: '1000000', retirada: '350000', saque: '350000' };
-                    } else if (tipoCompleto === 'PR' || tipoCorrespondente === 'PRESENCA' || tipoCompleto === 'OP' || tipoCorrespondente === 'ORGAO_PAGADOR') {
-                        limits = { dinheiro: '300000', cheque: '500000', retirada: '200000', saque: '200000' };
-                    } else {
-                        limits = { dinheiro: '1000000', cheque: '1000000', retirada: '350000', saque: '350000' };
-                    }
-
-                    txtContent += formatToTXTLine(empresa, codigoLoja, 19, '01', 500, limits.dinheiro, 1, 0, 2, 0) + '\r\n';
-                    txtContent += formatToTXTLine(empresa, codigoLoja, 19, '02', 500, limits.cheque, 1, 0, 2, 0) + '\r\n';
-                    txtContent += formatToTXTLine(empresa, codigoLoja, 28, '04', 1000, limits.retirada, 1, 0, 2, 0) + '\r\n';
-                    txtContent += formatToTXTLine(empresa, codigoLoja, 29, '04', 1000, limits.saque, 1, 0, 2, 0) + '\r\n';
-                    
-                } else if (tipoCompleto === 'OP' || tipoCorrespondente === 'ORGAO_PAGADOR') {
-                    limits = { dinheiro: '300000', cheque: '500000', retirada: '200000', saque: '200000' };
-
-                    const version = extractVersionFromContract(contrato);
-                    if (version !== null && version >= 8.1 && version <= 10.1) {
-                        txtContent += formatToTXTLine(empresa, codigoLoja, 14, '04', 0, 0, 1, 0, 1, 0) + '\r\n';
-                        txtContent += formatToTXTLine(empresa, codigoLoja, 18, '04', 0, 0, 1, 0, 1, 0) + '\r\n';
-                        txtContent += formatToTXTLine(empresa, codigoLoja, 29, '04', 1000, limits.saque, 1, 0, 1, 0) + '\r\n';
-                    } else if (version !== null && version > 10.1) {
-                        txtContent += formatToTXTLine(empresa, codigoLoja, 14, '04', 0, 0, 1, 0, 1, 0) + '\r\n';
-                        txtContent += formatToTXTLine(empresa, codigoLoja, 18, '04', 0, 0, 1, 0, 1, 0) + '\r\n';
-                        txtContent += formatToTXTLine(empresa, codigoLoja, 31, '04', 0, 0, 1, 0, 1, 0) + '\r\n';
-                        txtContent += formatToTXTLine(empresa, codigoLoja, 29, '04', 1000, limits.saque, 1, 0, 1, 0) + '\r\n';
-                    }
-                }
-            } else {
-                const txtLine = formatToTXTLine(empresa, codigoLoja);
-                if (txtLine && txtLine.length === 101) {
-                    txtContent += txtLine + '\r\n';
-                }
-            }
-        }
-    }
-
-    return txtContent;
-}
-
-// New function to generate descadastramento TXT content
-function generateDescadastramentoTXT(empresa, codigoLoja, exportTipo, isAdditionalTipo, contrato) {
-    let txtContent = '';
-    
-    console.log(`generateDescadastramentoTXT: ${empresa}-${codigoLoja}, Tipo: ${exportTipo}, Additional: ${isAdditionalTipo}`);
-    
-    if (isAdditionalTipo) {
-        // TXT FOR ADDITIONAL TIPOS (store has more tipos than shown)
-        if (exportTipo === 'AVANCADO') {
-            // PLACEHOLDER: AVANCADO ADDITIONAL TXT FORMAT
-            txtContent += formatToTXTLine(0, 0, 0, 0, 0, 0, 0, 0, 0, 0) + '**AVANCADO_ADDITIONAL**\r\n';
-            
-        } else if (exportTipo === 'UNIDADE_NEGOCIO') {
-            // PLACEHOLDER: UNIDADE_NEGOCIO ADDITIONAL TXT FORMAT
-            txtContent += formatToTXTLine(0, 0, 0, 0, 0, 0, 0, 0, 0, 0) + '**UNIDADE_NEGOCIO_ADDITIONAL**\r\n';
-            
-        } else if (exportTipo === 'ORGAO_PAGADOR') {
-            // PLACEHOLDER: ORGAO_PAGADOR ADDITIONAL TXT FORMAT
-            const version = extractVersionFromContract(contrato);
-            if (version !== null && version >= 8.1 && version <= 10.1) {
-                txtContent += formatToTXTLine(0, 0, 0, 0, 0, 0, 0, 0, 0, 0) + '**ORGAO_PAGADOR_ADDITIONAL_V8**\r\n';
-            } else if (version !== null && version > 10.1) {
-                txtContent += formatToTXTLine(0, 0, 0, 0, 0, 0, 0, 0, 0, 0) + '**ORGAO_PAGADOR_ADDITIONAL_V10**\r\n';
-            } else {
-                txtContent += formatToTXTLine(0, 0, 0, 0, 0, 0, 0, 0, 0, 0) + '**ORGAO_PAGADOR_ADDITIONAL_DEFAULT**\r\n';
-            }
-            
-        } else if (exportTipo === 'PRESENCA') {
-            // PLACEHOLDER: PRESENCA ADDITIONAL TXT FORMAT
-            txtContent += formatToTXTLine(0, 0, 0, 0, 0, 0, 0, 0, 0, 0) + '**PRESENCA_ADDITIONAL**\r\n';
+public function getActualTipoCorrespondente($chaveLojas) {
+    try {
+        if (empty($chaveLojas)) {
+            return array();
         }
         
-    } else {
-        // TXT FOR SINGLE TIPOS (store has only the shown tipo)
-        if (exportTipo === 'AVANCADO') {
-            // PLACEHOLDER: AVANCADO SINGLE TXT FORMAT
-            txtContent += formatToTXTLine(0, 0, 0, 0, 0, 0, 0, 0, 0, 0) + '**AVANCADO_SINGLE_ONLY**\r\n';
-            
-        } else if (exportTipo === 'UNIDADE_NEGOCIO') {
-            // PLACEHOLDER: UNIDADE_NEGOCIO SINGLE TXT FORMAT
-            txtContent += formatToTXTLine(0, 0, 0, 0, 0, 0, 0, 0, 0, 0) + '**UNIDADE_NEGOCIO_SINGLE_ONLY**\r\n';
-            
-        } else if (exportTipo === 'ORGAO_PAGADOR') {
-            // PLACEHOLDER: ORGAO_PAGADOR SINGLE TXT FORMAT
-            const version = extractVersionFromContract(contrato);
-            if (version !== null && version >= 8.1 && version <= 10.1) {
-                txtContent += formatToTXTLine(0, 0, 0, 0, 0, 0, 0, 0, 0, 0) + '**ORGAO_PAGADOR_SINGLE_ONLY_V8**\r\n';
-            } else if (version !== null && version > 10.1) {
-                txtContent += formatToTXTLine(0, 0, 0, 0, 0, 0, 0, 0, 0, 0) + '**ORGAO_PAGADOR_SINGLE_ONLY_V10**\r\n';
-            } else {
-                txtContent += formatToTXTLine(0, 0, 0, 0, 0, 0, 0, 0, 0, 0) + '**ORGAO_PAGADOR_SINGLE_ONLY_DEFAULT**\r\n';
+        // Convert array to comma-separated string for SQL IN clause
+        $chaveLojasList = implode(',', array_map('intval', $chaveLojas));
+        
+        $query = "SELECT 
+                    A.CHAVE_LOJA
+                    ,CONVERT(VARCHAR,B.DT_CADASTRO,103) AVANCADO
+                    ,CONVERT(VARCHAR,C.DT_CADASTRO,103) PRESENCA
+                    ,CONVERT(VARCHAR,D.DT_CADASTRO,103) UNIDADE_NEGOCIO
+                    ,CONVERT(VARCHAR,E.DT_CADASTRO,103) ORGAO_PAGADOR
+                    ,SUBSTRING(CASE WHEN B.DT_CADASTRO IS NOT NULL THEN ', AVANCADO' ELSE '' END +
+                     CASE WHEN C.DT_CADASTRO IS NOT NULL THEN ', PRESENCA' ELSE '' END +
+                     CASE WHEN D.DT_CADASTRO IS NOT NULL THEN ', UNIDADE_NEGOCIO' ELSE '' END +
+                     CASE WHEN E.DT_CADASTRO IS NOT NULL THEN ', ORGAO_PAGADOR' ELSE '' END,3,999) TIPO_COMPLETO
+                FROM DATALAKE..DL_BRADESCO_EXPRESSO A
+                    LEFT JOIN (SELECT DT_CADASTRO,CHAVE_LOJA FROM PGTOCORSP.DBO.TB_PP_AVANCADO GROUP BY CHAVE_LOJA,DT_CADASTRO) B ON A.CHAVE_LOJA=B.CHAVE_LOJA
+                    LEFT JOIN PGTOCORSP.DBO.TB_PP_PRESENCA C ON C.CHAVE_LOJA=A.CHAVE_LOJA
+                    LEFT JOIN (SELECT DT_CADASTRO,CHAVE_LOJA FROM PGTOCORSP..TB_PP_UNIDADE_NEGOCIO GROUP BY DT_CADASTRO,CHAVE_LOJA) D ON D.CHAVE_LOJA=A.CHAVE_LOJA
+                    LEFT JOIN (SELECT CHAVE_LOJA_PARA,MAX(DATA_ATT) DT_CADASTRO FROM PBEN..TB_OP_PBEN_INDICACAO WHERE APROVACAO = 1 GROUP BY CHAVE_LOJA_PARA) E ON A.CHAVE_LOJA=E.CHAVE_LOJA_PARA
+                WHERE A.CHAVE_LOJA IN ($chaveLojasList)
+                    AND (B.DT_CADASTRO IS NOT NULL OR C.DT_CADASTRO IS NOT NULL OR D.DT_CADASTRO IS NOT NULL OR E.DT_CADASTRO IS NOT NULL)";
+        
+        $result = $this->sql->select($query);
+        
+        // Convert to associative array keyed by CHAVE_LOJA for faster lookup
+        $actualTipos = array();
+        if (!empty($result)) {
+            foreach ($result as $row) {
+                $actualTipos[$row['CHAVE_LOJA']] = array(
+                    'AVANCADO' => $row['AVANCADO'],
+                    'PRESENCA' => $row['PRESENCA'], 
+                    'UNIDADE_NEGOCIO' => $row['UNIDADE_NEGOCIO'],
+                    'ORGAO_PAGADOR' => $row['ORGAO_PAGADOR'],
+                    'TIPO_COMPLETO' => $row['TIPO_COMPLETO']
+                );
             }
-            
-        } else if (exportTipo === 'PRESENCA') {
-            // PLACEHOLDER: PRESENCA SINGLE TXT FORMAT
-            txtContent += formatToTXTLine(0, 0, 0, 0, 0, 0, 0, 0, 0, 0) + '**PRESENCA_SINGLE_ONLY**\r\n';
         }
+        
+        return $actualTipos;
+        
+    } catch (Exception $e) {
+        error_log("getActualTipoCorrespondente - Exception: " . $e->getMessage());
+        return array();
     }
-    
-    return txtContent;
 }
 
 
---------------
-
-
+--------------------
 
 public function exportTXT() {
     $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
@@ -351,6 +82,22 @@ public function exportTXT() {
             }
         }
         
+        // NEW: Get actual TIPO_CORRESPONDENTE data for descadastramento
+        $actualTipoData = array();
+        if ($actualFilter === 'descadastramento') {
+            $chaveLojas = array();
+            foreach ($data as $row) {
+                $chaveLoja = isset($row['CHAVE_LOJA']) ? $row['CHAVE_LOJA'] : '';
+                if (!empty($chaveLoja)) {
+                    $chaveLojas[] = $chaveLoja;
+                }
+            }
+            
+            if (!empty($chaveLojas)) {
+                $actualTipoData = $this->model->getActualTipoCorrespondente($chaveLojas);
+            }
+        }
+        
         $invalidRecords = $this->validateRecordsForTXTExport($data, $actualFilter);
         
         if (!empty($invalidRecords)) {
@@ -378,17 +125,30 @@ public function exportTXT() {
             $xml .= '<PRESENCA>' . addcslashes(isset($row['PRESENCA']) ? $row['PRESENCA'] : '', '"<>&') . '</PRESENCA>';
             $xml .= '<UNIDADE_NEGOCIO>' . addcslashes(isset($row['UNIDADE_NEGOCIO']) ? $row['UNIDADE_NEGOCIO'] : '', '"<>&') . '</UNIDADE_NEGOCIO>';
             $xml .= '<ORGAO_PAGADOR>' . addcslashes(isset($row['ORGAO_PAGADOR']) ? $row['ORGAO_PAGADOR'] : '', '"<>&') . '</ORGAO_PAGADOR>';
+            $xml .= '<filtro_original>' . addcslashes($actualFilter, '"<>&') . '</filtro_original>';
             
-            // Add actual tipos data for descadastramento
+            // NEW: Add descadastramento-specific logic
             if ($actualFilter === 'descadastramento') {
-                $xml .= '<ACTUAL_AVANCADO>' . addcslashes(isset($row['ACTUAL_AVANCADO']) ? $row['ACTUAL_AVANCADO'] : '', '"<>&') . '</ACTUAL_AVANCADO>';
-                $xml .= '<ACTUAL_PRESENCA>' . addcslashes(isset($row['ACTUAL_PRESENCA']) ? $row['ACTUAL_PRESENCA'] : '', '"<>&') . '</ACTUAL_PRESENCA>';
-                $xml .= '<ACTUAL_UNIDADE_NEGOCIO>' . addcslashes(isset($row['ACTUAL_UNIDADE_NEGOCIO']) ? $row['ACTUAL_UNIDADE_NEGOCIO'] : '', '"<>&') . '</ACTUAL_UNIDADE_NEGOCIO>';
-                $xml .= '<ACTUAL_ORGAO_PAGADOR>' . addcslashes(isset($row['ACTUAL_ORGAO_PAGADOR']) ? $row['ACTUAL_ORGAO_PAGADOR'] : '', '"<>&') . '</ACTUAL_ORGAO_PAGADOR>';
-                $xml .= '<ACTUAL_TIPOS_ALL>' . addcslashes(isset($row['ACTUAL_TIPOS_ALL']) ? $row['ACTUAL_TIPOS_ALL'] : '', '"<>&') . '</ACTUAL_TIPOS_ALL>';
+                $chaveLoja = isset($row['CHAVE_LOJA']) ? $row['CHAVE_LOJA'] : '';
+                $descadastroTipo = isset($row['TIPO_CORRESPONDENTE']) ? $row['TIPO_CORRESPONDENTE'] : '';
+                
+                // Determine which TXT format to use
+                $txtExportType = $this->determineDescadastroTXTType($chaveLoja, $descadastroTipo, $actualTipoData);
+                
+                $xml .= '<descadastro_txt_type>' . addcslashes($txtExportType, '"<>&') . '</descadastro_txt_type>';
+                $xml .= '<descadastro_original_tipo>' . addcslashes($descadastroTipo, '"<>&') . '</descadastro_original_tipo>';
+                
+                // Add actual registration data if available
+                if (isset($actualTipoData[$chaveLoja])) {
+                    $actualData = $actualTipoData[$chaveLoja];
+                    $xml .= '<actual_avancado>' . addcslashes($actualData['AVANCADO'], '"<>&') . '</actual_avancado>';
+                    $xml .= '<actual_presenca>' . addcslashes($actualData['PRESENCA'], '"<>&') . '</actual_presenca>';
+                    $xml .= '<actual_unidade_negocio>' . addcslashes($actualData['UNIDADE_NEGOCIO'], '"<>&') . '</actual_unidade_negocio>';
+                    $xml .= '<actual_orgao_pagador>' . addcslashes($actualData['ORGAO_PAGADOR'], '"<>&') . '</actual_orgao_pagador>';
+                    $xml .= '<actual_tipo_completo>' . addcslashes($actualData['TIPO_COMPLETO'], '"<>&') . '</actual_tipo_completo>';
+                }
             }
             
-            $xml .= '<filtro_original>' . addcslashes($actualFilter, '"<>&') . '</filtro_original>';
             $xml .= '<data_conclusao>';
             $dataConclusao = isset($row['DATA_CONCLUSAO']) ? $row['DATA_CONCLUSAO'] : '';
             $timeAndre = strtotime($dataConclusao);
@@ -452,4 +212,229 @@ public function exportTXT() {
     }
 }
 
+// NEW: Helper method to determine TXT export type for descadastramento
+private function determineDescadastroTXTType($chaveLoja, $descadastroTipo, $actualTipoData) {
+    // If no actual data found, assume descadastramento tipo only
+    if (!isset($actualTipoData[$chaveLoja])) {
+        return 'ONLY_' . strtoupper($descadastroTipo);
+    }
+    
+    $actualData = $actualTipoData[$chaveLoja];
+    $descadastroTipoUpper = strtoupper($descadastroTipo);
+    
+    // Check for additional tipos based on hierarchy: AVANCADO/UNIDADE_NEGOCIO > ORGAO_PAGADOR/PRESENCA
+    $hasAvancado = !empty($actualData['AVANCADO']);
+    $hasUnidadeNegocio = !empty($actualData['UNIDADE_NEGOCIO']);
+    $hasOrgaoPagador = !empty($actualData['ORGAO_PAGADOR']);  
+    $hasPresenca = !empty($actualData['PRESENCA']);
+    
+    // Priority 1: AVANCADO/UNIDADE_NEGOCIO
+    if ($hasAvancado && $descadastroTipoUpper !== 'AVANCADO') {
+        return 'ADDITIONAL_AVANCADO';
+    }
+    if ($hasUnidadeNegocio && $descadastroTipoUpper !== 'UNIDADE_NEGOCIO') {
+        return 'ADDITIONAL_UNIDADE_NEGOCIO';
+    }
+    
+    // Priority 2: ORGAO_PAGADOR/PRESENCA
+    if ($hasOrgaoPagador && $descadastroTipoUpper !== 'ORGAO_PAGADOR' && $descadastroTipoUpper !== 'ORG_PAGADOR') {
+        return 'ADDITIONAL_ORGAO_PAGADOR';
+    }
+    if ($hasPresenca && $descadastroTipoUpper !== 'PRESENCA') {
+        return 'ADDITIONAL_PRESENCA';
+    }
+    
+    // No additional tipos found, return "only" type
+    return 'ONLY_' . $descadastroTipoUpper;
+}
 
+
+-------------------
+
+function extractTXTFromXML(xmlDoc) {
+    let txtContent = '';
+    const rows = xmlDoc.getElementsByTagName('row');
+    const currentFilter = getCurrentFilter();
+
+    for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        let empresa = getXMLNodeValue(row, 'cod_empresa');
+        let codigoLoja = getXMLNodeValue(row, 'cod_loja');
+        
+        // For historico, check the original filter
+        let actualFilter = currentFilter;
+        if (currentFilter === 'historico') {
+            actualFilter = getXMLNodeValue(row, 'filtro_original') || 'cadastramento';
+            if (actualFilter === 'all') {
+                actualFilter = 'cadastramento';
+            }
+        }
+
+        if (!codigoLoja) {
+            codigoLoja = getXMLNodeValue(row, 'cod_loja_historico');
+        }
+
+        if (!empresa) {
+            empresa = getXMLNodeValue(row, 'cod_empresa_historico');
+        }
+
+        const tipoCorrespondente = getTipoCorrespondenteByDataConclusao(row);
+        const contrato = getXMLNodeValue(row, 'tipo_contrato');
+
+        console.log(`Processing row ${i}: Empresa=${empresa}, Loja=${codigoLoja}, Tipo=${tipoCorrespondente}, Contrato=${contrato}, ActualFilter=${actualFilter}`);
+
+        if (actualFilter === 'descadastramento') {
+            // NEW DESCADASTRAMENTO LOGIC WITH COMPLEX RULES
+            const descadastroTxtType = getXMLNodeValue(row, 'descadastro_txt_type');
+            const descadastroOriginalTipo = getXMLNodeValue(row, 'descadastro_original_tipo');
+            
+            console.log(`Descadastramento - TxtType: ${descadastroTxtType}, OriginalTipo: ${descadastroOriginalTipo}`);
+            
+            // Handle different export types based on the hierarchy and additional tipos
+            if (descadastroTxtType.startsWith('ADDITIONAL_')) {
+                // Store has additional tipos - export based on the additional tipo
+                const additionalTipo = descadastroTxtType.replace('ADDITIONAL_', '');
+                
+                if (additionalTipo === 'AVANCADO') {
+                    // PLACEHOLDER: Export TXT for additional AVANCADO
+                    console.log('Exporting TXT for ADDITIONAL AVANCADO');
+                    txtContent += formatToTXTLine(empresa, codigoLoja, 0, 0, 0, 0, 0, 0, 0, 0) + '**ADDITIONAL_AVANCADO**\r\n';
+                    
+                } else if (additionalTipo === 'UNIDADE_NEGOCIO') {
+                    // PLACEHOLDER: Export TXT for additional UNIDADE_NEGOCIO
+                    console.log('Exporting TXT for ADDITIONAL UNIDADE_NEGOCIO');
+                    txtContent += formatToTXTLine(empresa, codigoLoja, 0, 0, 0, 0, 0, 0, 0, 0) + '**ADDITIONAL_UNIDADE_NEGOCIO**\r\n';
+                    
+                } else if (additionalTipo === 'ORGAO_PAGADOR') {
+                    // PLACEHOLDER: Export TXT for additional ORGAO_PAGADOR
+                    console.log('Exporting TXT for ADDITIONAL ORGAO_PAGADOR');
+                    txtContent += formatToTXTLine(empresa, codigoLoja, 0, 0, 0, 0, 0, 0, 0, 0) + '**ADDITIONAL_ORGAO_PAGADOR**\r\n';
+                    
+                } else if (additionalTipo === 'PRESENCA') {
+                    // PLACEHOLDER: Export TXT for additional PRESENCA
+                    console.log('Exporting TXT for ADDITIONAL PRESENCA');
+                    txtContent += formatToTXTLine(empresa, codigoLoja, 0, 0, 0, 0, 0, 0, 0, 0) + '**ADDITIONAL_PRESENCA**\r\n';
+                }
+                
+            } else if (descadastroTxtType.startsWith('ONLY_')) {
+                // Store has ONLY the tipo shown in descadastramento - export specific format
+                const onlyTipo = descadastroTxtType.replace('ONLY_', '');
+                
+                if (onlyTipo === 'AVANCADO') {
+                    // PLACEHOLDER: Export TXT for ONLY AVANCADO
+                    console.log('Exporting TXT for ONLY AVANCADO');
+                    txtContent += formatToTXTLine(empresa, codigoLoja, 0, 0, 0, 0, 0, 0, 0, 0) + '**ONLY_AVANCADO**\r\n';
+                    
+                } else if (onlyTipo === 'UNIDADE_NEGOCIO') {
+                    // PLACEHOLDER: Export TXT for ONLY UNIDADE_NEGOCIO
+                    console.log('Exporting TXT for ONLY UNIDADE_NEGOCIO');
+                    txtContent += formatToTXTLine(empresa, codigoLoja, 0, 0, 0, 0, 0, 0, 0, 0) + '**ONLY_UNIDADE_NEGOCIO**\r\n';
+                    
+                } else if (onlyTipo === 'ORGAO_PAGADOR' || onlyTipo === 'ORG_PAGADOR') {
+                    // PLACEHOLDER: Export TXT for ONLY ORGAO_PAGADOR
+                    console.log('Exporting TXT for ONLY ORGAO_PAGADOR');
+                    
+                    // Check contract version for OP-specific logic
+                    const version = extractVersionFromContract(contrato);
+                    if (version !== null && version >= 8.1 && version <= 10.1) {
+                        txtContent += formatToTXTLine(empresa, codigoLoja, 0, 0, 0, 0, 0, 0, 0, 0) + '**ONLY_OP_8.1_TO_10.1**\r\n';
+                    } else if (version !== null && version > 10.1) {
+                        txtContent += formatToTXTLine(empresa, codigoLoja, 0, 0, 0, 0, 0, 0, 0, 0) + '**ONLY_OP_ABOVE_10.1**\r\n';
+                    } else {
+                        txtContent += formatToTXTLine(empresa, codigoLoja, 0, 0, 0, 0, 0, 0, 0, 0) + '**ONLY_OP_DEFAULT**\r\n';
+                    }
+                    
+                } else if (onlyTipo === 'PRESENCA') {
+                    // PLACEHOLDER: Export TXT for ONLY PRESENCA
+                    console.log('Exporting TXT for ONLY PRESENCA');
+                    txtContent += formatToTXTLine(empresa, codigoLoja, 0, 0, 0, 0, 0, 0, 0, 0) + '**ONLY_PRESENCA**\r\n';
+                }
+            }
+            
+        } else {
+            // CADASTRAMENTO/ALL/HISTORICO FORMAT (original logic unchanged)
+            if (actualFilter === 'cadastramento' || actualFilter === 'all' || currentFilter === 'historico') {
+                const tipoMapping = {
+                    'AV': 'AVANCADO',
+                    'PR': 'PRESENCA', 
+                    'UN': 'UNIDADE_NEGOCIO',
+                    'OP': 'ORGAO_PAGADOR'
+                };
+                
+                const tipoCompleto = Object.keys(tipoMapping).find(key => tipoMapping[key] === tipoCorrespondente) || tipoCorrespondente;
+                console.log('Cadastramento - Tipo completo: ' + tipoCompleto);
+                
+                if (['AV', 'PR', 'UN'].includes(tipoCompleto) || ['AVANCADO', 'PRESENCA', 'UNIDADE_NEGOCIO'].includes(tipoCorrespondente)) {
+                    let limits;
+                    if (tipoCompleto === 'AV' || tipoCorrespondente === 'AVANCADO' || tipoCompleto === 'UN' || tipoCorrespondente === 'UNIDADE_NEGOCIO') {
+                        limits = { dinheiro: '1000000', cheque: '1000000', retirada: '350000', saque: '350000' };
+                    } else if (tipoCompleto === 'PR' || tipoCorrespondente === 'PRESENCA' || tipoCompleto === 'OP' || tipoCorrespondente === 'ORGAO_PAGADOR') {
+                        limits = { dinheiro: '300000', cheque: '500000', retirada: '200000', saque: '200000' };
+                    } else {
+                        limits = { dinheiro: '1000000', cheque: '1000000', retirada: '350000', saque: '350000' };
+                    }
+
+                    txtContent += formatToTXTLine(empresa, codigoLoja, 19, '01', 500, limits.dinheiro, 1, 0, 2, 0) + '\r\n';
+                    txtContent += formatToTXTLine(empresa, codigoLoja, 19, '02', 500, limits.cheque, 1, 0, 2, 0) + '\r\n';
+                    txtContent += formatToTXTLine(empresa, codigoLoja, 28, '04', 1000, limits.retirada, 1, 0, 2, 0) + '\r\n';
+                    txtContent += formatToTXTLine(empresa, codigoLoja, 29, '04', 1000, limits.saque, 1, 0, 2, 0) + '\r\n';
+                    
+                } else if (tipoCompleto === 'OP' || tipoCorrespondente === 'ORGAO_PAGADOR') {
+                    limits = { dinheiro: '300000', cheque: '500000', retirada: '200000', saque: '200000' };
+
+                    const version = extractVersionFromContract(contrato);
+                    if (version !== null && version >= 8.1 && version <= 10.1) {
+                        txtContent += formatToTXTLine(empresa, codigoLoja, 14, '04', 0, 0, 1, 0, 1, 0) + '\r\n';
+                        txtContent += formatToTXTLine(empresa, codigoLoja, 18, '04', 0, 0, 1, 0, 1, 0) + '\r\n';
+                        txtContent += formatToTXTLine(empresa, codigoLoja, 29, '04', 1000, limits.saque, 1, 0, 1, 0) + '\r\n';
+                    } else if (version !== null && version > 10.1) {
+                        txtContent += formatToTXTLine(empresa, codigoLoja, 14, '04', 0, 0, 1, 0, 1, 0) + '\r\n';
+                        txtContent += formatToTXTLine(empresa, codigoLoja, 18, '04', 0, 0, 1, 0, 1, 0) + '\r\n';
+                        txtContent += formatToTXTLine(empresa, codigoLoja, 31, '04', 0, 0, 1, 0, 1, 0) + '\r\n';
+                        txtContent += formatToTXTLine(empresa, codigoLoja, 29, '04', 1000, limits.saque, 1, 0, 1, 0) + '\r\n';
+                    }
+                }
+            } else {
+                const txtLine = formatToTXTLine(empresa, codigoLoja);
+                if (txtLine && txtLine.length === 101) {
+                    txtContent += txtLine + '\r\n';
+                }
+            }
+        }
+    }
+
+    return txtContent;
+}
+
+
+---------------------
+
+// Add this debug function to TestJ - useful for troubleshooting descadastramento logic
+window.debugDescadastroLogic = function(xmlDoc) {
+    console.log('=== DESCADASTRAMENTO LOGIC DEBUG ===');
+    
+    const rows = xmlDoc.getElementsByTagName('row');
+    for (let i = 0; i < Math.min(rows.length, 5); i++) { // Show first 5 rows
+        const row = rows[i];
+        
+        const chaveLoja = getXMLNodeValue(row, 'cod_loja') || getXMLNodeValue(row, 'cod_loja_historico');
+        const descadastroTxtType = getXMLNodeValue(row, 'descadastro_txt_type');
+        const descadastroOriginalTipo = getXMLNodeValue(row, 'descadastro_original_tipo');
+        const actualTipoCompleto = getXMLNodeValue(row, 'actual_tipo_completo');
+        
+        console.log(`Row ${i}: ChaveLoja=${chaveLoja}`);
+        console.log(`  Original Tipo: ${descadastroOriginalTipo}`);
+        console.log(`  TXT Export Type: ${descadastroTxtType}`);
+        console.log(`  Actual Tipos: ${actualTipoCompleto}`);
+        console.log(`  Actual AVANCADO: ${getXMLNodeValue(row, 'actual_avancado')}`);
+        console.log(`  Actual PRESENCA: ${getXMLNodeValue(row, 'actual_presenca')}`);
+        console.log(`  Actual UNIDADE_NEGOCIO: ${getXMLNodeValue(row, 'actual_unidade_negocio')}`);
+        console.log(`  Actual ORGAO_PAGADOR: ${getXMLNodeValue(row, 'actual_orgao_pagador')}`);
+        console.log('---');
+    }
+    
+    console.log('=== END DESCADASTRAMENTO DEBUG ===');
+};
+
+// Usage: After exportTXTData() call, use this in console:
+// window.debugDescadastroLogic(xmlDoc)
