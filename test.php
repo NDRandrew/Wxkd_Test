@@ -1,59 +1,29 @@
-// FIXED: PHP 5.3 Compatible - Helper method to determine TXT export type for descadastramento
-private function determineDescadastroTXTType($chaveLoja, $descadastroTipo, $actualTipoData) {
-    // If no actual data found, assume descadastramento tipo only
-    if (!isset($actualTipoData[$chaveLoja])) {
-        return 'ONLY_' . strtoupper($descadastroTipo);
+// Add this debug function to TestJ - useful for troubleshooting descadastramento logic
+window.debugDescadastroLogic = function(xmlDoc) {
+    console.log('=== DESCADASTRAMENTO LOGIC DEBUG ===');
+    
+    const rows = xmlDoc.getElementsByTagName('row');
+    for (let i = 0; i < Math.min(rows.length, 5); i++) { // Show first 5 rows
+        const row = rows[i];
+        
+        const chaveLoja = getXMLNodeValue(row, 'cod_loja') || getXMLNodeValue(row, 'cod_loja_historico');
+        const descadastroTxtType = getXMLNodeValue(row, 'descadastro_txt_type');
+        const descadastroOriginalTipo = getXMLNodeValue(row, 'descadastro_original_tipo');
+        const actualTipoCompleto = getXMLNodeValue(row, 'actual_tipo_completo');
+        
+        console.log(`Row ${i}: ChaveLoja=${chaveLoja}`);
+        console.log(`  Original Tipo: ${descadastroOriginalTipo}`);
+        console.log(`  TXT Export Type: ${descadastroTxtType}`);
+        console.log(`  Actual Tipos: ${actualTipoCompleto}`);
+        console.log(`  Actual AVANCADO: ${getXMLNodeValue(row, 'actual_avancado')}`);
+        console.log(`  Actual PRESENCA: ${getXMLNodeValue(row, 'actual_presenca')}`);
+        console.log(`  Actual UNIDADE_NEGOCIO: ${getXMLNodeValue(row, 'actual_unidade_negocio')}`);
+        console.log(`  Actual ORGAO_PAGADOR: ${getXMLNodeValue(row, 'actual_orgao_pagador')}`);
+        console.log('---');
     }
     
-    $actualData = $actualTipoData[$chaveLoja];
-    $descadastroTipoUpper = strtoupper($descadastroTipo);
-    
-    // Normalize descadastramento tipo variants
-    if ($descadastroTipoUpper === 'ORG_PAGADOR') {
-        $descadastroTipoUpper = 'ORGAO_PAGADOR';
-    }
-    
-    // Check for ACTUAL tipos in the data (not NULL)
-    $hasAvancado = !empty($actualData['AVANCADO']);
-    $hasUnidadeNegocio = !empty($actualData['UNIDADE_NEGOCIO']);
-    $hasOrgaoPagador = !empty($actualData['ORGAO_PAGADOR']);  
-    $hasPresenca = !empty($actualData['PRESENCA']);
-    
-    // Collect all ACTUAL tipos that exist (ignoring what descadastramento shows)
-    $actualTipos = array();
-    if ($hasAvancado) $actualTipos[] = 'AVANCADO';
-    if ($hasUnidadeNegocio) $actualTipos[] = 'UNIDADE_NEGOCIO';
-    if ($hasOrgaoPagador) $actualTipos[] = 'ORGAO_PAGADOR';
-    if ($hasPresenca) $actualTipos[] = 'PRESENCA';
-    
-    // Remove the descadastramento tipo from actual tipos (assume it's there as per requirement)
-    // PHP 5.3 Compatible way instead of array_filter with anonymous function
-    $additionalTipos = array();
-    foreach ($actualTipos as $tipo) {
-        if ($tipo !== $descadastroTipoUpper) {
-            $additionalTipos[] = $tipo;
-        }
-    }
-    
-    // If no additional tipos beyond what descadastramento shows
-    if (empty($additionalTipos)) {
-        return 'ONLY_' . $descadastroTipoUpper;
-    }
-    
-    // Return highest priority additional tipo based on hierarchy: AVANCADO/UNIDADE_NEGOCIO > ORGAO_PAGADOR/PRESENCA
-    if (in_array('AVANCADO', $additionalTipos)) {
-        return 'ADDITIONAL_AVANCADO';
-    }
-    if (in_array('UNIDADE_NEGOCIO', $additionalTipos)) {
-        return 'ADDITIONAL_UNIDADE_NEGOCIO';
-    }
-    if (in_array('ORGAO_PAGADOR', $additionalTipos)) {
-        return 'ADDITIONAL_ORGAO_PAGADOR';
-    }
-    if (in_array('PRESENCA', $additionalTipos)) {
-        return 'ADDITIONAL_PRESENCA';
-    }
-    
-    // Fallback (should not reach here)
-    return 'ONLY_' . $descadastroTipoUpper;
-}
+    console.log('=== END DESCADASTRAMENTO DEBUG ===');
+};
+
+// Usage: After exportTXTData() call, use this in console:
+// window.debugDescadastroLogic(xmlDoc)
