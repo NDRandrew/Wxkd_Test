@@ -1,273 +1,390 @@
-// ADD THESE DEBUG FUNCTIONS TO YOUR TestJ FILE:
-
-// Debug function for descadastramento logic
-window.debugDescadastroLogic = function(xmlDoc) {
-    console.log('=== DESCADASTRAMENTO LOGIC DEBUG ===');
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Dashboard Charts</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/3.4.1/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet">
     
-    const rows = xmlDoc.getElementsByTagName('row');
-    for (let i = 0; i < Math.min(rows.length, 5); i++) { // Show first 5 rows
-        const row = rows[i];
-        
-        const chaveLoja = getXMLNodeValue(row, 'cod_loja') || getXMLNodeValue(row, 'cod_loja_historico');
-        const descadastroTxtType = getXMLNodeValue(row, 'descadastro_txt_type');
-        const descadastroOriginalTipo = getXMLNodeValue(row, 'descadastro_original_tipo');
-        const actualTipoCompleto = getXMLNodeValue(row, 'actual_tipo_completo');
-        
-        console.log(`Row ${i}: ChaveLoja=${chaveLoja}`);
-        console.log(`  Original Tipo: ${descadastroOriginalTipo}`);
-        console.log(`  TXT Export Type: ${descadastroTxtType}`);
-        console.log(`  Actual Tipos: ${actualTipoCompleto}`);
-        console.log(`  Actual AVANCADO: ${getXMLNodeValue(row, 'actual_avancado')}`);
-        console.log(`  Actual PRESENCA: ${getXMLNodeValue(row, 'actual_presenca')}`);
-        console.log(`  Actual UNIDADE_NEGOCIO: ${getXMLNodeValue(row, 'actual_unidade_negocio')}`);
-        console.log(`  Actual ORGAO_PAGADOR: ${getXMLNodeValue(row, 'actual_orgao_pagador')}`);
-        console.log('---');
-    }
-    
-    console.log('=== END DESCADASTRAMENTO DEBUG ===');
-};
-
-// Debug function for contract highlighting
-window.debugContractChaves = function() {
-    console.log('=== CONTRACT CHAVES DEBUG ===');
-    console.log('Current Filter:', FilterModule.currentFilter);
-    console.log('Contract Chaves Array:', window.contractChaves);
-    console.log('Contract Chaves Length:', window.contractChaves ? window.contractChaves.length : 'undefined');
-    
-    // Check first few visible rows
-    $('#dataTableAndre tbody tr:visible').slice(0, 3).each(function(index) {
-        const $row = $(this);
-        const chaveLoja = $row.find('td:eq(1)').text(); // Second column is Chave_Loja
-        const isHighlighted = window.contractChaves && window.contractChaves.indexOf(chaveLoja) === -1;
-        const bgColor = $row.find('td:eq(17)').css('background-color'); // DATA_CONTRATO column
-        
-        console.log(`Row ${index}: ChaveLoja=${chaveLoja}, ShouldHighlight=${isHighlighted}, BgColor=${bgColor}`);
-    });
-    console.log('=== END CONTRACT DEBUG ===');
-};
-
-----------
-
-
-// TEMPORARILY ADD THIS TO exportTXTData function in TestJ (around line 130-140):
-
-.then(responseText => {
-    hideLoading();
-    
-    try {
-        const xmlContent = extractXMLFromMixedResponse(responseText);
-        console.log('Conteudo: '+xmlContent);
-        if (!xmlContent) {
-            alert('Erro: Nenhum XML válido encontrado na resposta');
-            return;
+    <style>
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-bottom: 30px;
         }
-        
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(xmlContent, 'text/xml');
-
-        // ADD THIS DEBUG LINE HERE:
-        if (getCurrentFilter() === 'descadastramento') {
-            window.debugDescadastroLogic(xmlDoc);
+        .chart-title {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
         }
-        
-        const debugLogs = xmlDoc.getElementsByTagName('debugLogs')[0];
-        // ... rest of the function continues ... 
-
-
---------
-
-
-The user is asking about how to use the debug helper function I created earlier. Let me look back at what I provided.
-
-I created a debug function called `window.debugDescadastroLogic()` in JavaScript that takes an xmlDoc parameter, and I also mentioned `window.debugContractChaves()` for debugging contract highlighting.
-
-I need to provide clear step-by-step instructions on how to use these debug functions, especially since they need to be called at the right time when the XML data is available.
-
-Looking at the flow:
-1. User clicks Export TXT
-2. JavaScript calls exportTXTData()
-3. exportTXTData() receives XML response 
-4. extractTXTFromXML() processes the XML
-5. That's where the user would want to debug
-
-I should provide clear instructions on how to access and use these functions.
-
-**Current Message Count: 14/30** - We have **16 messages remaining**.
-
-Great question! Here's how to use the debug helper functions I created:
-
-## 🔧 **Step-by-Step Debug Usage:**
-
-### **1. Add the Debug Functions to TestJ:**
-
-First, make sure you've added both debug functions to your **TestJ file**:
-
-// ADD THESE DEBUG FUNCTIONS TO YOUR TestJ FILE:
-
-// Debug function for descadastramento logic
-window.debugDescadastroLogic = function(xmlDoc) {
-    console.log('=== DESCADASTRAMENTO LOGIC DEBUG ===');
-    
-    const rows = xmlDoc.getElementsByTagName('row');
-    for (let i = 0; i < Math.min(rows.length, 5); i++) { // Show first 5 rows
-        const row = rows[i];
-        
-        const chaveLoja = getXMLNodeValue(row, 'cod_loja') || getXMLNodeValue(row, 'cod_loja_historico');
-        const descadastroTxtType = getXMLNodeValue(row, 'descadastro_txt_type');
-        const descadastroOriginalTipo = getXMLNodeValue(row, 'descadastro_original_tipo');
-        const actualTipoCompleto = getXMLNodeValue(row, 'actual_tipo_completo');
-        
-        console.log(`Row ${i}: ChaveLoja=${chaveLoja}`);
-        console.log(`  Original Tipo: ${descadastroOriginalTipo}`);
-        console.log(`  TXT Export Type: ${descadastroTxtType}`);
-        console.log(`  Actual Tipos: ${actualTipoCompleto}`);
-        console.log(`  Actual AVANCADO: ${getXMLNodeValue(row, 'actual_avancado')}`);
-        console.log(`  Actual PRESENCA: ${getXMLNodeValue(row, 'actual_presenca')}`);
-        console.log(`  Actual UNIDADE_NEGOCIO: ${getXMLNodeValue(row, 'actual_unidade_negocio')}`);
-        console.log(`  Actual ORGAO_PAGADOR: ${getXMLNodeValue(row, 'actual_orgao_pagador')}`);
-        console.log('---');
-    }
-    
-    console.log('=== END DESCADASTRAMENTO DEBUG ===');
-};
-
-// Debug function for contract highlighting
-window.debugContractChaves = function() {
-    console.log('=== CONTRACT CHAVES DEBUG ===');
-    console.log('Current Filter:', FilterModule.currentFilter);
-    console.log('Contract Chaves Array:', window.contractChaves);
-    console.log('Contract Chaves Length:', window.contractChaves ? window.contractChaves.length : 'undefined');
-    
-    // Check first few visible rows
-    $('#dataTableAndre tbody tr:visible').slice(0, 3).each(function(index) {
-        const $row = $(this);
-        const chaveLoja = $row.find('td:eq(1)').text(); // Second column is Chave_Loja
-        const isHighlighted = window.contractChaves && window.contractChaves.indexOf(chaveLoja) === -1;
-        const bgColor = $row.find('td:eq(17)').css('background-color'); // DATA_CONTRATO column
-        
-        console.log(`Row ${index}: ChaveLoja=${chaveLoja}, ShouldHighlight=${isHighlighted}, BgColor=${bgColor}`);
-    });
-    console.log('=== END CONTRACT DEBUG ===');
-};
-
-Now I need to provide clear instructions on how to actually use these functions. The key is that they need to be called at the right time when the data is available.
-
-For the descadastramento debug function, it needs the xmlDoc parameter which is only available during the export process. I should show how to temporarily modify the exportTXTData function to capture and expose this data, or how to call it from the browser console at the right moment.
-
-For the contract chaves debug, it's simpler since it just reads from the DOM and global variables.
-
-Let me provide step-by-step instructions.
-
-### **2. How to Use the Debug Functions:**
-
-## **Option A: Debug Contract Highlighting (Easy)**
-
-**When to use:** To check if background highlighting is working correctly
-
-1. **Load your page** with descadastramento or cadastramento filter
-2. **Open browser console** (F12 → Console tab)
-3. **Type and press Enter:**
-   ```javascript
-   window.debugContractChaves()
-   ```
-4. **Check console output** - it will show you which stores should be highlighted
-
----
-
-## **Option B: Debug Descadastramento Logic (More Complex)**
-
-**When to use:** To check if the TXT export type detection is working correctly
-
-### **Method 1: Temporary Modification (Recommended)**
-
-**Step 1:** Temporarily modify the `exportTXTData` function in TestJ by adding this line:
-
-// TEMPORARILY ADD THIS TO exportTXTData function in TestJ (around line 130-140):
-
-.then(responseText => {
-    hideLoading();
-    
-    try {
-        const xmlContent = extractXMLFromMixedResponse(responseText);
-        console.log('Conteudo: '+xmlContent);
-        if (!xmlContent) {
-            alert('Erro: Nenhum XML válido encontrado na resposta');
-            return;
+        .dashboard-widget {
+            background: #fff;
+            border: 1px solid #e6e6e6;
+            border-radius: 4px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
-        
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(xmlContent, 'text/xml');
-
-        // ADD THIS DEBUG LINE HERE:
-        if (getCurrentFilter() === 'descadastramento') {
-            window.debugDescadastroLogic(xmlDoc);
+        .btn-modal {
+            margin: 10px;
+            padding: 15px 30px;
+            font-size: 16px;
         }
-        
-        const debugLogs = xmlDoc.getElementsByTagName('debugLogs')[0];
-        // ... rest of the function continues ...
+        .buttons-container {
+            text-align: center;
+            margin-top: 30px;
+        }
+    </style>
+</head>
+<body>
+    <div class="page-body">                                  
+        <div class="col-lg-12 col-sm-12 col-xs-12">
+            <!-- Charts Row -->
+            <div class="row">
+                <!-- Pie Chart -->
+                <div class="col-lg-6 col-md-6 col-sm-12">
+                    <div class="dashboard-widget">
+                        <div class="chart-title">
+                            <i class="fa fa-pie-chart"></i> Product Status Distribution
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="pieChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Bar Chart -->
+                <div class="col-lg-6 col-md-6 col-sm-12">
+                    <div class="dashboard-widget">
+                        <div class="chart-title">
+                            <i class="fa fa-bar-chart"></i> Average Products per Person
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="barChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Buttons Row -->
+            <div class="row">
+                <div class="col-lg-12">
+                    <div class="dashboard-widget">
+                        <div class="buttons-container">
+                            <button type="button" class="btn btn-primary btn-modal" data-toggle="modal" data-target="#reportModal">
+                                <i class="fa fa-file-text-o"></i> Generate Report
+                            </button>
+                            <button type="button" class="btn btn-success btn-modal" data-toggle="modal" data-target="#settingsModal">
+                                <i class="fa fa-cog"></i> System Settings
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row return-ajax" id="indexDiv"></div>
+        </div>
+    </div>
 
-I should provide a clearer step-by-step process and also show them how to use the browser developer tools effectively. Let me make this more practical and user-friendly.
+    <!-- Report Modal -->
+    <div class="modal fade" id="reportModal" tabindex="-1" role="dialog" aria-labelledby="reportModalLabel">
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                    <h4 class="modal-title" id="reportModalLabel">
+                        <i class="fa fa-file-text-o"></i> Generate Report
+                    </h4>
+                </div>
+                <div class="modal-body">
+                    <form role="form">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="reportType">Report Type</label>
+                                    <select class="form-control" id="reportType">
+                                        <option value="status">Product Status Report</option>
+                                        <option value="usage">Usage Statistics</option>
+                                        <option value="inventory">Inventory Report</option>
+                                        <option value="maintenance">Maintenance Report</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="reportFormat">Format</label>
+                                    <select class="form-control" id="reportFormat">
+                                        <option value="pdf">PDF</option>
+                                        <option value="excel">Excel</option>
+                                        <option value="csv">CSV</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="dateFrom">From Date</label>
+                                    <input type="date" class="form-control" id="dateFrom">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="dateTo">To Date</label>
+                                    <input type="date" class="form-control" id="dateTo">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="reportNotes">Additional Notes</label>
+                            <textarea class="form-control" id="reportNotes" rows="3" placeholder="Enter any additional notes for the report..."></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="generateReport()">
+                        <i class="fa fa-download"></i> Generate Report
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
-**Step 2:** Test the debug:
+    <!-- Settings Modal -->
+    <div class="modal fade" id="settingsModal" tabindex="-1" role="dialog" aria-labelledby="settingsModalLabel">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                    <h4 class="modal-title" id="settingsModalLabel">
+                        <i class="fa fa-cog"></i> System Settings
+                    </h4>
+                </div>
+                <div class="modal-body">
+                    <form role="form">
+                        <div class="form-group">
+                            <label>Dashboard Refresh Rate</label>
+                            <select class="form-control">
+                                <option value="30">30 seconds</option>
+                                <option value="60" selected>1 minute</option>
+                                <option value="300">5 minutes</option>
+                                <option value="600">10 minutes</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Default Chart Type</label>
+                            <select class="form-control">
+                                <option value="pie">Pie Chart</option>
+                                <option value="bar" selected>Bar Chart</option>
+                                <option value="line">Line Chart</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <div class="checkbox">
+                                <label>
+                                    <input type="checkbox" checked> Enable automatic notifications
+                                </label>
+                            </div>
+                            <div class="checkbox">
+                                <label>
+                                    <input type="checkbox" checked> Show detailed tooltips
+                                </label>
+                            </div>
+                            <div class="checkbox">
+                                <label>
+                                    <input type="checkbox"> Enable dark mode
+                                </label>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="maxRecords">Maximum records to display</label>
+                            <input type="number" class="form-control" id="maxRecords" value="100" min="10" max="1000">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success" onclick="saveSettings()">
+                        <i class="fa fa-save"></i> Save Settings
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
-1. **Go to descadastramento filter**
-2. **Select some records** (including your test case)
-3. **Click "Exportar TXT"**
-4. **Check browser console immediately** - debug output will appear automatically
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/3.4.1/js/bootstrap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
 
-**Step 3:** Remove the debug line after testing
+    <script>
+        $(document).ready(function() {
+            initializeCharts();
+        });
 
----
+        function initializeCharts() {
+            // Pie Chart - Product Status
+            const pieCtx = document.getElementById('pieChart').getContext('2d');
+            const pieChart = new Chart(pieCtx, {
+                type: 'pie',
+                data: {
+                    labels: ['Available', 'Unavailable', 'Broken', 'Fix'],
+                    datasets: [{
+                        data: [45, 20, 15, 20],
+                        backgroundColor: [
+                            '#28a745', // Green for Available
+                            '#ffc107', // Yellow for Unavailable
+                            '#dc3545', // Red for Broken
+                            '#17a2b8'  // Blue for Fix
+                        ],
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 20,
+                                usePointStyle: true
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed || 0;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
 
-### **Method 2: Manual Console Debug (Advanced)**
+            // Bar Chart - Average Products per Person
+            const barCtx = document.getElementById('barChart').getContext('2d');
+            const barChart = new Chart(barCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['IT Support', 'Sales', 'Marketing', 'HR', 'Finance', 'Operations'],
+                    datasets: [{
+                        label: 'Average Products per Person',
+                        data: [3.2, 2.8, 1.9, 2.1, 2.5, 3.8],
+                        backgroundColor: [
+                            '#007bff',
+                            '#28a745',
+                            '#ffc107',
+                            '#dc3545',
+                            '#6f42c1',
+                            '#17a2b8'
+                        ],
+                        borderColor: [
+                            '#0056b3',
+                            '#1e7e34',
+                            '#e0a800',
+                            '#c82333',
+                            '#5a32a3',
+                            '#138496'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.parsed.y} products`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Number of Products'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Department'
+                            }
+                        }
+                    }
+                }
+            });
+        }
 
-If you want to debug without modifying code:
+        function generateReport() {
+            const reportType = $('#reportType').val();
+            const reportFormat = $('#reportFormat').val();
+            const dateFrom = $('#dateFrom').val();
+            const dateTo = $('#dateTo').val();
+            const notes = $('#reportNotes').val();
 
-1. **Open browser console** (F12)
-2. **Execute export as normal**
-3. **Immediately paste this in console:**
-   ```javascript
-   // This will work only if xmlDoc is still in scope
-   if (typeof xmlDoc !== 'undefined') {
-       window.debugDescadastroLogic(xmlDoc);
-   } else {
-       console.log('xmlDoc not available - use Method 1');
-   }
-   ```
+            // Simulate report generation
+            alert(`Generating ${reportType} report in ${reportFormat} format...\nDate range: ${dateFrom} to ${dateTo}\nNotes: ${notes}`);
+            
+            // Here you would typically make an AJAX call to your backend
+            // $.ajax({
+            //     url: 'generate_report.php',
+            //     method: 'POST',
+            //     data: {
+            //         type: reportType,
+            //         format: reportFormat,
+            //         from: dateFrom,
+            //         to: dateTo,
+            //         notes: notes
+            //     },
+            //     success: function(response) {
+            //         // Handle successful report generation
+            //     }
+            // });
 
----
+            $('#reportModal').modal('hide');
+        }
 
-## 🎯 **What You'll See in Console:**
+        function saveSettings() {
+            // Simulate saving settings
+            alert('Settings saved successfully!');
+            
+            // Here you would typically make an AJAX call to save the settings
+            // $.ajax({
+            //     url: 'save_settings.php',
+            //     method: 'POST',
+            //     data: {
+            //         // Get form values and send to backend
+            //     },
+            //     success: function(response) {
+            //         // Handle successful save
+            //     }
+            // });
 
-### **Contract Debug Output:**
-```
-=== CONTRACT CHAVES DEBUG ===
-Current Filter: descadastramento
-Contract Chaves Array: [161220, 161221, 161222]
-Row 0: ChaveLoja=161220, ShouldHighlight=false, BgColor=transparent
-Row 1: ChaveLoja=999999, ShouldHighlight=true, BgColor=#f4b400
-=== END CONTRACT DEBUG ===
-```
-
-### **Descadastramento Debug Output:**
-```
-=== DESCADASTRAMENTO LOGIC DEBUG ===
-Row 0: ChaveLoja=161220
-  Original Tipo: PRESENCA
-  TXT Export Type: ADDITIONAL_ORGAO_PAGADOR
-  Actual Tipos: ORGAO_PAGADOR
-  Actual AVANCADO: 
-  Actual PRESENCA: 
-  Actual ORGAO_PAGADOR: 29/05/2023
-=== END DESCADASTRAMENTO DEBUG ===
-```
-
-## 🚀 **Quick Start:**
-
-**For immediate testing:**
-1. Add debug functions to TestJ
-2. Use **Method 1** above (temporary modification)
-3. Test with your `PRESENCA → ORGAO_PAGADOR` case
-4. Check console output to verify `ADDITIONAL_ORGAO_PAGADOR` result
-
-**Need help with any of these steps?**
+            $('#settingsModal').modal('hide');
+        }
+    </script>
+</body>
+</html>
