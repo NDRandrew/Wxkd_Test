@@ -10,7 +10,7 @@ class EnhancedInventoryModel {
     private $sqlDb;
     private $sqlTeste;
     
-    public function __construct(){
+    function __construct(){
         $this->sqlDb = new MSSQL("MESU");
         $this->sqlTeste = new MSSQL("TESTE");
     }
@@ -20,7 +20,7 @@ class EnhancedInventoryModel {
     /**
      * Get all inventory items
      */
-    public function selectInventario(){
+    function selectInventario(){
         $query = 'SELECT * FROM INFRA.DBO.TB_INVENTARIO_BE ORDER BY id DESC';
         $dados = $this->sqlDb->select($query);
         return $dados;
@@ -29,16 +29,16 @@ class EnhancedInventoryModel {
     /**
      * Get inventory count
      */
-    public function getInventarioCount(){
+    function getInventarioCount(){
         $query = 'SELECT COUNT(*) as total FROM INFRA.DBO.TB_INVENTARIO_BE';
         $result = $this->sqlDb->select($query);
-        return $result[0]['total'] ?? 0;
+        return isset($result[0]['total']) ? $result[0]['total'] : 0;
     }
 
     /**
      * Get inventory count by status
      */
-    public function getInventarioCountByStatus($status = null){
+    function getInventarioCountByStatus($status = null){
         if($status){
             $query = "SELECT COUNT(*) as total FROM INFRA.DBO.TB_INVENTARIO_BE WHERE sts_equip = '$status'";
         } else {
@@ -51,7 +51,7 @@ class EnhancedInventoryModel {
     /**
      * Get inventory with pagination
      */
-    public function getInventarioPaginated($page = 1, $itemsPerPage = 20){
+    function getInventarioPaginated($page = 1, $itemsPerPage = 20){
         $offset = ($page - 1) * $itemsPerPage;
         $query = "SELECT * FROM INFRA.DBO.TB_INVENTARIO_BE 
                   ORDER BY id DESC 
@@ -64,7 +64,7 @@ class EnhancedInventoryModel {
     /**
      * Search equipment by ID
      */
-    public function searchById($id){
+    function searchById($id){
         $query = "SELECT * FROM INFRA.DBO.TB_INVENTARIO_BE WHERE ID = $id";
         $dados = $this->sqlDb->select($query);
         return $dados;
@@ -73,7 +73,7 @@ class EnhancedInventoryModel {
     /**
      * Get single equipment with formatted date
      */
-    public function selectEquip($id){
+    function selectEquip($id){
         $query = "SELECT *,CONVERT(varchar,dt_compra,103) as dt_compra_form 
                   FROM INFRA.DBO.TB_INVENTARIO_BE WHERE id = $id";
         $dados = $this->sqlDb->select($query);
@@ -83,7 +83,7 @@ class EnhancedInventoryModel {
     /**
      * Filter equipment by status
      */
-    public function filtroTb($tipo){
+    function filtroTb($tipo){
         $query = "SELECT * FROM INFRA.DBO.TB_INVENTARIO_BE WHERE sts_equip = '$tipo' ORDER BY id";
         $dados = $this->sqlDb->select($query);
         return $dados;
@@ -92,7 +92,7 @@ class EnhancedInventoryModel {
     /**
      * Insert new equipment
      */
-    public function insertNovoEquip($query){
+    function insertNovoEquip($query){
         $dados = $this->sqlDb->insert($query);
         return $dados;
     }
@@ -100,7 +100,7 @@ class EnhancedInventoryModel {
     /**
      * Update equipment
      */
-    public function updateEquip($query){
+    function updateEquip($query){
         $dados = $this->sqlDb->update($query);
         return $dados;
     }
@@ -108,7 +108,7 @@ class EnhancedInventoryModel {
     /**
      * Delete equipment
      */
-    public function deletarEquip($id){
+    function deletarEquip($id){
         $query = "DELETE FROM INFRA.DBO.TB_INVENTARIO_BE WHERE id = $id";
         $dados = $this->sqlDb->delete($query);
         return $dados;
@@ -119,7 +119,7 @@ class EnhancedInventoryModel {
     /**
      * Get all transactions
      */
-    public function selectTransacoes(){
+    function selectTransacoes(){
         $query = 'SELECT 
                     A.id AS id_trans, 
                     A.sts_ant,
@@ -146,16 +146,16 @@ class EnhancedInventoryModel {
     /**
      * Get transaction count
      */
-    public function getTransactionCount(){
+    function getTransactionCount(){
         $query = 'SELECT COUNT(*) as total FROM INFRA.DBO.TB_TRANSICOES_INV';
         $result = $this->sqlDb->select($query);
-        return $result[0]['total'] ?? 0;
+        return isset($result[0]['total']) ? $result[0]['total'] : 0;
     }
 
     /**
      * Get transactions with pagination
      */
-    public function getTransactionsPaginated($page = 1, $itemsPerPage = 20){
+    function getTransactionsPaginated($page = 1, $itemsPerPage = 20){
         $offset = ($page - 1) * $itemsPerPage;
         $query = "SELECT 
                     A.id AS id_trans, 
@@ -185,7 +185,7 @@ class EnhancedInventoryModel {
     /**
      * Search transactions by equipment ID
      */
-    public function searchByIdTrans($id){
+    function searchByIdTrans($id){
         $query = "SELECT 
                     A.id AS id_trans, 
                     A.sts_ant,
@@ -212,7 +212,7 @@ class EnhancedInventoryModel {
     /**
      * Get single transaction details
      */
-    public function selectTransacoesOne($id){
+    function selectTransacoesOne($id){
         $query = 'SELECT 
                     A.id as id_trans, 
                     A.sts_ant,
@@ -240,7 +240,7 @@ class EnhancedInventoryModel {
     /**
      * Create new transition
      */
-    public function fazerTransicao($after, $before){
+    function fazerTransicao($after, $before){
         if($after[0]['sts_equip'] != $before[0]['sts_equip'] || $after[0]['cod_func'] != $before[0]['cod_func']){
             $data = getDate();
             $data = $data['year'].'-'.$data['mon'].'-'.$data['mday'];
@@ -260,7 +260,7 @@ class EnhancedInventoryModel {
     /**
      * Delete transaction
      */
-    public function deletarTrans($id){
+    function deletarTrans($id){
         $query = "DELETE FROM INFRA.DBO.TB_TRANSICOES_INV WHERE id = $id";
         $dados = $this->sqlDb->delete($query);
         return $dados;
@@ -269,7 +269,7 @@ class EnhancedInventoryModel {
     /**
      * Update transaction terms
      */
-    public function updateTermo($query){ 
+    function updateTermo($query){ 
         $dados = $this->sqlDb->update($query);
         return $dados;
     }
@@ -277,7 +277,7 @@ class EnhancedInventoryModel {
     /**
      * Get transaction date for return
      */
-    public function dataDev($id, $cod_func){
+    function dataDev($id, $cod_func){
         $query = 'SELECT CONVERT(VARCHAR, data_modifi, 103) AS DATA_MODIFI 
                   FROM INFRA.DBO.TB_TRANSICOES_INV
                   WHERE id_equip = '.$id.' AND cod_func_atual = '.$cod_func;
@@ -291,7 +291,7 @@ class EnhancedInventoryModel {
     /**
      * Get employee data
      */
-    public function selectOne($cod){
+    function selectOne($cod){
         $query = "SELECT 
                     A.cod_func,
                     A.nome_func,
@@ -334,7 +334,7 @@ class EnhancedInventoryModel {
     /**
      * Get dashboard statistics
      */
-    public function getDashboardStats(){
+    function getDashboardStats(){
         $stats = array();
         
         // Total equipment count
@@ -343,8 +343,10 @@ class EnhancedInventoryModel {
         // Equipment by status
         $statusCount = $this->getInventarioCountByStatus();
         $stats['by_status'] = array();
-        foreach($statusCount as $status){
-            $stats['by_status'][$status['sts_equip']] = $status['total'];
+        if(is_array($statusCount)){
+            foreach($statusCount as $status){
+                $stats['by_status'][$status['sts_equip']] = $status['total'];
+            }
         }
         
         // Total transactions
@@ -354,14 +356,16 @@ class EnhancedInventoryModel {
         $query = "SELECT COUNT(*) as total FROM INFRA.DBO.TB_TRANSICOES_INV 
                   WHERE data_modifi >= DATEADD(day, -30, GETDATE())";
         $result = $this->sqlDb->select($query);
-        $stats['recent_transactions'] = $result[0]['total'] ?? 0;
+        $stats['recent_transactions'] = isset($result[0]['total']) ? $result[0]['total'] : 0;
         
         // Equipment by type
         $query = "SELECT tipo, COUNT(*) as total FROM INFRA.DBO.TB_INVENTARIO_BE GROUP BY tipo";
         $typeCount = $this->sqlDb->select($query);
         $stats['by_type'] = array();
-        foreach($typeCount as $type){
-            $stats['by_type'][$type['tipo']] = $type['total'];
+        if(is_array($typeCount)){
+            foreach($typeCount as $type){
+                $stats['by_type'][$type['tipo']] = $type['total'];
+            }
         }
         
         return $stats;
@@ -370,7 +374,7 @@ class EnhancedInventoryModel {
     /**
      * Get equipment usage report
      */
-    public function getUsageReport($startDate = null, $endDate = null){
+    function getUsageReport($startDate = null, $endDate = null){
         $whereClause = "";
         if($startDate && $endDate){
             $whereClause = "WHERE A.data_modifi BETWEEN '$startDate' AND '$endDate'";
@@ -399,7 +403,7 @@ class EnhancedInventoryModel {
     /**
      * Get employee equipment history
      */
-    public function getEmployeeEquipmentHistory($cod_func){
+    function getEmployeeEquipmentHistory($cod_func){
         $query = "SELECT 
                     A.id_trans,
                     A.sts_ant,
@@ -421,7 +425,7 @@ class EnhancedInventoryModel {
     /**
      * Search equipment with multiple criteria
      */
-    public function searchEquipment($criteria){
+    function searchEquipment($criteria){
         $whereClauses = array();
         
         if(!empty($criteria['id'])){
@@ -463,7 +467,7 @@ class EnhancedInventoryModel {
     /**
      * Get equipment value statistics
      */
-    public function getValueStatistics(){
+    function getValueStatistics(){
         $query = "SELECT 
                     COUNT(*) as total_items,
                     SUM(CAST(REPLACE(REPLACE(val_compra, 'R$', ''), ',', '.') AS FLOAT)) as total_value,
@@ -474,7 +478,7 @@ class EnhancedInventoryModel {
                 WHERE val_compra IS NOT NULL AND val_compra != ''";
         
         $result = $this->sqlDb->select($query);
-        return $result[0] ?? array();
+        return isset($result[0]) ? $result[0] : array();
     }
 
     // ==================== UTILITY METHODS ====================
@@ -482,22 +486,22 @@ class EnhancedInventoryModel {
     /**
      * Get row count for any table
      */
-    public function getRowCount($table, $whereClause = ""){
+    function getRowCount($table, $whereClause = ""){
         $query = "SELECT COUNT(*) as total FROM $table";
         if($whereClause){
             $query .= " WHERE $whereClause";
         }
         
         $result = $this->sqlDb->select($query);
-        return $result[0]['total'] ?? 0;
+        return isset($result[0]['total']) ? $result[0]['total'] : 0;
     }
 
     /**
      * Execute custom query with row count
      */
-    public function executeQueryWithCount($query){
+    function executeQueryWithCount($query){
         $dados = $this->sqlDb->select($query);
-        $count = count($dados);
+        $count = is_array($dados) ? count($dados) : 0;
         
         return array(
             'data' => $dados,
@@ -508,7 +512,7 @@ class EnhancedInventoryModel {
     /**
      * Validate equipment data before insert/update
      */
-    public function validateEquipmentData($data){
+    function validateEquipmentData($data){
         $errors = array();
         
         if(empty($data['tipo'])){
@@ -537,9 +541,93 @@ class EnhancedInventoryModel {
         
         return $errors;
     }
+
+    /**
+     * Get equipment count with detailed breakdown
+     */
+    function getDetailedEquipmentCount(){
+        $result = array();
+        
+        // Total count
+        $result['total'] = $this->getInventarioCount();
+        
+        // Count by status
+        $statusQuery = "SELECT sts_equip, COUNT(*) as total FROM INFRA.DBO.TB_INVENTARIO_BE GROUP BY sts_equip";
+        $statusResult = $this->sqlDb->select($statusQuery);
+        $result['by_status'] = array();
+        
+        if(is_array($statusResult)){
+            foreach($statusResult as $row){
+                $result['by_status'][$row['sts_equip']] = $row['total'];
+            }
+        }
+        
+        // Count by type
+        $typeQuery = "SELECT tipo, COUNT(*) as total FROM INFRA.DBO.TB_INVENTARIO_BE GROUP BY tipo";
+        $typeResult = $this->sqlDb->select($typeQuery);
+        $result['by_type'] = array();
+        
+        if(is_array($typeResult)){
+            foreach($typeResult as $row){
+                $result['by_type'][$row['tipo']] = $row['total'];
+            }
+        }
+        
+        return $result;
+    }
+
+    /**
+     * Get equipment that needs attention (old, no recent transactions, etc.)
+     */
+    function getEquipmentNeedingAttention(){
+        $query = "SELECT 
+                    inv.*,
+                    DATEDIFF(year, inv.dt_compra, GETDATE()) as years_old,
+                    (SELECT MAX(data_modifi) FROM INFRA.DBO.TB_TRANSICOES_INV WHERE id_equip = inv.id) as last_transaction
+                FROM INFRA.DBO.TB_INVENTARIO_BE inv
+                WHERE 
+                    DATEDIFF(year, inv.dt_compra, GETDATE()) > 5 
+                    OR inv.sts_equip = 'DESCARTE'
+                    OR inv.sts_equip = 'PADRONIZAR'
+                ORDER BY inv.dt_compra ASC";
+        
+        $dados = $this->sqlDb->select($query);
+        return $dados;
+    }
+
+    /**
+     * Generate simple report with counts
+     */
+    function generateSimpleReport(){
+        $report = array();
+        
+        $report['inventory_summary'] = array(
+            'total_equipment' => $this->getInventarioCount(),
+            'total_transactions' => $this->getTransactionCount()
+        );
+        
+        // Equipment counts by status
+        $statusCounts = $this->getInventarioCountByStatus();
+        $report['equipment_by_status'] = array();
+        
+        if(is_array($statusCounts)){
+            foreach($statusCounts as $status){
+                $report['equipment_by_status'][$status['sts_equip']] = $status['total'];
+            }
+        }
+        
+        // Recent activity (last 7 days)
+        $recentQuery = "SELECT COUNT(*) as total FROM INFRA.DBO.TB_TRANSICOES_INV 
+                       WHERE data_modifi >= DATEADD(day, -7, GETDATE())";
+        $recentResult = $this->sqlDb->select($recentQuery);
+        $report['recent_activity'] = isset($recentResult[0]['total']) ? $recentResult[0]['total'] : 0;
+        
+        return $report;
+    }
 }
 
-// Initialize the class
+// Initialize the class (maintain backward compatibility)
+$consulta = new EnhancedInventoryModel();
 $inventoryModel = new EnhancedInventoryModel();
 
 ?>
