@@ -1,18 +1,10 @@
 <?php
+// Model file - enhanced getInventarioCountBySecao function
 class InventarioModel {
-    private $db;
     
-    public function __construct($database_connection) {
-        $this->db = $database_connection;
-    }
-    
-    /**
-     * Get inventory count by secao
-     * Returns an array with secao as key and count as value
-     */
     public function getInventarioCountBySecao() {
-        // Define all possible secao values
-        $secoes = array(
+        // Define all SECAO values
+        $secaoList = array(
             'NULL', '008', '009', '012', '015', '018', '022', '028', '032', '042',
             '043', '047', '060', '066', '073', '078', '081', '092', '10', '100',
             '113', '12', '13', '14', '15', '16', '17', '18', '2', '23',
@@ -22,348 +14,216 @@ class InventarioModel {
             '9', '910', '92'
         );
         
-        $result = array();
+        $counts = array();
         
-        // Initialize all secoes with 0 count
-        foreach ($secoes as $secao) {
-            $result[$secao] = 0;
+        // Initialize all sections with 0 count
+        foreach ($secaoList as $secao) {
+            $counts[$secao] = 0;
         }
         
-        // Build the query to count by secao
-        // Assuming your table is named 'inventario' and column is 'secao'
-        // Adjust table and column names according to your database structure
-        $query = "SELECT secao, COUNT(*) as count_secao FROM inventario WHERE secao IS NOT NULL GROUP BY secao";
+        // Your database query here - adjust table and column names as needed
+        $query = "SELECT secao, COUNT(*) as count FROM inventario_table GROUP BY secao";
         
-        // Handle NULL values separately
-        $queryNull = "SELECT COUNT(*) as count_null FROM inventario WHERE secao IS NULL";
+        // Execute query (adjust based on your database connection method)
+        $result = mysql_query($query); // or mysqli_query() or your preferred method
         
-        // Execute main query
-        $stmt = $this->db->query($query);
-        if ($stmt) {
-            while ($row = $stmt->fetch_assoc()) {
-                $secao = $row['secao'];
-                $count = (int)$row['count_secao'];
+        if ($result) {
+            while ($row = mysql_fetch_assoc($result)) {
+                $secaoValue = $row['secao'];
                 
-                // Only include if it's in our defined secoes list
-                if (in_array($secao, $secoes)) {
-                    $result[$secao] = $count;
+                // Handle NULL values
+                if ($secaoValue === null || $secaoValue === '') {
+                    $secaoValue = 'NULL';
+                }
+                
+                // Only include if it's in our predefined list
+                if (array_key_exists($secaoValue, $counts)) {
+                    $counts[$secaoValue] = (int)$row['count'];
                 }
             }
         }
         
-        // Execute NULL query
-        $stmtNull = $this->db->query($queryNull);
-        if ($stmtNull) {
-            $rowNull = $stmtNull->fetch_assoc();
-            if ($rowNull && isset($rowNull['count_null'])) {
-                $result['NULL'] = (int)$rowNull['count_null'];
-            }
-        }
-        
-        // Remove secoes with 0 count (optional - uncomment if you want to exclude empty sections)
-        // $result = array_filter($result, function($count) { return $count > 0; });
-        
-        return $result;
+        return $counts;
     }
     
-    /**
-     * Helper function to manually create JSON since json_encode is not available in PHP 5.3
-     */
-    public function arrayToJson($array) {
-        $json = '{';
+    // Helper function to output data for AJAX (PHP 5.3 compatible)
+    public function getInventarioCountForChart() {
+        $counts = $this->getInventarioCountBySecao();
+        
+        // Manual JSON encoding for PHP 5.3
+        $jsonOutput = '{';
         $first = true;
         
-        foreach ($array as $key => $value) {
+        foreach ($counts as $secao => $count) {
             if (!$first) {
-                $json .= ',';
+                $jsonOutput .= ',';
             }
-            
-            $json .= '"' . addslashes($key) . '":' . (is_numeric($value) ? $value : '"' . addslashes($value) . '"');
+            $jsonOutput .= '"' . $secao . '":' . $count;
             $first = false;
         }
         
-        $json .= '}';
-        return $json;
+        $jsonOutput .= '}';
+        
+        return $jsonOutput;
     }
 }
 ?>
+---------------
+<?php
+// get_secao_data.php - AJAX endpoint for retrieving SECAO data
+// PHP 5.3 compatible
 
+// Include your model file here
+// require_once 'path/to/your/model.php';
 
+// Since we can't use header() changes, we'll output plain text that JS can parse
+// The calling JS will need to handle this as text, not JSON
 
-------------------------------
+$model = new InventarioModel();
+$data = $model->getInventarioCountForChart();
 
+// Output the data directly
+echo $data;
 
-// Global variables to store chart data
-var inventarioData = {};
-var pieChart = null;
+// No exit() or die() needed, but you can add them if preferred
+?>
+---------------
 
-/**
- * Pie Chart Options Configuration
- * Customize these options according to your charting library
- */
+// Enhanced pieChartOptions with AJAX data loading
 var pieChartOptions = {
-    responsive: true,
-    plugins: {
-        title: {
-            display: true,
-            text: 'Inventário por Seção'
-        },
-        legend: {
-            position: 'right',
-            labels: {
-                boxWidth: 12,
-                padding: 10
-            }
+    chart: {
+        type: 'pie',
+        height: 400
+    },
+    title: {
+        text: 'Inventário por Seção'
+    },
+    plotOptions: {
+        pie: {
+            allowPointSelect: true,
+            cursor: 'pointer',
+            dataLabels: {
+                enabled: true,
+                format: '<b>{point.name}</b>: {point.percentage:.1f} %'
+            },
+            showInLegend: true
         }
     },
-    animation: {
-        animateScale: true,
-        animateRotate: true
-    }
+    series: [{
+        name: 'Seções',
+        colorByPoint: true,
+        data: [] // Will be populated by AJAX
+    }]
 };
 
-/**
- * Colors for pie chart segments
- */
-var pieColors = [
-    '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
-    '#FF9F40', '#FF6384', '#C9CBCF', '#4BC0C0', '#FF6384',
-    '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40',
-    '#FF6384', '#C9CBCF', '#4BC0C0', '#FF6384', '#36A2EB',
-    '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#FF6384',
-    '#C9CBCF', '#4BC0C0', '#FF6384', '#36A2EB', '#FFCE56',
-    '#4BC0C0', '#9966FF', '#FF9F40', '#FF6384', '#C9CBCF',
-    '#4BC0C0', '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0',
-    '#9966FF', '#FF9F40', '#FF6384', '#C9CBCF', '#4BC0C0',
-    '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
-    '#FF9F40', '#FF6384', '#C9CBCF', '#4BC0C0', '#FF6384',
-    '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40',
-    '#FF6384', '#C9CBCF', '#4BC0C0'
-];
-
-/**
- * Load inventory data via AJAX
- */
-function loadInventarioData() {
-    // Create XMLHttpRequest object (compatible with older browsers)
-    var xhr;
-    if (window.XMLHttpRequest) {
-        xhr = new XMLHttpRequest();
-    } else {
-        xhr = new ActiveXObject("Microsoft.XMLHTTP");
-    }
+// Function to load data via AJAX and update chart
+function loadSecaoData() {
+    // Create XMLHttpRequest for PHP 5.3 compatibility
+    var xhr = new XMLHttpRequest();
     
     xhr.onreadystatechange = function() {
-        if (xhr.readyState === 4) {
-            if (xhr.status === 200) {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+            try {
+                // Parse the response manually since we can't rely on JSON response headers
+                var responseText = xhr.responseText.trim();
+                var data;
+                
+                // Try to parse as JSON
                 try {
-                    // Parse the JSON response
-                    inventarioData = JSON.parse(xhr.responseText);
-                    updatePieChart();
+                    data = JSON.parse(responseText);
                 } catch (e) {
-                    console.error('Error parsing JSON response:', e);
-                    alert('Erro ao carregar dados do inventário');
+                    // If JSON parsing fails, try to evaluate it (be careful with this in production)
+                    data = eval('(' + responseText + ')');
                 }
-            } else {
-                console.error('AJAX request failed:', xhr.status);
-                alert('Erro na requisição dos dados');
+                
+                // Convert data to chart format
+                var chartData = [];
+                var colors = generateColors(Object.keys(data).length);
+                var colorIndex = 0;
+                
+                for (var secao in data) {
+                    if (data.hasOwnProperty(secao) && data[secao] > 0) {
+                        chartData.push({
+                            name: 'SECAO ' + secao,
+                            y: data[secao],
+                            color: colors[colorIndex % colors.length]
+                        });
+                        colorIndex++;
+                    }
+                }
+                
+                // Update chart data
+                pieChartOptions.series[0].data = chartData;
+                
+                // If using Highcharts, refresh the chart
+                if (typeof Highcharts !== 'undefined' && window.secaoChart) {
+                    window.secaoChart.series[0].setData(chartData);
+                } else {
+                    // Create new chart if it doesn't exist
+                    createChart();
+                }
+                
+            } catch (e) {
+                console.error('Error processing SECAO data:', e);
+                console.log('Response received:', xhr.responseText);
             }
         }
     };
     
-    xhr.open('GET', 'ajax_inventario.php', true);
+    xhr.open('GET', 'get_secao_data.php', true);
     xhr.send();
 }
 
-/**
- * Update pie chart with loaded data
- */
-function updatePieChart() {
-    var labels = [];
-    var data = [];
-    var colors = [];
-    var colorIndex = 0;
+// Function to generate colors for the pie chart
+function generateColors(count) {
+    var colors = [
+        '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57',
+        '#FF9FF3', '#54A0FF', '#5F27CD', '#00D2D3', '#FF9F43',
+        '#10AC84', '#EE5A24', '#0984E3', '#6C5CE7', '#A29BFE',
+        '#FD79A8', '#E84393', '#2D3436', '#636E72', '#B2BEC3',
+        '#DDA0DD', '#98FB98', '#F0E68C', '#FFB6C1', '#87CEEB',
+        '#DEB887', '#CD853F', '#FFA07A', '#20B2AA', '#87CEFA',
+        '#778899', '#B0C4DE', '#FFFFE0', '#00FF00', '#32CD32',
+        '#FAF0E6', '#FF00FF', '#800000', '#66CDAA', '#0000CD',
+        '#BA55D3', '#9370DB', '#3CB371', '#7B68EE', '#00FA9A',
+        '#48D1CC', '#C71585', '#191970', '#F5FFFA', '#FFE4E1',
+        '#006400', '#8B0000', '#008B8B', '#9ACD32', '#FF4500',
+        '#DA70D6', '#EEE8AA', '#98FB98', '#F0E68C', '#DDA0DD'
+    ];
     
-    // Process the inventory data
-    for (var secao in inventarioData) {
-        if (inventarioData.hasOwnProperty(secao) && inventarioData[secao] > 0) {
-            labels.push(secao === 'NULL' ? 'Sem Seção' : 'Seção ' + secao);
-            data.push(inventarioData[secao]);
-            colors.push(pieColors[colorIndex % pieColors.length]);
-            colorIndex++;
-        }
+    // If we need more colors than predefined, generate them
+    while (colors.length < count) {
+        colors.push('#' + Math.floor(Math.random()*16777215).toString(16));
     }
     
-    // Chart.js format (adjust if using different library)
-    var chartData = {
-        labels: labels,
-        datasets: [{
-            data: data,
-            backgroundColor: colors,
-            borderColor: '#fff',
-            borderWidth: 2
-        }]
-    };
-    
-    // If chart already exists, destroy it first
-    if (pieChart) {
-        pieChart.destroy();
+    return colors;
+}
+
+// Function to create the chart (assuming Highcharts)
+function createChart() {
+    if (typeof Highcharts !== 'undefined') {
+        window.secaoChart = Highcharts.chart('container', pieChartOptions);
+    } else {
+        console.error('Highcharts library not loaded');
     }
-    
-    // Create new chart (assuming Chart.js - adjust for your library)
-    var ctx = document.getElementById('pieChart').getContext('2d');
-    pieChart = new Chart(ctx, {
-        type: 'pie',
-        data: chartData,
-        options: pieChartOptions
-    });
 }
 
-/**
- * Refresh chart data
- */
-function refreshChart() {
-    loadInventarioData();
-}
-
-/**
- * Get chart statistics
- */
-function getChartStats() {
-    var total = 0;
-    var sectionsCount = 0;
-    
-    for (var secao in inventarioData) {
-        if (inventarioData.hasOwnProperty(secao) && inventarioData[secao] > 0) {
-            total += inventarioData[secao];
-            sectionsCount++;
-        }
+// Function to initialize the chart system
+function initSecaoChart() {
+    // Load data when page is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSecaoData();
+        });
+    } else {
+        loadSecaoData();
     }
-    
-    return {
-        total: total,
-        sections: sectionsCount,
-        data: inventarioData
-    };
 }
 
-/**
- * Initialize chart when page loads
- */
-document.addEventListener('DOMContentLoaded', function() {
-    loadInventarioData();
-});
+// Auto-initialize
+initSecaoChart();
 
-// Alternative initialization for older browsers
-if (document.addEventListener) {
-    document.addEventListener('DOMContentLoaded', function() {
-        loadInventarioData();
-    });
-} else {
-    window.onload = function() {
-        loadInventarioData();
-    };
+// Function to refresh chart data (call this when needed)
+function refreshSecaoChart() {
+    loadSecaoData();
 }
-
--------------------------
-
-
-<?php
-// Prevent direct access
-if (!isset($_SERVER['HTTP_X_REQUESTED_WITH']) || $_SERVER['HTTP_X_REQUESTED_WITH'] !== 'XMLHttpRequest') {
-    // Allow for testing purposes, but you might want to uncomment this in production
-    // exit('Direct access not allowed');
-}
-
-// Include your database connection file
-// require_once 'database_connection.php';
-
-// Include the model
-require_once 'testy.php';
-
-// Set content type for JSON response (compatible with PHP 5.3)
-header('Content-Type: application/json; charset=utf-8');
-
-try {
-    // Initialize database connection
-    // Replace this with your actual database connection
-    // Example for MySQL:
-    /*
-    $host = 'localhost';
-    $username = 'your_username';
-    $password = 'your_password';
-    $database = 'your_database';
-    
-    $connection = new mysqli($host, $username, $password, $database);
-    
-    if ($connection->connect_error) {
-        throw new Exception('Database connection failed: ' . $connection->connect_error);
-    }
-    */
-    
-    // For demonstration purposes, create a mock connection
-    // Replace this entire block with your actual database connection
-    $connection = null; // Replace with your actual connection
-    
-    if (!$connection) {
-        // Mock data for testing - remove this when you have real database connection
-        $mockData = array(
-            'NULL' => 5,
-            '008' => 12,
-            '009' => 8,
-            '012' => 15,
-            '015' => 22,
-            '018' => 7,
-            '022' => 9,
-            '028' => 11,
-            '032' => 18,
-            '042' => 14,
-            '043' => 6,
-            '047' => 13,
-            '060' => 20,
-            '066' => 4,
-            '073' => 16,
-            '078' => 10,
-            '081' => 8,
-            '092' => 12,
-            '10' => 25,
-            '100' => 3
-        );
-        
-        // Manual JSON creation for PHP 5.3
-        echo '{';
-        $first = true;
-        foreach ($mockData as $key => $value) {
-            if (!$first) echo ',';
-            echo '"' . $key . '":' . $value;
-            $first = false;
-        }
-        echo '}';
-        exit;
-    }
-    
-    // Create model instance
-    $inventarioModel = new InventarioModel($connection);
-    
-    // Get inventory count by secao
-    $result = $inventarioModel->getInventarioCountBySecao();
-    
-    // Return JSON response using our custom function
-    echo $inventarioModel->arrayToJson($result);
-    
-} catch (Exception $e) {
-    // Error handling
-    $error = array('error' => 'Erro ao buscar dados: ' . $e->getMessage());
-    
-    // Manual JSON creation for error
-    echo '{"error":"' . addslashes($e->getMessage()) . '"}';
-    
-    // Log error if needed
-    error_log('Inventario AJAX Error: ' . $e->getMessage());
-}
-
-// Close database connection if it exists
-if (isset($connection) && $connection) {
-    $connection->close();
-}
-?>
