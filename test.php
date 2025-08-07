@@ -21,58 +21,29 @@ class InventarioModel {
             $counts[$secao] = 0;
         }
         
-        // Your database query here - adjust table and column names as needed
+        // MSSQL query - adjust table and column names as needed
         $query = "SELECT secao, COUNT(*) as count FROM inventario_table GROUP BY secao";
         
-        // Option 1: Using mysqli (available since PHP 5.0)
-        if (function_exists('mysqli_query')) {
-            // Assuming you have a mysqli connection $mysqli_connection
-            $result = mysqli_query($mysqli_connection, $query);
-            
-            if ($result) {
-                while ($row = mysqli_fetch_row($result)) {
-                    $secaoValue = $row[0]; // First column (secao)
-                    $countValue = $row[1]; // Second column (count)
-                    
-                    // Handle NULL values
-                    if ($secaoValue === null || $secaoValue === '') {
-                        $secaoValue = 'NULL';
-                    }
-                    
-                    // Only include if it's in our predefined list
-                    if (array_key_exists($secaoValue, $counts)) {
-                        $counts[$secaoValue] = (int)$countValue;
-                    }
+        // Execute query using MSSQL functions (PHP 5.3 compatible)
+        $result = mssql_query($query); // Assumes connection is already established
+        
+        if ($result) {
+            while ($row = mssql_fetch_array($result, MSSQL_ASSOC)) {
+                $secaoValue = $row['secao'];
+                
+                // Handle NULL values
+                if ($secaoValue === null || $secaoValue === '') {
+                    $secaoValue = 'NULL';
                 }
-                mysqli_free_result($result);
-            }
-        }
-        // Option 2: Using basic mysql_query with mysql_fetch_row (most basic approach)
-        else if (function_exists('mysql_query')) {
-            $result = mysql_query($query);
-            
-            if ($result) {
-                while ($row = mysql_fetch_row($result)) {
-                    $secaoValue = $row[0]; // First column (secao)
-                    $countValue = $row[1]; // Second column (count)
-                    
-                    // Handle NULL values
-                    if ($secaoValue === null || $secaoValue === '') {
-                        $secaoValue = 'NULL';
-                    }
-                    
-                    // Only include if it's in our predefined list
-                    if (array_key_exists($secaoValue, $counts)) {
-                        $counts[$secaoValue] = (int)$countValue;
-                    }
+                
+                // Only include if it's in our predefined list
+                if (array_key_exists($secaoValue, $counts)) {
+                    $counts[$secaoValue] = (int)$row['count'];
                 }
-                mysql_free_result($result);
             }
-        }
-        // Option 3: Manual approach if you know what functions ARE available
-        else {
-            // You'll need to tell me which MySQL functions work in your environment
-            // Common alternatives might be: PDO, or custom database wrapper functions
+            
+            // Free result memory
+            mssql_free_result($result);
         }
         
         return $counts;
