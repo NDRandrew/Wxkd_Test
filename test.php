@@ -553,3 +553,123 @@ function initChart() {
 
 // Auto-initialize
 initChart();
+        -------------------------
+
+
+
+        <?php
+// Ultra-safe PHP 5.3 compatible model
+class InventarioModel {
+    
+    public function getInventarioCountBySecao() {
+        // Define all SECAO values
+        $secaoList = array(
+            'NULL', '008', '009', '012', '015', '018', '022', '028', '032', '042',
+            '043', '047', '060', '066', '073', '078', '081', '092', '10', '100',
+            '113', '12', '13', '14', '15', '16', '17', '18', '2', '23',
+            '26', '27', '28', '30', '32', '33', '34', '35', '36', '40',
+            '43', '45', '46', '47', '49', '54', '55', '6', '60', '67',
+            '68', '7', '70', '73', '75', '76', '79', '8', '81', '898',
+            '9', '910', '92'
+        );
+        
+        $counts = array();
+        
+        // Initialize all sections with 0 count
+        foreach ($secaoList as $secao) {
+            $counts[$secao] = 0;
+        }
+        
+        // APPROACH 1: If you have ANY working MySQL function, tell me which one
+        // For now, I'll provide the safest possible approach
+        
+        // APPROACH 2: Manual counting (safest but slower)
+        // Count each secao individually with simple queries
+        foreach ($secaoList as $secao) {
+            $secaoForQuery = ($secao === 'NULL') ? 'IS NULL' : "= '" . $secao . "'";
+            $query = "SELECT COUNT(*) FROM inventario_table WHERE secao " . $secaoForQuery;
+            
+            // Try different database functions until one works
+            $result = false;
+            $count = 0;
+            
+            // Try mysqli first (most likely to work in PHP 5.3)
+            if (function_exists('mysqli_query') && isset($mysqli_connection)) {
+                $result = mysqli_query($mysqli_connection, $query);
+                if ($result) {
+                    $row = mysqli_fetch_row($result);
+                    $count = $row[0];
+                    mysqli_free_result($result);
+                }
+            }
+            // Try basic mysql_query with mysql_fetch_row
+            else if (function_exists('mysql_query')) {
+                $result = mysql_query($query);
+                if ($result) {
+                    $row = mysql_fetch_row($result);
+                    $count = $row[0];
+                    mysql_free_result($result);
+                }
+            }
+            
+            $counts[$secao] = (int)$count;
+        }
+        
+        return $counts;
+    }
+    
+    // Ultra-safe JSON output for PHP 5.3
+    public function getInventarioCountForChart() {
+        $counts = $this->getInventarioCountBySecao();
+        
+        // Manual JSON encoding - absolutely no dependencies
+        $output = '{';
+        $items = array();
+        
+        foreach ($counts as $secao => $count) {
+            // Escape the key safely
+            $key = str_replace('"', '\\"', $secao);
+            $items[] = '"' . $key . '":' . (int)$count;
+        }
+        
+        $output .= implode(',', $items);
+        $output .= '}';
+        
+        return $output;
+    }
+    
+    // Alternative: Simple text output if JSON parsing fails in JavaScript
+    public function getInventarioCountAsText() {
+        $counts = $this->getInventarioCountBySecao();
+        $output = '';
+        
+        foreach ($counts as $secao => $count) {
+            $output .= $secao . ':' . $count . '|';
+        }
+        
+        return rtrim($output, '|'); // Remove last pipe
+    }
+}
+
+// DEBUGGING HELPER: Check what MySQL functions are available
+function checkAvailableMySQLFunctions() {
+    $functions = array(
+        'mysql_query', 'mysql_fetch_row', 'mysql_fetch_array', 'mysql_fetch_assoc',
+        'mysql_result', 'mysql_num_rows', 'mysql_free_result', 'mysql_connect',
+        'mysqli_query', 'mysqli_fetch_row', 'mysqli_fetch_array', 'mysqli_fetch_assoc',
+        'mysqli_num_rows', 'mysqli_free_result', 'mysqli_connect'
+    );
+    
+    $available = array();
+    foreach ($functions as $func) {
+        if (function_exists($func)) {
+            $available[] = $func;
+        }
+    }
+    
+    return $available;
+}
+
+// Uncomment this line to see what functions are available in your environment:
+// echo "Available MySQL functions: " . implode(', ', checkAvailableMySQLFunctions());
+?>
