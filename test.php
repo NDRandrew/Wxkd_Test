@@ -1,633 +1,369 @@
 <?php
-
-require_once('\\\\mz-vv-fs-237\D4920\Secoes\D4920S012\Comum_S012\j\Server2Go\htdocs\erp\ClassRepository\geral\MSSQL\MSSQL.class.php');
-require_once("../../view/assets/dompdf/dompdf/dompdf_config.inc.php");
-
-@session_start();
-
-class EnhancedInventoryModel {
+class InventarioModel {
+    private $db;
     
-    private $sqlDb;
-    private $sqlTeste;
-    
-    function __construct(){
-        $this->sqlDb = new MSSQL("MESU");
-        $this->sqlTeste = new MSSQL("TESTE");
+    public function __construct($database_connection) {
+        $this->db = $database_connection;
     }
-
-    // ==================== INVENTORY METHODS ====================
     
     /**
-     * Get all inventory items
+     * Get inventory count by secao
+     * Returns an array with secao as key and count as value
      */
-    function selectInventario(){
-        $query = 'SELECT * FROM INFRA.DBO.TB_INVENTARIO_BE ORDER BY id DESC';
-        $dados = $this->sqlDb->select($query);
-        return $dados;
-    }
-
-    /**
-     * Get inventory count
-     */
-    function getInventarioCount(){
-        $query = 'SELECT COUNT(*) as total FROM INFRA.DBO.TB_INVENTARIO_BE';
-        $result = $this->sqlDb->select($query);
-        return isset($result[0]['total']) ? $result[0]['total'] : 0;
-    }
-
-    /**
-     * Get inventory count by status
-     */
-    function getInventarioCountByStatus($status = null){
-        if($status){
-            $query = "SELECT COUNT(*) as total FROM INFRA.DBO.TB_INVENTARIO_BE WHERE sts_equip = '$status'";
-        } else {
-            $query = "SELECT sts_equip, COUNT(*) as total FROM INFRA.DBO.TB_INVENTARIO_BE GROUP BY sts_equip";
-        }
-        $result = $this->sqlDb->select($query);
-        return $result;
-    }
-
-    /**
-     * Get inventory with pagination
-     */
-    function getInventarioPaginated($page = 1, $itemsPerPage = 20){
-        $offset = ($page - 1) * $itemsPerPage;
-        $query = "SELECT * FROM INFRA.DBO.TB_INVENTARIO_BE 
-                  ORDER BY id DESC 
-                  OFFSET $offset ROWS 
-                  FETCH NEXT $itemsPerPage ROWS ONLY";
-        $dados = $this->sqlDb->select($query);
-        return $dados;
-    }
-
-    /**
-     * Search equipment by ID
-     */
-    function searchById($id){
-        $query = "SELECT * FROM INFRA.DBO.TB_INVENTARIO_BE WHERE ID = $id";
-        $dados = $this->sqlDb->select($query);
-        return $dados;
-    }
-
-    /**
-     * Get single equipment with formatted date
-     */
-    function selectEquip($id){
-        $query = "SELECT *,CONVERT(varchar,dt_compra,103) as dt_compra_form 
-                  FROM INFRA.DBO.TB_INVENTARIO_BE WHERE id = $id";
-        $dados = $this->sqlDb->select($query);
-        return $dados;
-    }
-
-    /**
-     * Filter equipment by status
-     */
-    function filtroTb($tipo){
-        $query = "SELECT * FROM INFRA.DBO.TB_INVENTARIO_BE WHERE sts_equip = '$tipo' ORDER BY id";
-        $dados = $this->sqlDb->select($query);
-        return $dados;
-    }
-
-    /**
-     * Insert new equipment
-     */
-    function insertNovoEquip($query){
-        $dados = $this->sqlDb->insert($query);
-        return $dados;
-    }
-
-    /**
-     * Update equipment
-     */
-    function updateEquip($query){
-        $dados = $this->sqlDb->update($query);
-        return $dados;
-    }
-
-    /**
-     * Delete equipment
-     */
-    function deletarEquip($id){
-        $query = "DELETE FROM INFRA.DBO.TB_INVENTARIO_BE WHERE id = $id";
-        $dados = $this->sqlDb->delete($query);
-        return $dados;
-    }
-
-    // ==================== TRANSACTION METHODS ====================
-
-    /**
-     * Get all transactions
-     */
-    function selectTransacoes(){
-        $query = 'SELECT 
-                    A.id AS id_trans, 
-                    A.sts_ant,
-                    A.cod_func_antigo,
-                    A.sts_atual, 
-                    A.cod_func_atual,
-                    B.NOME_FUNC as nome_func,
-                    CONVERT(VARCHAR,A.data_modifi,103) AS dt_trans,
-                    A.id_equip,
-                    A.TERMO_RESP,
-                    A.TERMO_DEV
-                FROM 
-                    INFRA.DBO.TB_TRANSICOES_INV A 
-                JOIN 
-                    MESU.DBO.FUNCIONARIOS B ON A.cod_func_atual = B.COD_FUNC or A.cod_func_antigo = B.COD_FUNC
-                JOIN 
-                    INFRA.DBO.TB_INVENTARIO_BE C ON A.id_equip = C.id
-                ORDER BY A.id';
-        
-        $dados = $this->sqlDb->select($query);
-        return $dados;
-    }
-
-    /**
-     * Get transaction count
-     */
-    function getTransactionCount(){
-        $query = 'SELECT COUNT(*) as total FROM INFRA.DBO.TB_TRANSICOES_INV';
-        $result = $this->sqlDb->select($query);
-        return isset($result[0]['total']) ? $result[0]['total'] : 0;
-    }
-
-    /**
-     * Get transactions with pagination
-     */
-    function getTransactionsPaginated($page = 1, $itemsPerPage = 20){
-        $offset = ($page - 1) * $itemsPerPage;
-        $query = "SELECT 
-                    A.id AS id_trans, 
-                    A.sts_ant,
-                    A.cod_func_antigo,
-                    A.sts_atual, 
-                    A.cod_func_atual,
-                    B.NOME_FUNC as nome_func,
-                    CONVERT(VARCHAR,A.data_modifi,103) AS dt_trans,
-                    A.id_equip,
-                    A.TERMO_RESP,
-                    A.TERMO_DEV
-                FROM 
-                    INFRA.DBO.TB_TRANSICOES_INV A 
-                JOIN 
-                    MESU.DBO.FUNCIONARIOS B ON A.cod_func_atual = B.COD_FUNC or A.cod_func_antigo = B.COD_FUNC
-                JOIN 
-                    INFRA.DBO.TB_INVENTARIO_BE C ON A.id_equip = C.id
-                ORDER BY A.id
-                OFFSET $offset ROWS 
-                FETCH NEXT $itemsPerPage ROWS ONLY";
-        
-        $dados = $this->sqlDb->select($query);
-        return $dados;
-    }
-
-    /**
-     * Search transactions by equipment ID
-     */
-    function searchByIdTrans($id){
-        $query = "SELECT 
-                    A.id AS id_trans, 
-                    A.sts_ant,
-                    A.cod_func_antigo,
-                    A.sts_atual, 
-                    A.cod_func_atual,
-                    B.NOME_FUNC as nome_func,
-                    CONVERT(VARCHAR,A.data_modifi,103) AS dt_trans,
-                    A.id_equip,
-                    A.TERMO_RESP,
-                    A.TERMO_DEV
-                FROM 
-                    INFRA.DBO.TB_TRANSICOES_INV A 
-                JOIN 
-                    MESU.DBO.FUNCIONARIOS B ON A.cod_func_atual = B.COD_FUNC or A.cod_func_antigo = B.COD_FUNC
-                JOIN 
-                    INFRA.DBO.TB_INVENTARIO_BE C ON A.id_equip = C.id
-                WHERE A.id_equip = $id";
-        
-        $dados = $this->sqlDb->select($query);
-        return $dados;
-    }
-
-    /**
-     * Get single transaction details
-     */
-    function selectTransacoesOne($id){
-        $query = 'SELECT 
-                    A.id as id_trans, 
-                    A.sts_ant,
-                    A.cod_func_antigo,
-                    A.sts_atual, 
-                    A.cod_func_atual,
-                    B.NOME_FUNC as nome_func,
-                    CONVERT(VARCHAR,A.data_modifi,103) AS dt_trans,
-                    A.id_equip,
-                    A.TERMO_RESP,
-                    A.TERMO_DEV,
-                    C.*
-                FROM 
-                    INFRA.DBO.TB_TRANSICOES_INV A 
-                JOIN 
-                    MESU.DBO.FUNCIONARIOS B ON A.cod_func_atual = B.COD_FUNC or A.cod_func_antigo = B.COD_FUNC
-                JOIN 
-                    INFRA.DBO.TB_INVENTARIO_BE C ON A.id_equip = C.id
-                WHERE A.id = '.$id;
-
-        $dados = $this->sqlDb->select($query);
-        return $dados;
-    }
-
-    /**
-     * Create new transition
-     */
-    function fazerTransicao($after, $before){
-        if($after[0]['sts_equip'] != $before[0]['sts_equip'] || $after[0]['cod_func'] != $before[0]['cod_func']){
-            $data = getDate();
-            $data = $data['year'].'-'.$data['mon'].'-'.$data['mday'];
-
-            $cod_uso_after = ($after[0]['sts_equip'] == 'EM USO') ? $after[0]['cod_func'] : 'NULL';
-            $cod_uso_before = ($before[0]['sts_equip'] == 'EM USO') ? $before[0]['cod_func'] : 'NULL';
-
-            $query = "INSERT INTO INFRA..TB_TRANSICOES_INV (sts_atual, cod_func_atual, sts_ant, cod_func_antigo, data_modifi, id_equip) 
-                      VALUES ('".$before[0]['sts_equip']."', ".$cod_uso_before.", '".$after[0]['sts_equip']."', ".$cod_uso_after.", '".$data."', ".$before[0]['id'].")";
-
-            $dados = $this->sqlDb->insert($query);
-            return $dados;
-        }
-        return 0;
-    }
-
-    /**
-     * Delete transaction
-     */
-    function deletarTrans($id){
-        $query = "DELETE FROM INFRA.DBO.TB_TRANSICOES_INV WHERE id = $id";
-        $dados = $this->sqlDb->delete($query);
-        return $dados;
-    }
-
-    /**
-     * Update transaction terms
-     */
-    function updateTermo($query){ 
-        $dados = $this->sqlDb->update($query);
-        return $dados;
-    }
-
-    /**
-     * Get transaction date for return
-     */
-    function dataDev($id, $cod_func){
-        $query = 'SELECT CONVERT(VARCHAR, data_modifi, 103) AS DATA_MODIFI 
-                  FROM INFRA.DBO.TB_TRANSICOES_INV
-                  WHERE id_equip = '.$id.' AND cod_func_atual = '.$cod_func;
-        
-        $dados = $this->sqlDb->select($query);
-        return $dados;
-    }
-
-    // ==================== EMPLOYEE METHODS ====================
-
-    /**
-     * Get employee data
-     */
-    function selectOne($cod){
-        $query = "SELECT 
-                    A.cod_func,
-                    A.nome_func,
-                    A.E_MAIL AS Email_Func,
-                    RAMAL,
-                    RAMAL_INTERNO,
-                    DDD_CEL_CORPORATIVO,
-                    CELULAR_CORPORATIVO
-                FROM MESU..FUNCIONARIOS AS A
-                WHERE cod_func = $cod";
-
-        $dados = $this->sqlDb->select($query);
-
-        if($dados){
-            return $dados;
-        } else {
-            $query = "SELECT
-                        B.idFuncionario AS cod_func,
-                        B.nomeFuncionario AS nome_func,
-                        A.E_MAIL as Email_Func,
-                        B.foneCelular AS RAMAL,
-                        RAMAL_INTERNO,
-                        DDD_CEL_CORPORATIVO,
-                        CELULAR_CORPORATIVO
-                    FROM 
-                        MESU..FUNCIONARIOS AS A
-                    RIGHT JOIN 
-                        RH..STG_FUNCIONARIOS AS B ON A.COD_FUNC = B.idFuncionario
-                    WHERE 
-                        B.dataDemissao IS NULL AND
-                        B.idFuncionario = $cod";
-            
-            $dados = $this->sqlDb->select($query);
-            return $dados;
-        }
-    }
-
-    // ==================== STATISTICS AND REPORTING METHODS ====================
-
-    /**
-     * Get dashboard statistics
-     */
-    function getDashboardStats(){
-        $stats = array();
-        
-        // Total equipment count
-        $stats['total_equipment'] = $this->getInventarioCount();
-        
-        // Equipment by status
-        $statusCount = $this->getInventarioCountByStatus();
-        $stats['by_status'] = array();
-        if(is_array($statusCount)){
-            foreach($statusCount as $status){
-                $stats['by_status'][$status['sts_equip']] = $status['total'];
-            }
-        }
-        
-        // Total transactions
-        $stats['total_transactions'] = $this->getTransactionCount();
-        
-        // Recent transactions (last 30 days)
-        $query = "SELECT COUNT(*) as total FROM INFRA.DBO.TB_TRANSICOES_INV 
-                  WHERE data_modifi >= DATEADD(day, -30, GETDATE())";
-        $result = $this->sqlDb->select($query);
-        $stats['recent_transactions'] = isset($result[0]['total']) ? $result[0]['total'] : 0;
-        
-        // Equipment by type
-        $query = "SELECT tipo, COUNT(*) as total FROM INFRA.DBO.TB_INVENTARIO_BE GROUP BY tipo";
-        $typeCount = $this->sqlDb->select($query);
-        $stats['by_type'] = array();
-        if(is_array($typeCount)){
-            foreach($typeCount as $type){
-                $stats['by_type'][$type['tipo']] = $type['total'];
-            }
-        }
-        
-        return $stats;
-    }
-
-    /**
-     * Get equipment usage report
-     */
-    function getUsageReport($startDate = null, $endDate = null){
-        $whereClause = "";
-        if($startDate && $endDate){
-            $whereClause = "WHERE A.data_modifi BETWEEN '$startDate' AND '$endDate'";
-        }
-        
-        $query = "SELECT 
-                    A.id_equip,
-                    C.tipo,
-                    C.marca,
-                    C.modelo,
-                    C.hostname,
-                    COUNT(*) as total_transitions,
-                    MAX(A.data_modifi) as last_transition
-                FROM 
-                    INFRA.DBO.TB_TRANSICOES_INV A
-                JOIN 
-                    INFRA.DBO.TB_INVENTARIO_BE C ON A.id_equip = C.id
-                $whereClause
-                GROUP BY A.id_equip, C.tipo, C.marca, C.modelo, C.hostname
-                ORDER BY total_transitions DESC";
-        
-        $dados = $this->sqlDb->select($query);
-        return $dados;
-    }
-
-    /**
-     * Get employee equipment history
-     */
-    function getEmployeeEquipmentHistory($cod_func){
-        $query = "SELECT 
-                    A.id_trans,
-                    A.sts_ant,
-                    A.sts_atual,
-                    CONVERT(VARCHAR,A.data_modifi,103) AS dt_trans,
-                    C.*
-                FROM 
-                    INFRA.DBO.TB_TRANSICOES_INV A
-                JOIN 
-                    INFRA.DBO.TB_INVENTARIO_BE C ON A.id_equip = C.id
-                WHERE 
-                    A.cod_func_atual = $cod_func OR A.cod_func_antigo = $cod_func
-                ORDER BY A.data_modifi DESC";
-        
-        $dados = $this->sqlDb->select($query);
-        return $dados;
-    }
-
-    /**
-     * Search equipment with multiple criteria
-     */
-    function searchEquipment($criteria){
-        $whereClauses = array();
-        
-        if(!empty($criteria['id'])){
-            $whereClauses[] = "id = " . intval($criteria['id']);
-        }
-        
-        if(!empty($criteria['tipo'])){
-            $whereClauses[] = "tipo LIKE '%" . $criteria['tipo'] . "%'";
-        }
-        
-        if(!empty($criteria['marca'])){
-            $whereClauses[] = "marca LIKE '%" . $criteria['marca'] . "%'";
-        }
-        
-        if(!empty($criteria['modelo'])){
-            $whereClauses[] = "modelo LIKE '%" . $criteria['modelo'] . "%'";
-        }
-        
-        if(!empty($criteria['hostname'])){
-            $whereClauses[] = "hostname LIKE '%" . $criteria['hostname'] . "%'";
-        }
-        
-        if(!empty($criteria['status'])){
-            $whereClauses[] = "sts_equip = '" . $criteria['status'] . "'";
-        }
-        
-        if(!empty($criteria['cod_func'])){
-            $whereClauses[] = "cod_func = " . intval($criteria['cod_func']);
-        }
-        
-        $whereClause = !empty($whereClauses) ? "WHERE " . implode(" AND ", $whereClauses) : "";
-        
-        $query = "SELECT * FROM INFRA.DBO.TB_INVENTARIO_BE $whereClause ORDER BY id DESC";
-        $dados = $this->sqlDb->select($query);
-        
-        return $dados;
-    }
-
-    /**
-     * Get equipment value statistics
-     */
-    function getValueStatistics(){
-        $query = "SELECT 
-                    COUNT(*) as total_items,
-                    SUM(CAST(REPLACE(REPLACE(val_compra, 'R$', ''), ',', '.') AS FLOAT)) as total_value,
-                    AVG(CAST(REPLACE(REPLACE(val_compra, 'R$', ''), ',', '.') AS FLOAT)) as average_value,
-                    MIN(CAST(REPLACE(REPLACE(val_compra, 'R$', ''), ',', '.') AS FLOAT)) as min_value,
-                    MAX(CAST(REPLACE(REPLACE(val_compra, 'R$', ''), ',', '.') AS FLOAT)) as max_value
-                FROM INFRA.DBO.TB_INVENTARIO_BE 
-                WHERE val_compra IS NOT NULL AND val_compra != ''";
-        
-        $result = $this->sqlDb->select($query);
-        return isset($result[0]) ? $result[0] : array();
-    }
-
-    // ==================== UTILITY METHODS ====================
-
-    /**
-     * Get row count for any table
-     */
-    function getRowCount($table, $whereClause = ""){
-        $query = "SELECT COUNT(*) as total FROM $table";
-        if($whereClause){
-            $query .= " WHERE $whereClause";
-        }
-        
-        $result = $this->sqlDb->select($query);
-        return isset($result[0]['total']) ? $result[0]['total'] : 0;
-    }
-
-    /**
-     * Execute custom query with row count
-     */
-    function executeQueryWithCount($query){
-        $dados = $this->sqlDb->select($query);
-        $count = is_array($dados) ? count($dados) : 0;
-        
-        return array(
-            'data' => $dados,
-            'count' => $count
+    public function getInventarioCountBySecao() {
+        // Define all possible secao values
+        $secoes = array(
+            'NULL', '008', '009', '012', '015', '018', '022', '028', '032', '042',
+            '043', '047', '060', '066', '073', '078', '081', '092', '10', '100',
+            '113', '12', '13', '14', '15', '16', '17', '18', '2', '23',
+            '26', '27', '28', '30', '32', '33', '34', '35', '36', '40',
+            '43', '45', '46', '47', '49', '54', '55', '6', '60', '67',
+            '68', '7', '70', '73', '75', '76', '79', '8', '81', '898',
+            '9', '910', '92'
         );
-    }
-
-    /**
-     * Validate equipment data before insert/update
-     */
-    function validateEquipmentData($data){
-        $errors = array();
         
-        if(empty($data['tipo'])){
-            $errors[] = "Tipo é obrigatório";
-        }
-        
-        if(empty($data['marca'])){
-            $errors[] = "Marca é obrigatória";
-        }
-        
-        if(empty($data['modelo'])){
-            $errors[] = "Modelo é obrigatório";
-        }
-        
-        if(empty($data['sts_equip'])){
-            $errors[] = "Status do equipamento é obrigatório";
-        }
-        
-        // Check if hostname already exists (for new equipment)
-        if(!empty($data['hostname']) && empty($data['id'])){
-            $existing = $this->searchEquipment(array('hostname' => $data['hostname']));
-            if(!empty($existing)){
-                $errors[] = "Hostname já existe no sistema";
-            }
-        }
-        
-        return $errors;
-    }
-
-    /**
-     * Get equipment count with detailed breakdown
-     */
-    function getDetailedEquipmentCount(){
         $result = array();
         
-        // Total count
-        $result['total'] = $this->getInventarioCount();
+        // Initialize all secoes with 0 count
+        foreach ($secoes as $secao) {
+            $result[$secao] = 0;
+        }
         
-        // Count by status
-        $statusQuery = "SELECT sts_equip, COUNT(*) as total FROM INFRA.DBO.TB_INVENTARIO_BE GROUP BY sts_equip";
-        $statusResult = $this->sqlDb->select($statusQuery);
-        $result['by_status'] = array();
+        // Build the query to count by secao
+        // Assuming your table is named 'inventario' and column is 'secao'
+        // Adjust table and column names according to your database structure
+        $query = "SELECT secao, COUNT(*) as count_secao FROM inventario WHERE secao IS NOT NULL GROUP BY secao";
         
-        if(is_array($statusResult)){
-            foreach($statusResult as $row){
-                $result['by_status'][$row['sts_equip']] = $row['total'];
+        // Handle NULL values separately
+        $queryNull = "SELECT COUNT(*) as count_null FROM inventario WHERE secao IS NULL";
+        
+        // Execute main query
+        $stmt = $this->db->query($query);
+        if ($stmt) {
+            while ($row = $stmt->fetch_assoc()) {
+                $secao = $row['secao'];
+                $count = (int)$row['count_secao'];
+                
+                // Only include if it's in our defined secoes list
+                if (in_array($secao, $secoes)) {
+                    $result[$secao] = $count;
+                }
             }
         }
         
-        // Count by type
-        $typeQuery = "SELECT tipo, COUNT(*) as total FROM INFRA.DBO.TB_INVENTARIO_BE GROUP BY tipo";
-        $typeResult = $this->sqlDb->select($typeQuery);
-        $result['by_type'] = array();
-        
-        if(is_array($typeResult)){
-            foreach($typeResult as $row){
-                $result['by_type'][$row['tipo']] = $row['total'];
+        // Execute NULL query
+        $stmtNull = $this->db->query($queryNull);
+        if ($stmtNull) {
+            $rowNull = $stmtNull->fetch_assoc();
+            if ($rowNull && isset($rowNull['count_null'])) {
+                $result['NULL'] = (int)$rowNull['count_null'];
             }
         }
+        
+        // Remove secoes with 0 count (optional - uncomment if you want to exclude empty sections)
+        // $result = array_filter($result, function($count) { return $count > 0; });
         
         return $result;
     }
-
+    
     /**
-     * Get equipment that needs attention (old, no recent transactions, etc.)
+     * Helper function to manually create JSON since json_encode is not available in PHP 5.3
      */
-    function getEquipmentNeedingAttention(){
-        $query = "SELECT 
-                    inv.*,
-                    DATEDIFF(year, inv.dt_compra, GETDATE()) as years_old,
-                    (SELECT MAX(data_modifi) FROM INFRA.DBO.TB_TRANSICOES_INV WHERE id_equip = inv.id) as last_transaction
-                FROM INFRA.DBO.TB_INVENTARIO_BE inv
-                WHERE 
-                    DATEDIFF(year, inv.dt_compra, GETDATE()) > 5 
-                    OR inv.sts_equip = 'DESCARTE'
-                    OR inv.sts_equip = 'PADRONIZAR'
-                ORDER BY inv.dt_compra ASC";
+    public function arrayToJson($array) {
+        $json = '{';
+        $first = true;
         
-        $dados = $this->sqlDb->select($query);
-        return $dados;
-    }
-
-    /**
-     * Generate simple report with counts
-     */
-    function generateSimpleReport(){
-        $report = array();
-        
-        $report['inventory_summary'] = array(
-            'total_equipment' => $this->getInventarioCount(),
-            'total_transactions' => $this->getTransactionCount()
-        );
-        
-        // Equipment counts by status
-        $statusCounts = $this->getInventarioCountByStatus();
-        $report['equipment_by_status'] = array();
-        
-        if(is_array($statusCounts)){
-            foreach($statusCounts as $status){
-                $report['equipment_by_status'][$status['sts_equip']] = $status['total'];
+        foreach ($array as $key => $value) {
+            if (!$first) {
+                $json .= ',';
             }
+            
+            $json .= '"' . addslashes($key) . '":' . (is_numeric($value) ? $value : '"' . addslashes($value) . '"');
+            $first = false;
         }
         
-        // Recent activity (last 7 days)
-        $recentQuery = "SELECT COUNT(*) as total FROM INFRA.DBO.TB_TRANSICOES_INV 
-                       WHERE data_modifi >= DATEADD(day, -7, GETDATE())";
-        $recentResult = $this->sqlDb->select($recentQuery);
-        $report['recent_activity'] = isset($recentResult[0]['total']) ? $recentResult[0]['total'] : 0;
-        
-        return $report;
+        $json .= '}';
+        return $json;
     }
 }
+?>
 
-// Initialize the class (maintain backward compatibility)
-$consulta = new EnhancedInventoryModel();
-$inventoryModel = new EnhancedInventoryModel();
 
+
+------------------------------
+
+
+// Global variables to store chart data
+var inventarioData = {};
+var pieChart = null;
+
+/**
+ * Pie Chart Options Configuration
+ * Customize these options according to your charting library
+ */
+var pieChartOptions = {
+    responsive: true,
+    plugins: {
+        title: {
+            display: true,
+            text: 'Inventário por Seção'
+        },
+        legend: {
+            position: 'right',
+            labels: {
+                boxWidth: 12,
+                padding: 10
+            }
+        }
+    },
+    animation: {
+        animateScale: true,
+        animateRotate: true
+    }
+};
+
+/**
+ * Colors for pie chart segments
+ */
+var pieColors = [
+    '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
+    '#FF9F40', '#FF6384', '#C9CBCF', '#4BC0C0', '#FF6384',
+    '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40',
+    '#FF6384', '#C9CBCF', '#4BC0C0', '#FF6384', '#36A2EB',
+    '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#FF6384',
+    '#C9CBCF', '#4BC0C0', '#FF6384', '#36A2EB', '#FFCE56',
+    '#4BC0C0', '#9966FF', '#FF9F40', '#FF6384', '#C9CBCF',
+    '#4BC0C0', '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0',
+    '#9966FF', '#FF9F40', '#FF6384', '#C9CBCF', '#4BC0C0',
+    '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
+    '#FF9F40', '#FF6384', '#C9CBCF', '#4BC0C0', '#FF6384',
+    '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40',
+    '#FF6384', '#C9CBCF', '#4BC0C0'
+];
+
+/**
+ * Load inventory data via AJAX
+ */
+function loadInventarioData() {
+    // Create XMLHttpRequest object (compatible with older browsers)
+    var xhr;
+    if (window.XMLHttpRequest) {
+        xhr = new XMLHttpRequest();
+    } else {
+        xhr = new ActiveXObject("Microsoft.XMLHTTP");
+    }
+    
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) {
+            if (xhr.status === 200) {
+                try {
+                    // Parse the JSON response
+                    inventarioData = JSON.parse(xhr.responseText);
+                    updatePieChart();
+                } catch (e) {
+                    console.error('Error parsing JSON response:', e);
+                    alert('Erro ao carregar dados do inventário');
+                }
+            } else {
+                console.error('AJAX request failed:', xhr.status);
+                alert('Erro na requisição dos dados');
+            }
+        }
+    };
+    
+    xhr.open('GET', 'ajax_inventario.php', true);
+    xhr.send();
+}
+
+/**
+ * Update pie chart with loaded data
+ */
+function updatePieChart() {
+    var labels = [];
+    var data = [];
+    var colors = [];
+    var colorIndex = 0;
+    
+    // Process the inventory data
+    for (var secao in inventarioData) {
+        if (inventarioData.hasOwnProperty(secao) && inventarioData[secao] > 0) {
+            labels.push(secao === 'NULL' ? 'Sem Seção' : 'Seção ' + secao);
+            data.push(inventarioData[secao]);
+            colors.push(pieColors[colorIndex % pieColors.length]);
+            colorIndex++;
+        }
+    }
+    
+    // Chart.js format (adjust if using different library)
+    var chartData = {
+        labels: labels,
+        datasets: [{
+            data: data,
+            backgroundColor: colors,
+            borderColor: '#fff',
+            borderWidth: 2
+        }]
+    };
+    
+    // If chart already exists, destroy it first
+    if (pieChart) {
+        pieChart.destroy();
+    }
+    
+    // Create new chart (assuming Chart.js - adjust for your library)
+    var ctx = document.getElementById('pieChart').getContext('2d');
+    pieChart = new Chart(ctx, {
+        type: 'pie',
+        data: chartData,
+        options: pieChartOptions
+    });
+}
+
+/**
+ * Refresh chart data
+ */
+function refreshChart() {
+    loadInventarioData();
+}
+
+/**
+ * Get chart statistics
+ */
+function getChartStats() {
+    var total = 0;
+    var sectionsCount = 0;
+    
+    for (var secao in inventarioData) {
+        if (inventarioData.hasOwnProperty(secao) && inventarioData[secao] > 0) {
+            total += inventarioData[secao];
+            sectionsCount++;
+        }
+    }
+    
+    return {
+        total: total,
+        sections: sectionsCount,
+        data: inventarioData
+    };
+}
+
+/**
+ * Initialize chart when page loads
+ */
+document.addEventListener('DOMContentLoaded', function() {
+    loadInventarioData();
+});
+
+// Alternative initialization for older browsers
+if (document.addEventListener) {
+    document.addEventListener('DOMContentLoaded', function() {
+        loadInventarioData();
+    });
+} else {
+    window.onload = function() {
+        loadInventarioData();
+    };
+}
+
+-------------------------
+
+
+<?php
+// Prevent direct access
+if (!isset($_SERVER['HTTP_X_REQUESTED_WITH']) || $_SERVER['HTTP_X_REQUESTED_WITH'] !== 'XMLHttpRequest') {
+    // Allow for testing purposes, but you might want to uncomment this in production
+    // exit('Direct access not allowed');
+}
+
+// Include your database connection file
+// require_once 'database_connection.php';
+
+// Include the model
+require_once 'testy.php';
+
+// Set content type for JSON response (compatible with PHP 5.3)
+header('Content-Type: application/json; charset=utf-8');
+
+try {
+    // Initialize database connection
+    // Replace this with your actual database connection
+    // Example for MySQL:
+    /*
+    $host = 'localhost';
+    $username = 'your_username';
+    $password = 'your_password';
+    $database = 'your_database';
+    
+    $connection = new mysqli($host, $username, $password, $database);
+    
+    if ($connection->connect_error) {
+        throw new Exception('Database connection failed: ' . $connection->connect_error);
+    }
+    */
+    
+    // For demonstration purposes, create a mock connection
+    // Replace this entire block with your actual database connection
+    $connection = null; // Replace with your actual connection
+    
+    if (!$connection) {
+        // Mock data for testing - remove this when you have real database connection
+        $mockData = array(
+            'NULL' => 5,
+            '008' => 12,
+            '009' => 8,
+            '012' => 15,
+            '015' => 22,
+            '018' => 7,
+            '022' => 9,
+            '028' => 11,
+            '032' => 18,
+            '042' => 14,
+            '043' => 6,
+            '047' => 13,
+            '060' => 20,
+            '066' => 4,
+            '073' => 16,
+            '078' => 10,
+            '081' => 8,
+            '092' => 12,
+            '10' => 25,
+            '100' => 3
+        );
+        
+        // Manual JSON creation for PHP 5.3
+        echo '{';
+        $first = true;
+        foreach ($mockData as $key => $value) {
+            if (!$first) echo ',';
+            echo '"' . $key . '":' . $value;
+            $first = false;
+        }
+        echo '}';
+        exit;
+    }
+    
+    // Create model instance
+    $inventarioModel = new InventarioModel($connection);
+    
+    // Get inventory count by secao
+    $result = $inventarioModel->getInventarioCountBySecao();
+    
+    // Return JSON response using our custom function
+    echo $inventarioModel->arrayToJson($result);
+    
+} catch (Exception $e) {
+    // Error handling
+    $error = array('error' => 'Erro ao buscar dados: ' . $e->getMessage());
+    
+    // Manual JSON creation for error
+    echo '{"error":"' . addslashes($e->getMessage()) . '"}';
+    
+    // Log error if needed
+    error_log('Inventario AJAX Error: ' . $e->getMessage());
+}
+
+// Close database connection if it exists
+if (isset($connection) && $connection) {
+    $connection->close();
+}
 ?>
