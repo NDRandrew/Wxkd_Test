@@ -24,23 +24,55 @@ class InventarioModel {
         // Your database query here - adjust table and column names as needed
         $query = "SELECT secao, COUNT(*) as count FROM inventario_table GROUP BY secao";
         
-        // Execute query (adjust based on your database connection method)
-        $result = mysql_query($query); // or mysqli_query() or your preferred method
-        
-        if ($result) {
-            while ($row = mysql_fetch_assoc($result)) {
-                $secaoValue = $row['secao'];
-                
-                // Handle NULL values
-                if ($secaoValue === null || $secaoValue === '') {
-                    $secaoValue = 'NULL';
+        // Option 1: Using mysqli (available since PHP 5.0)
+        if (function_exists('mysqli_query')) {
+            // Assuming you have a mysqli connection $mysqli_connection
+            $result = mysqli_query($mysqli_connection, $query);
+            
+            if ($result) {
+                while ($row = mysqli_fetch_row($result)) {
+                    $secaoValue = $row[0]; // First column (secao)
+                    $countValue = $row[1]; // Second column (count)
+                    
+                    // Handle NULL values
+                    if ($secaoValue === null || $secaoValue === '') {
+                        $secaoValue = 'NULL';
+                    }
+                    
+                    // Only include if it's in our predefined list
+                    if (array_key_exists($secaoValue, $counts)) {
+                        $counts[$secaoValue] = (int)$countValue;
+                    }
                 }
-                
-                // Only include if it's in our predefined list
-                if (array_key_exists($secaoValue, $counts)) {
-                    $counts[$secaoValue] = (int)$row['count'];
-                }
+                mysqli_free_result($result);
             }
+        }
+        // Option 2: Using basic mysql_query with mysql_fetch_row (most basic approach)
+        else if (function_exists('mysql_query')) {
+            $result = mysql_query($query);
+            
+            if ($result) {
+                while ($row = mysql_fetch_row($result)) {
+                    $secaoValue = $row[0]; // First column (secao)
+                    $countValue = $row[1]; // Second column (count)
+                    
+                    // Handle NULL values
+                    if ($secaoValue === null || $secaoValue === '') {
+                        $secaoValue = 'NULL';
+                    }
+                    
+                    // Only include if it's in our predefined list
+                    if (array_key_exists($secaoValue, $counts)) {
+                        $counts[$secaoValue] = (int)$countValue;
+                    }
+                }
+                mysql_free_result($result);
+            }
+        }
+        // Option 3: Manual approach if you know what functions ARE available
+        else {
+            // You'll need to tell me which MySQL functions work in your environment
+            // Common alternatives might be: PDO, or custom database wrapper functions
         }
         
         return $counts;
@@ -227,3 +259,297 @@ initSecaoChart();
 function refreshSecaoChart() {
     loadSecaoData();
 }
+
+
+-----------------
+
+
+// Ultra-safe JavaScript for PHP 5.3 compatibility
+// Supports multiple data formats in case JSON fails
+
+var pieChartOptions = {
+    chart: {
+        type: 'pie',
+        height: 450
+    },
+    title: {
+        text: 'Inventário por Seção'
+    },
+    tooltip: {
+        pointFormat: '<b>{point.name}</b><br/>Quantidade: <b>{point.y}</b><br/>Percentual: <b>{point.percentage:.1f}%</b>'
+    },
+    plotOptions: {
+        pie: {
+            allowPointSelect: true,
+            cursor: 'pointer',
+            dataLabels: {
+                enabled: true,
+                format: '<b>{point.name}</b><br/>{point.percentage:.1f}%'
+            },
+            showInLegend: true
+        }
+    },
+    series: [{
+        name: 'Seções',
+        colorByPoint: true,
+        data: []
+    }]
+};
+
+// Function to parse data from multiple possible formats
+function parseSecaoData(responseText) {
+    var data = {};
+    
+    try {
+        // Method 1: Try JSON parsing
+        data = JSON.parse(responseText);
+        console.log('Data parsed as JSON successfully');
+        return data;
+    } catch (e1) {
+        console.log('JSON parsing failed, trying alternative methods');
+        
+        try {
+            // Method 2: Try eval (use with caution)
+            data = eval('(' + responseText + ')');
+            console.log('Data parsed with eval successfully');
+            return data;
+        } catch (e2) {
+            console.log('Eval parsing failed, trying text format');
+            
+            try {
+                // Method 3: Parse simple text format (secao:count|secao:count|...)
+                var pairs = responseText.split('|');
+                for (var i = 0; i < pairs.length; i++) {
+                    if (pairs[i].length > 0) {
+                        var parts = pairs[i].split(':');
+                        if (parts.length === 2) {
+                            data[parts[0]] = parseInt(parts[1]) || 0;
+                        }
+                    }
+                }
+                console.log('Data parsed from text format successfully');
+                return data;
+            } catch (e3) {
+                console.error('All parsing methods failed:', e1, e2, e3);
+                throw new Error('Unable to parse response data');
+            }
+        }
+    }
+}
+
+// Function to load data with multiple fallback methods
+function loadSecaoData() {
+    showLoading(true);
+    hideError();
+    
+    // Method 1: Try XMLHttpRequest
+    if (typeof XMLHttpRequest !== 'undefined') {
+        loadWithXHR();
+    } else {
+        // Method 2: Fallback to ActiveX for very old browsers
+        loadWithActiveX();
+    }
+}
+
+// Load data using XMLHttpRequest
+function loadWithXHR() {
+    var xhr = new XMLHttpRequest();
+    
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) {
+            showLoading(false);
+            
+            if (xhr.status === 200) {
+                processResponse(xhr.responseText);
+            } else {
+                showError('Erro ao carregar dados. Status: ' + xhr.status);
+                
+                // Fallback: try with different endpoint format
+                if (xhr.status === 404) {
+                    tryAlternativeEndpoints();
+                }
+            }
+        }
+    };
+    
+    xhr.open('GET', 'get_secao_data.php?format=json&t=' + new Date().getTime(), true);
+    xhr.send();
+}
+
+// Fallback for very old browsers
+function loadWithActiveX() {
+    try {
+        var xhr = new ActiveXObject('Microsoft.XMLHTTP');
+        
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState === 4) {
+                showLoading(false);
+                
+                if (xhr.status === 200) {
+                    processResponse(xhr.responseText);
+                } else {
+                    showError('Erro ao carregar dados (ActiveX). Status: ' + xhr.status);
+                }
+            }
+        };
+        
+        xhr.open('GET', 'get_secao_data.php?format=text&t=' + new Date().getTime(), true);
+        xhr.send();
+    } catch (e) {
+        showError('Navegador não suporta requisições AJAX: ' + e.message);
+    }
+}
+
+// Try alternative endpoints if main one fails
+function tryAlternativeEndpoints() {
+    var endpoints = [
+        'get_secao_data.php?format=text',
+        'inventario_data.php',
+        'secao_count.php'
+    ];
+    
+    for (var i = 0; i < endpoints.length; i++) {
+        tryEndpoint(endpoints[i]);
+    }
+}
+
+function tryEndpoint(url) {
+    var xhr = new XMLHttpRequest();
+    
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+            processResponse(xhr.responseText);
+        }
+    };
+    
+    xhr.open('GET', url + '?t=' + new Date().getTime(), true);
+    xhr.send();
+}
+
+// Process the response data
+function processResponse(responseText) {
+    try {
+        var data = parseSecaoData(responseText.trim());
+        
+        // Convert to chart format
+        var chartData = [];
+        var colors = generateColors(Object.keys(data).length);
+        var colorIndex = 0;
+        var totalItems = 0;
+        
+        for (var secao in data) {
+            if (data.hasOwnProperty(secao) && data[secao] > 0) {
+                var displayName = secao === 'NULL' ? 'Sem Seção' : 'Seção ' + secao;
+                
+                chartData.push({
+                    name: displayName,
+                    y: data[secao],
+                    color: colors[colorIndex % colors.length]
+                });
+                totalItems += data[secao];
+                colorIndex++;
+            }
+        }
+        
+        if (chartData.length === 0) {
+            showError('Nenhum dado encontrado para exibir no gráfico.');
+            return;
+        }
+        
+        // Update chart
+        updateChart(chartData, totalItems);
+        
+    } catch (e) {
+        console.error('Error processing response:', e);
+        showError('Erro ao processar dados: ' + e.message);
+        
+        // Show raw response for debugging
+        console.log('Raw response:', responseText);
+    }
+}
+
+// Update or create chart
+function updateChart(chartData, totalItems) {
+    pieChartOptions.subtitle = {
+        text: 'Total de itens: ' + totalItems
+    };
+    
+    pieChartOptions.series[0].data = chartData;
+    
+    if (window.secaoChart && typeof window.secaoChart.series !== 'undefined') {
+        // Update existing chart
+        window.secaoChart.series[0].setData(chartData);
+        if (window.secaoChart.setSubtitle) {
+            window.secaoChart.setSubtitle({text: 'Total de itens: ' + totalItems});
+        }
+    } else {
+        // Create new chart
+        createChart();
+    }
+}
+
+// Generate colors for chart
+function generateColors(count) {
+    var baseColors = [
+        '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57',
+        '#FF9FF3', '#54A0FF', '#5F27CD', '#00D2D3', '#FF9F43',
+        '#10AC84', '#EE5A24', '#0984E3', '#6C5CE7', '#A29BFE'
+    ];
+    
+    var colors = [];
+    for (var i = 0; i < count; i++) {
+        if (i < baseColors.length) {
+            colors.push(baseColors[i]);
+        } else {
+            // Generate random colors for extra items
+            var randomColor = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
+            colors.push(randomColor);
+        }
+    }
+    
+    return colors;
+}
+
+// Create chart
+function createChart() {
+    if (typeof Highcharts !== 'undefined') {
+        window.secaoChart = Highcharts.chart('chart-container', pieChartOptions);
+    } else {
+        showError('Biblioteca Highcharts não foi carregada');
+    }
+}
+
+// Utility functions
+function showLoading(show) {
+    var el = document.getElementById('loading');
+    if (el) el.style.display = show ? 'block' : 'none';
+}
+
+function showError(message) {
+    var el = document.getElementById('error-message');
+    if (el) {
+        el.textContent = message;
+        el.style.display = 'block';
+    }
+}
+
+function hideError() {
+    var el = document.getElementById('error-message');
+    if (el) el.style.display = 'none';
+}
+
+function refreshSecaoChart() {
+    loadSecaoData();
+}
+
+// Initialize when page loads
+function initChart() {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', loadSecaoData);
+    } else {
+        loadSecaoData();
+    }
+}
+
+// Auto-initialize
+initChart();
