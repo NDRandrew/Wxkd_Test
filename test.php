@@ -1,646 +1,493 @@
 <?php
-// Model file - enhanced getInventarioCountBySecao function
-class InventarioModel {
-    
-    public function getInventarioCountBySecao() {
-        // Define all SECAO values
-        $secaoList = array(
-            'NULL', '008', '009', '012', '015', '018', '022', '028', '032', '042',
-            '043', '047', '060', '066', '073', '078', '081', '092', '10', '100',
-            '113', '12', '13', '14', '15', '16', '17', '18', '2', '23',
-            '26', '27', '28', '30', '32', '33', '34', '35', '36', '40',
-            '43', '45', '46', '47', '49', '54', '55', '6', '60', '67',
-            '68', '7', '70', '73', '75', '76', '79', '8', '81', '898',
-            '9', '910', '92'
-        );
-        
-        $counts = array();
-        
-        // Initialize all sections with 0 count
-        foreach ($secaoList as $secao) {
-            $counts[$secao] = 0;
+
+// Add these methods to your EnhancedInventoryModel class
+
+/**
+ * Get inventory count by SECAO (fixed version)
+ */
+function getInventarioCountBySecao($secao){
+    $query = "SELECT COUNT(B.SECAO) as total FROM INFRA.DBO.TB_INVENTARIO_BE A 
+                RIGHT JOIN (SELECT DISTINCT
+                        A.cod_func,
+                        A.nome_func,
+                        A.E_MAIL AS Email_Func,
+                        RAMAL,
+                        RAMAL_INTERNO,
+                        DDD_CEL_CORPORATIVO,
+                        CELULAR_CORPORATIVO,
+                        A.SECAO
+                    FROM MESU..FUNCIONARIOS AS A
+                    WHERE DT_TransDem IS NULL
+                    ) B ON B.COD_FUNC=A.COD_FUNC
+                    WHERE B.SECAO = '$secao'";
+    $result = $this->sqlDb->select($query);
+    return isset($result[0]['total']) ? $result[0]['total'] : 0;
+}
+
+/**
+ * Get all SECAO counts at once (more efficient)
+ */
+function getAllSecaosCounts($secaos){
+    $secaoList = "'" . implode("','", $secaos) . "'";
+    $query = "SELECT B.SECAO, COUNT(B.SECAO) as total FROM INFRA.DBO.TB_INVENTARIO_BE A 
+                RIGHT JOIN (SELECT DISTINCT
+                        A.cod_func,
+                        A.nome_func,
+                        A.E_MAIL AS Email_Func,
+                        RAMAL,
+                        RAMAL_INTERNO,
+                        DDD_CEL_CORPORATIVO,
+                        CELULAR_CORPORATIVO,
+                        A.SECAO
+                    FROM MESU..FUNCIONARIOS AS A
+                    WHERE DT_TransDem IS NULL
+                    ) B ON B.COD_FUNC=A.COD_FUNC
+                    WHERE B.SECAO IN ($secaoList)
+                    GROUP BY B.SECAO
+                    ORDER BY B.SECAO";
+    $result = $this->sqlDb->select($query);
+    return $result;
+}
+
+/**
+ * Simple output function for PHP 5.3 compatibility
+ */
+function outputData($data) {
+    if (is_array($data)) {
+        $output = "";
+        foreach ($data as $key => $value) {
+            $output .= $key . ":" . $value . "|";
         }
-        
-        // MSSQL query - adjust table and column names as needed
-        $query = "SELECT secao, COUNT(*) as count FROM inventario_table GROUP BY secao";
-        
-        // Execute query using MSSQL functions (PHP 5.3 compatible)
-        $result = mssql_query($query); // Assumes connection is already established
-        
-        if ($result) {
-            while ($row = mssql_fetch_array($result, MSSQL_ASSOC)) {
-                $secaoValue = $row['secao'];
-                
-                // Handle NULL values
-                if ($secaoValue === null || $secaoValue === '') {
-                    $secaoValue = 'NULL';
-                }
-                
-                // Only include if it's in our predefined list
-                if (array_key_exists($secaoValue, $counts)) {
-                    $counts[$secaoValue] = (int)$row['count'];
-                }
-            }
-            
-            // Free result memory
-            mssql_free_result($result);
-        }
-        
-        return $counts;
-    }
-    
-    // Helper function to output data for AJAX (PHP 5.3 compatible)
-    public function getInventarioCountForChart() {
-        $counts = $this->getInventarioCountBySecao();
-        
-        // Manual JSON encoding for PHP 5.3
-        $jsonOutput = '{';
-        $first = true;
-        
-        foreach ($counts as $secao => $count) {
-            if (!$first) {
-                $jsonOutput .= ',';
-            }
-            $jsonOutput .= '"' . $secao . '":' . $count;
-            $first = false;
-        }
-        
-        $jsonOutput .= '}';
-        
-        return $jsonOutput;
+        echo rtrim($output, "|");
+    } else {
+        echo $data;
     }
 }
+
 ?>
+
 ---------------
+
+
 <?php
-// get_secao_data.php - AJAX endpoint for retrieving SECAO data
-// PHP 5.3 compatible
+// File: secao_endpoint.php
+// AJAX endpoint for getting SECAO data
 
-// Include your model file here
-// require_once 'path/to/your/model.php';
+require_once('path/to/your/EnhancedInventoryModel.php'); // Adjust path as needed
 
-// Since we can't use header() changes, we'll output plain text that JS can parse
-// The calling JS will need to handle this as text, not JSON
+// Initialize model
+$inventoryModel = new EnhancedInventoryModel();
 
-$model = new InventarioModel();
-$data = $model->getInventarioCountForChart();
+// Set content type for plain text (PHP 5.3 compatible)
+if (function_exists('http_response_code')) {
+    http_response_code(200);
+}
 
-// Output the data directly
-echo $data;
+// Get action parameter
+$action = isset($_GET['action']) ? $_GET['action'] : '';
 
-// No exit() or die() needed, but you can add them if preferred
+if ($action == 'single_secao') {
+    // Get single SECAO count
+    $secao = isset($_GET['secao']) ? $_GET['secao'] : '';
+    
+    if ($secao !== '') {
+        $count = $inventoryModel->getInventarioCountBySecao($secao);
+        echo $count;
+    } else {
+        echo '0';
+    }
+    
+} elseif ($action == 'all_secaos') {
+    // Get all SECAOs data at once (more efficient)
+    $secaos = array('008', '009', '012', '015', '018', '022', '028', '032', '042', '043', '047', 
+                   '060', '066', '073', '078', '081', '092', '10', '100', '113', '12', '13', '14', 
+                   '15', '16', '17', '18', '2', '23', '26', '27', '28', '30', '32', '33', '34', 
+                   '35', '36', '40', '43', '45', '46', '47', '49', '54', '55', '6', '60', '67', 
+                   '68', '7', '70', '73', '75', '76', '79', '8', '81', '898', '9', '910', '92');
+    
+    $results = $inventoryModel->getAllSecaosCounts($secaos);
+    
+    // Format output for easy parsing in JavaScript
+    $output = "";
+    foreach ($results as $row) {
+        $secao = isset($row['SECAO']) ? $row['SECAO'] : (isset($row['secao']) ? $row['secao'] : '');
+        $total = isset($row['total']) ? $row['total'] : 0;
+        $output .= $secao . ":" . $total . "|";
+    }
+    
+    // Remove trailing pipe
+    echo rtrim($output, "|");
+    
+} else {
+    echo 'Invalid action';
+}
+
+// Ensure output is sent
+if (ob_get_level()) {
+    ob_end_flush();
+}
 ?>
----------------
 
-// Enhanced pieChartOptions with AJAX data loading
-var pieChartOptions = {
-    chart: {
-        type: 'pie',
-        height: 400
-    },
-    title: {
-        text: 'Inventário por Seção'
-    },
-    plotOptions: {
-        pie: {
-            allowPointSelect: true,
-            cursor: 'pointer',
-            dataLabels: {
-                enabled: true,
-                format: '<b>{point.name}</b>: {point.percentage:.1f} %'
-            },
-            showInLegend: true
-        }
-    },
-    series: [{
-        name: 'Seções',
-        colorByPoint: true,
-        data: [] // Will be populated by AJAX
-    }]
-};
+--------------------
 
-// Function to load data via AJAX and update chart
-function loadSecaoData() {
-    // Create XMLHttpRequest for PHP 5.3 compatibility
-    var xhr = new XMLHttpRequest();
-    
-    xhr.onreadystatechange = function() {
-        if (xhr.readyState === 4 && xhr.status === 200) {
-            try {
-                // Parse the response manually since we can't rely on JSON response headers
-                var responseText = xhr.responseText.trim();
-                var data;
-                
-                // Try to parse as JSON
-                try {
-                    data = JSON.parse(responseText);
-                } catch (e) {
-                    // If JSON parsing fails, try to evaluate it (be careful with this in production)
-                    data = eval('(' + responseText + ')');
-                }
-                
-                // Convert data to chart format
-                var chartData = [];
-                var colors = generateColors(Object.keys(data).length);
-                var colorIndex = 0;
-                
-                for (var secao in data) {
-                    if (data.hasOwnProperty(secao) && data[secao] > 0) {
-                        chartData.push({
-                            name: 'SECAO ' + secao,
-                            y: data[secao],
-                            color: colors[colorIndex % colors.length]
-                        });
-                        colorIndex++;
-                    }
-                }
-                
-                // Update chart data
-                pieChartOptions.series[0].data = chartData;
-                
-                // If using Highcharts, refresh the chart
-                if (typeof Highcharts !== 'undefined' && window.secaoChart) {
-                    window.secaoChart.series[0].setData(chartData);
-                } else {
-                    // Create new chart if it doesn't exist
-                    createChart();
-                }
-                
-            } catch (e) {
-                console.error('Error processing SECAO data:', e);
-                console.log('Response received:', xhr.responseText);
-            }
-        }
-    };
-    
-    xhr.open('GET', 'get_secao_data.php', true);
-    xhr.send();
-}
+// Custom Charts for SISB Dashboard with SECAO Data
+// File: assets/js/custom-charts.js
 
-// Function to generate colors for the pie chart
-function generateColors(count) {
-    var colors = [
-        '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57',
-        '#FF9FF3', '#54A0FF', '#5F27CD', '#00D2D3', '#FF9F43',
-        '#10AC84', '#EE5A24', '#0984E3', '#6C5CE7', '#A29BFE',
-        '#FD79A8', '#E84393', '#2D3436', '#636E72', '#B2BEC3',
-        '#DDA0DD', '#98FB98', '#F0E68C', '#FFB6C1', '#87CEEB',
-        '#DEB887', '#CD853F', '#FFA07A', '#20B2AA', '#87CEFA',
-        '#778899', '#B0C4DE', '#FFFFE0', '#00FF00', '#32CD32',
-        '#FAF0E6', '#FF00FF', '#800000', '#66CDAA', '#0000CD',
-        '#BA55D3', '#9370DB', '#3CB371', '#7B68EE', '#00FA9A',
-        '#48D1CC', '#C71585', '#191970', '#F5FFFA', '#FFE4E1',
-        '#006400', '#8B0000', '#008B8B', '#9ACD32', '#FF4500',
-        '#DA70D6', '#EEE8AA', '#98FB98', '#F0E68C', '#DDA0DD'
-    ];
-    
-    // If we need more colors than predefined, generate them
-    while (colors.length < count) {
-        colors.push('#' + Math.floor(Math.random()*16777215).toString(16));
-    }
-    
-    return colors;
-}
+// Global variables for chart data
+var secaoData = [];
+var chartsInitialized = false;
 
-// Function to create the chart (assuming Highcharts)
-function createChart() {
-    if (typeof Highcharts !== 'undefined') {
-        window.secaoChart = Highcharts.chart('container', pieChartOptions);
-    } else {
-        console.error('Highcharts library not loaded');
-    }
-}
+// List of all SECAOs
+var allSecaos = ['008', '009', '012', '015', '018', '022', '028', '032', '042', '043', '047', 
+                '060', '066', '073', '078', '081', '092', '10', '100', '113', '12', '13', '14', 
+                '15', '16', '17', '18', '2', '23', '26', '27', '28', '30', '32', '33', '34', 
+                '35', '36', '40', '43', '45', '46', '47', '49', '54', '55', '6', '60', '67', 
+                '68', '7', '70', '73', '75', '76', '79', '8', '81', '898', '9', '910', '92'];
 
-// Function to initialize the chart system
-function initSecaoChart() {
-    // Load data when page is ready
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function() {
-            loadSecaoData();
-        });
-    } else {
-        loadSecaoData();
-    }
-}
-
-// Auto-initialize
-initSecaoChart();
-
-// Function to refresh chart data (call this when needed)
-function refreshSecaoChart() {
-    loadSecaoData();
-}
-
-
------------------
-
-
-// Ultra-safe JavaScript for PHP 5.3 compatibility
-// Supports multiple data formats in case JSON fails
-
-var pieChartOptions = {
-    chart: {
-        type: 'pie',
-        height: 450
-    },
-    title: {
-        text: 'Inventário por Seção'
-    },
-    tooltip: {
-        pointFormat: '<b>{point.name}</b><br/>Quantidade: <b>{point.y}</b><br/>Percentual: <b>{point.percentage:.1f}%</b>'
-    },
-    plotOptions: {
-        pie: {
-            allowPointSelect: true,
-            cursor: 'pointer',
-            dataLabels: {
-                enabled: true,
-                format: '<b>{point.name}</b><br/>{point.percentage:.1f}%'
-            },
-            showInLegend: true
-        }
-    },
-    series: [{
-        name: 'Seções',
-        colorByPoint: true,
-        data: []
-    }]
-};
-
-// Function to parse data from multiple possible formats
-function parseSecaoData(responseText) {
-    var data = {};
-    
-    try {
-        // Method 1: Try JSON parsing
-        data = JSON.parse(responseText);
-        console.log('Data parsed as JSON successfully');
-        return data;
-    } catch (e1) {
-        console.log('JSON parsing failed, trying alternative methods');
-        
-        try {
-            // Method 2: Try eval (use with caution)
-            data = eval('(' + responseText + ')');
-            console.log('Data parsed with eval successfully');
-            return data;
-        } catch (e2) {
-            console.log('Eval parsing failed, trying text format');
+// Function to fetch SECAO data
+function fetchSecaoData(callback) {
+    $.ajax({
+        url: 'secao_endpoint.php?action=all_secaos', // Adjust path as needed
+        method: 'GET',
+        dataType: 'text',
+        success: function(response) {
+            console.log('Raw response:', response);
             
-            try {
-                // Method 3: Parse simple text format (secao:count|secao:count|...)
-                var pairs = responseText.split('|');
-                for (var i = 0; i < pairs.length; i++) {
-                    if (pairs[i].length > 0) {
-                        var parts = pairs[i].split(':');
-                        if (parts.length === 2) {
-                            data[parts[0]] = parseInt(parts[1]) || 0;
+            // Parse the response (format: "secao1:count1|secao2:count2|...")
+            var pairs = response.split('|');
+            secaoData = [];
+            
+            for (var i = 0; i < pairs.length; i++) {
+                if (pairs[i].trim() !== '') {
+                    var parts = pairs[i].split(':');
+                    if (parts.length === 2) {
+                        var secao = parts[0].trim();
+                        var count = parseInt(parts[1]) || 0;
+                        
+                        // Only add if count > 0 to avoid empty slices
+                        if (count > 0) {
+                            secaoData.push({
+                                name: 'Seção ' + secao,
+                                y: count,
+                                secao: secao
+                            });
                         }
                     }
                 }
-                console.log('Data parsed from text format successfully');
-                return data;
-            } catch (e3) {
-                console.error('All parsing methods failed:', e1, e2, e3);
-                throw new Error('Unable to parse response data');
             }
-        }
-    }
-}
-
-// Function to load data with multiple fallback methods
-function loadSecaoData() {
-    showLoading(true);
-    hideError();
-    
-    // Method 1: Try XMLHttpRequest
-    if (typeof XMLHttpRequest !== 'undefined') {
-        loadWithXHR();
-    } else {
-        // Method 2: Fallback to ActiveX for very old browsers
-        loadWithActiveX();
-    }
-}
-
-// Load data using XMLHttpRequest
-function loadWithXHR() {
-    var xhr = new XMLHttpRequest();
-    
-    xhr.onreadystatechange = function() {
-        if (xhr.readyState === 4) {
-            showLoading(false);
             
-            if (xhr.status === 200) {
-                processResponse(xhr.responseText);
-            } else {
-                showError('Erro ao carregar dados. Status: ' + xhr.status);
-                
-                // Fallback: try with different endpoint format
-                if (xhr.status === 404) {
-                    tryAlternativeEndpoints();
+            // Sort by count (descending)
+            secaoData.sort(function(a, b) { return b.y - a.y; });
+            
+            console.log('Parsed SECAO data:', secaoData);
+            
+            if (callback && typeof callback === 'function') {
+                callback();
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('Error fetching SECAO data:', error);
+            console.error('Status:', status);
+            console.error('Response:', xhr.responseText);
+            
+            // Use fallback data if AJAX fails
+            secaoData = [
+                { name: 'Seção 012', y: 45 },
+                { name: 'Seção 015', y: 32 },
+                { name: 'Seção 008', y: 28 },
+                { name: 'Seção 022', y: 15 },
+                { name: 'Seção 032', y: 12 }
+            ];
+            
+            if (callback && typeof callback === 'function') {
+                callback();
+            }
+        }
+    });
+}
+
+// Function to fetch single SECAO count (alternative method)
+function fetchInventarioCount(secao, callback) {
+    $.ajax({
+        url: 'secao_endpoint.php?action=single_secao&secao=' + encodeURIComponent(secao),
+        method: 'GET',
+        dataType: 'text',
+        success: function(count) {
+            console.log('Inventário count for ' + secao + ':', count);
+            if (callback && typeof callback === 'function') {
+                callback(parseInt(count) || 0);
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('Error fetching inventário count for ' + secao + ':', error);
+            if (callback && typeof callback === 'function') {
+                callback(0);
+            }
+        }
+    });
+}
+
+$(document).ready(function() {
+    
+    // Common chart options
+    var commonOptions = {
+        credits: {
+            enabled: false
+        },
+        exporting: {
+            enabled: true,
+            buttons: {
+                contextButton: {
+                    menuItems: ['downloadPNG', 'downloadJPEG', 'downloadPDF', 'downloadSVG']
                 }
             }
         }
     };
-    
-    xhr.open('GET', 'get_secao_data.php?format=json&t=' + new Date().getTime(), true);
-    xhr.send();
-}
 
-// Fallback for very old browsers
-function loadWithActiveX() {
-    try {
-        var xhr = new ActiveXObject('Microsoft.XMLHTTP');
-        
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState === 4) {
-                showLoading(false);
-                
-                if (xhr.status === 200) {
-                    processResponse(xhr.responseText);
-                } else {
-                    showError('Erro ao carregar dados (ActiveX). Status: ' + xhr.status);
+    // Pie Chart - SECAO Distribution (will be populated with real data)
+    var pieChartOptions = $.extend(true, {}, commonOptions, {
+        chart: {
+            type: 'pie',
+            backgroundColor: 'transparent'
+        },
+        title: {
+            text: 'Distribuição por Seção'
+        },
+        tooltip: {
+            pointFormat: '{series.name}: <b>{point.percentage:.1f}%</b><br/>Quantidade: <b>{point.y}</b>'
+        },
+        plotOptions: {
+            pie: {
+                allowPointSelect: true,
+                cursor: 'pointer',
+                dataLabels: {
+                    enabled: true,
+                    format: '<b>{point.name}</b>: {point.y} ({point.percentage:.1f}%)',
+                    style: {
+                        fontSize: '11px'
+                    }
+                },
+                showInLegend: true,
+                colors: ['#AC193D', '#5DB2FF', '#53a93f', '#FF8F32', '#8C0095', '#03B3B2', '#cc324b', 
+                        '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98FB98',
+                        '#F0E68C', '#FFA07A', '#20B2AA', '#87CEEB', '#DEB887', '#5F9EA0'] // More colors for more sections
+            }
+        },
+        series: [{
+            name: 'Seções',
+            data: [] // Will be populated with real data
+        }]
+    });
+
+    // Bar Chart - Monthly Sales (existing)
+    var barChartOptions = $.extend(true, {}, commonOptions, {
+        chart: {
+            type: 'column',
+            backgroundColor: 'transparent'
+        },
+        title: {
+            text: 'Vendas Mensais'
+        },
+        xAxis: {
+            categories: ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'],
+            crosshair: true
+        },
+        yAxis: {
+            min: 0,
+            title: {
+                text: 'Vendas (R$ mil)'
+            }
+        },
+        tooltip: {
+            headerFormat: '<span style="font-size:10px; ">{point.key}</span><table>',
+            pointFormat: '<tr><td style="color:{series.color};padding:0">{series.name}: </td>' +
+                '<td style="padding:0; "><b>R$ {point.y:.1f}k</b></td></tr>',
+            footerFormat: '</table>',
+            shared: true,
+            useHTML: true
+        },
+        plotOptions: {
+            column: {
+                pointPadding: 0.2,
+                borderWidth: 0,
+                dataLabels: {
+                    enabled: true,
+                    format: 'R$ {point.y}k'
                 }
             }
-        };
-        
-        xhr.open('GET', 'get_secao_data.php?format=text&t=' + new Date().getTime(), true);
-        xhr.send();
-    } catch (e) {
-        showError('Navegador não suporta requisições AJAX: ' + e.message);
-    }
-}
+        },
+        colors: ['#AC193D', '#5DB2FF'],
+        series: [{
+            name: '2024',
+            data: [150, 180, 220, 190, 240, 280, 320, 290, 250, 310, 340, 380]
+        }, {
+            name: '2023',
+            data: [120, 140, 160, 150, 180, 210, 240, 220, 200, 230, 260, 290]
+        }]
+    });
 
-// Try alternative endpoints if main one fails
-function tryAlternativeEndpoints() {
-    var endpoints = [
-        'get_secao_data.php?format=text',
-        'inventario_data.php',
-        'secao_count.php'
-    ];
-    
-    for (var i = 0; i < endpoints.length; i++) {
-        tryEndpoint(endpoints[i]);
-    }
-}
+    // Quarterly Performance Chart (existing)
+    var quarterlyChartOptions = $.extend(true, {}, commonOptions, {
+        chart: {
+            type: 'line',
+            backgroundColor: 'transparent'
+        },
+        title: {
+            text: 'Performance Trimestral'
+        },
+        xAxis: {
+            categories: ['Q1 2023', 'Q2 2023', 'Q3 2023', 'Q4 2023', 'Q1 2024', 'Q2 2024', 'Q3 2024', 'Q4 2024']
+        },
+        yAxis: {
+            title: {
+                text: 'Performance (%)'
+            }
+        },
+        tooltip: {
+            valueSuffix: '%'
+        },
+        plotOptions: {
+            line: {
+                dataLabels: {
+                    enabled: true,
+                    format: '{point.y}%'
+                },
+                enableMouseTracking: true
+            }
+        },
+        colors: ['#AC193D', '#5DB2FF', '#53a93f'],
+        series: [{
+            name: 'Meta',
+            data: [85, 88, 90, 92, 85, 88, 90, 92]
+        }, {
+            name: 'Realizado',
+            data: [82, 91, 87, 89, 88, 94, 92, 95]
+        }, {
+            name: 'Projeção',
+            data: [80, 85, 88, 90, 85, 90, 94, 97]
+        }]
+    });
 
-function tryEndpoint(url) {
-    var xhr = new XMLHttpRequest();
-    
-    xhr.onreadystatechange = function() {
-        if (xhr.readyState === 4 && xhr.status === 200) {
-            processResponse(xhr.responseText);
+    // Initialize charts when page loads
+    function initializeCharts() {
+        try {
+            // Check if containers exist before creating charts
+            if ($('#pieChart').length && secaoData.length > 0) {
+                // Update pie chart with real SECAO data
+                pieChartOptions.series[0].data = secaoData;
+                // Highlight the first (largest) slice
+                if (secaoData.length > 0) {
+                    secaoData[0].sliced = true;
+                    secaoData[0].selected = true;
+                }
+                Highcharts.chart('pieChart', pieChartOptions);
+            } else if ($('#pieChart').length) {
+                // Show loading message
+                $('#pieChart').html('<div style="text-align:center; padding:50px;">Carregando dados das seções...</div>');
+            }
+            
+            if ($('#barChart').length) {
+                Highcharts.chart('barChart', barChartOptions);
+            }
+            
+            if ($('#quarterlyChart').length) {
+                Highcharts.chart('quarterlyChart', quarterlyChartOptions);
+            }
+            
+            console.log('Charts initialized successfully');
+            chartsInitialized = true;
+        } catch (error) {
+            console.error('Error initializing charts:', error);
         }
-    };
-    
-    xhr.open('GET', url + '?t=' + new Date().getTime(), true);
-    xhr.send();
-}
+    }
 
-// Process the response data
-function processResponse(responseText) {
-    try {
-        var data = parseSecaoData(responseText.trim());
-        
-        // Convert to chart format
-        var chartData = [];
-        var colors = generateColors(Object.keys(data).length);
-        var colorIndex = 0;
-        var totalItems = 0;
-        
-        for (var secao in data) {
-            if (data.hasOwnProperty(secao) && data[secao] > 0) {
-                var displayName = secao === 'NULL' ? 'Sem Seção' : 'Seção ' + secao;
-                
-                chartData.push({
-                    name: displayName,
-                    y: data[secao],
-                    color: colors[colorIndex % colors.length]
+    // Load SECAO data and then initialize charts
+    function loadDataAndInitializeCharts() {
+        console.log('Loading SECAO data...');
+        fetchSecaoData(function() {
+            console.log('SECAO data loaded, initializing charts...');
+            initializeCharts();
+        });
+    }
+
+    // Start the process
+    loadDataAndInitializeCharts();
+
+    // Responsive handling
+    $(window).resize(function() {
+        setTimeout(function() {
+            // Redraw charts on window resize
+            if (window.Highcharts) {
+                $.each(Highcharts.charts, function(i, chart) {
+                    if (chart) {
+                        chart.reflow();
+                    }
                 });
-                totalItems += data[secao];
-                colorIndex++;
             }
-        }
-        
-        if (chartData.length === 0) {
-            showError('Nenhum dado encontrado para exibir no gráfico.');
-            return;
-        }
-        
-        // Update chart
-        updateChart(chartData, totalItems);
-        
-    } catch (e) {
-        console.error('Error processing response:', e);
-        showError('Erro ao processar dados: ' + e.message);
-        
-        // Show raw response for debugging
-        console.log('Raw response:', responseText);
-    }
-}
+        }, 100);
+    });
 
-// Update or create chart
-function updateChart(chartData, totalItems) {
-    pieChartOptions.subtitle = {
-        text: 'Total de itens: ' + totalItems
+    // Function to refresh SECAO data
+    window.refreshSecaoData = function() {
+        console.log('Refreshing SECAO data...');
+        fetchSecaoData(function() {
+            console.log('Data refreshed, updating pie chart...');
+            updatePieChart(secaoData);
+        });
     };
-    
-    pieChartOptions.series[0].data = chartData;
-    
-    if (window.secaoChart && typeof window.secaoChart.series !== 'undefined') {
-        // Update existing chart
-        window.secaoChart.series[0].setData(chartData);
-        if (window.secaoChart.setSubtitle) {
-            window.secaoChart.setSubtitle({text: 'Total de itens: ' + totalItems});
-        }
-    } else {
-        // Create new chart
-        createChart();
-    }
-}
 
-// Generate colors for chart
-function generateColors(count) {
-    var baseColors = [
-        '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57',
-        '#FF9FF3', '#54A0FF', '#5F27CD', '#00D2D3', '#FF9F43',
-        '#10AC84', '#EE5A24', '#0984E3', '#6C5CE7', '#A29BFE'
-    ];
-    
-    var colors = [];
+    // Function to update pie chart data
+    window.updatePieChart = function(newData) {
+        var chart = Highcharts.charts.find(function(chart) {
+            return chart && chart.renderTo.id === 'pieChart';
+        });
+        
+        if (chart) {
+            chart.series[0].setData(newData || secaoData);
+        }
+    };
+
+    // Function to update bar chart data (for future use with AJAX)
+    window.updateBarChart = function(categories, series) {
+        var chart = Highcharts.charts.find(function(chart) {
+            return chart && chart.renderTo.id === 'barChart';
+        });
+        
+        if (chart) {
+            chart.xAxis[0].setCategories(categories);
+            chart.series[0].setData(series[0].data);
+            if (series[1]) {
+                chart.series[1].setData(series[1].data);
+            }
+        }
+    };
+
+    // Function to refresh all charts
+    window.refreshCharts = function() {
+        loadDataAndInitializeCharts();
+    };
+
+});
+
+// Utility function to generate random data for testing
+function generateRandomData(count, min, max) {
+    var data = [];
     for (var i = 0; i < count; i++) {
-        if (i < baseColors.length) {
-            colors.push(baseColors[i]);
-        } else {
-            // Generate random colors for extra items
-            var randomColor = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
-            colors.push(randomColor);
-        }
+        data.push(Math.floor(Math.random() * (max - min + 1)) + min);
     }
-    
-    return colors;
+    return data;
 }
 
-// Create chart
-function createChart() {
-    if (typeof Highcharts !== 'undefined') {
-        window.secaoChart = Highcharts.chart('chart-container', pieChartOptions);
-    } else {
-        showError('Biblioteca Highcharts não foi carregada');
-    }
-}
-
-// Utility functions
-function showLoading(show) {
-    var el = document.getElementById('loading');
-    if (el) el.style.display = show ? 'block' : 'none';
-}
-
-function showError(message) {
-    var el = document.getElementById('error-message');
-    if (el) {
-        el.textContent = message;
-        el.style.display = 'block';
-    }
-}
-
-function hideError() {
-    var el = document.getElementById('error-message');
-    if (el) el.style.display = 'none';
-}
-
-function refreshSecaoChart() {
-    loadSecaoData();
-}
-
-// Initialize when page loads
-function initChart() {
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', loadSecaoData);
-    } else {
-        loadSecaoData();
-    }
-}
-
-// Auto-initialize
-initChart();
-        -------------------------
-
-
-
-        <?php
-// Ultra-safe PHP 5.3 compatible model
-class InventarioModel {
-    
-    public function getInventarioCountBySecao() {
-        // Define all SECAO values
-        $secaoList = array(
-            'NULL', '008', '009', '012', '015', '018', '022', '028', '032', '042',
-            '043', '047', '060', '066', '073', '078', '081', '092', '10', '100',
-            '113', '12', '13', '14', '15', '16', '17', '18', '2', '23',
-            '26', '27', '28', '30', '32', '33', '34', '35', '36', '40',
-            '43', '45', '46', '47', '49', '54', '55', '6', '60', '67',
-            '68', '7', '70', '73', '75', '76', '79', '8', '81', '898',
-            '9', '910', '92'
-        );
-        
-        $counts = array();
-        
-        // Initialize all sections with 0 count
-        foreach ($secaoList as $secao) {
-            $counts[$secao] = 0;
-        }
-        
-        // APPROACH 1: If you have ANY working MySQL function, tell me which one
-        // For now, I'll provide the safest possible approach
-        
-        // APPROACH 2: Manual counting (safest but slower)
-        // Count each secao individually with simple queries
-        foreach ($secaoList as $secao) {
-            $secaoForQuery = ($secao === 'NULL') ? 'IS NULL' : "= '" . $secao . "'";
-            $query = "SELECT COUNT(*) FROM inventario_table WHERE secao " . $secaoForQuery;
-            
-            // Try different database functions until one works
-            $result = false;
-            $count = 0;
-            
-            // Try mysqli first (most likely to work in PHP 5.3)
-            if (function_exists('mysqli_query') && isset($mysqli_connection)) {
-                $result = mysqli_query($mysqli_connection, $query);
-                if ($result) {
-                    $row = mysqli_fetch_row($result);
-                    $count = $row[0];
-                    mysqli_free_result($result);
-                }
+// Function to export all charts as images (optional feature)
+function exportAllCharts() {
+    if (window.Highcharts) {
+        $.each(Highcharts.charts, function(i, chart) {
+            if (chart) {
+                chart.exportChart({
+                    type: 'image/png',
+                    filename: 'chart-' + (i + 1)
+                });
             }
-            // Try basic mysql_query with mysql_fetch_row
-            else if (function_exists('mysql_query')) {
-                $result = mysql_query($query);
-                if ($result) {
-                    $row = mysql_fetch_row($result);
-                    $count = $row[0];
-                    mysql_free_result($result);
-                }
-            }
-            
-            $counts[$secao] = (int)$count;
-        }
-        
-        return $counts;
-    }
-    
-    // Ultra-safe JSON output for PHP 5.3
-    public function getInventarioCountForChart() {
-        $counts = $this->getInventarioCountBySecao();
-        
-        // Manual JSON encoding - absolutely no dependencies
-        $output = '{';
-        $items = array();
-        
-        foreach ($counts as $secao => $count) {
-            // Escape the key safely
-            $key = str_replace('"', '\\"', $secao);
-            $items[] = '"' . $key . '":' . (int)$count;
-        }
-        
-        $output .= implode(',', $items);
-        $output .= '}';
-        
-        return $output;
-    }
-    
-    // Alternative: Simple text output if JSON parsing fails in JavaScript
-    public function getInventarioCountAsText() {
-        $counts = $this->getInventarioCountBySecao();
-        $output = '';
-        
-        foreach ($counts as $secao => $count) {
-            $output .= $secao . ':' . $count . '|';
-        }
-        
-        return rtrim($output, '|'); // Remove last pipe
+        });
     }
 }
-
-// DEBUGGING HELPER: Check what MySQL functions are available
-function checkAvailableMySQLFunctions() {
-    $functions = array(
-        'mysql_query', 'mysql_fetch_row', 'mysql_fetch_array', 'mysql_fetch_assoc',
-        'mysql_result', 'mysql_num_rows', 'mysql_free_result', 'mysql_connect',
-        'mysqli_query', 'mysqli_fetch_row', 'mysqli_fetch_array', 'mysqli_fetch_assoc',
-        'mysqli_num_rows', 'mysqli_free_result', 'mysqli_connect'
-    );
-    
-    $available = array();
-    foreach ($functions as $func) {
-        if (function_exists($func)) {
-            $available[] = $func;
-        }
-    }
-    
-    return $available;
-}
-
-// Uncomment this line to see what functions are available in your environment:
-// echo "Available MySQL functions: " . implode(', ', checkAvailableMySQLFunctions());
-?>
