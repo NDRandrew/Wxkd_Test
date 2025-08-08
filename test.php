@@ -1,4 +1,173 @@
 <?php
+@session_start();
+
+require_once('TratamentosInv.php');
+
+if(isset($_POST['action']) && $_POST['action'] == 'buscar_equipamento'){
+    
+    $consulta = new ClassDados();
+    
+    // Sanitize input data
+    $filtros = array();
+    
+    if(isset($_POST['tipo']) && !empty($_POST['tipo'])){
+        $filtros['tipo'] = trim($_POST['tipo']);
+    }
+    
+    if(isset($_POST['marca']) && !empty($_POST['marca'])){
+        $filtros['marca'] = trim($_POST['marca']);
+    }
+    
+    if(isset($_POST['nome']) && !empty($_POST['nome'])){
+        $filtros['nome'] = trim($_POST['nome']);
+    }
+    
+    if(isset($_POST['cod_func']) && !empty($_POST['cod_func'])){
+        $filtros['cod_func'] = trim($_POST['cod_func']);
+    }
+    
+    if(isset($_POST['status']) && !empty($_POST['status'])){
+        $filtros['status'] = trim($_POST['status']);
+    }
+    
+    if(isset($_POST['num_serie']) && !empty($_POST['num_serie'])){
+        $filtros['num_serie'] = trim($_POST['num_serie']);
+    }
+    
+    // Get filtered equipment data
+    $equipamentos = $consulta->buscarEquipamentosFiltros($filtros);
+    
+    if(!empty($equipamentos)){
+        echo '<div class="widget">';
+        echo '<div class="widget-body no-padding">';
+        echo '<table class="table table-bordered table-hover table-striped" id="tbBuscaEquipamentos" style="width: 100%;">';
+        echo '<thead class="bordered-darkorange">';
+        echo '<tr role="row">';
+        echo '<th>ID</th>';
+        echo '<th>Tipo</th>';
+        echo '<th>Marca</th>';
+        echo '<th>Modelo</th>';
+        echo '<th>Hostname</th>';
+        echo '<th>Nº Série</th>';
+        echo '<th>Status</th>';
+        echo '<th>Usuário</th>';
+        echo '<th>Ação</th>';
+        echo '</tr>';
+        echo '</thead>';
+        echo '<tbody>';
+        
+        foreach($equipamentos as $equip){
+            $equipInfo = $equip['modelo'] . ' / ' . $equip['hostname'] . ' / ' . $equip['num_serie'];
+            
+            echo '<tr>';
+            echo '<td>' . $equip['id'] . '</td>';
+            echo '<td>' . $equip['tipo'] . '</td>';
+            echo '<td>' . $equip['marca'] . '</td>';
+            echo '<td>' . $equip['modelo'] . '</td>';
+            echo '<td>' . $equip['hostname'] . '</td>';
+            echo '<td>' . $equip['num_serie'] . '</td>';
+            echo '<td>';
+            
+            // Add label colors based on status
+            switch(strtoupper($equip['sts_equip'])){
+                case 'DISPONIVEL':
+                    echo '<span class="label label-success">Disponível</span>';
+                    break;
+                case 'EM USO':
+                    echo '<span class="label label-info">Em Uso</span>';
+                    break;
+                case 'RESERVADO':
+                    echo '<span class="label label-warning">Reservado</span>';
+                    break;
+                case 'PADRONIZAR':
+                    echo '<span class="label label-danger">Padronizar</span>';
+                    break;
+                case 'DESCARTE':
+                    echo '<span class="label label-default">Descarte</span>';
+                    break;
+                default:
+                    echo '<span class="label label-default">' . $equip['sts_equip'] . '</span>';
+            }
+            echo '</td>';
+            
+            echo '<td>' . $equip['nome_func'] . '</td>';
+            echo '<td>';
+            echo '<button class="btn btn-primary btn-sm equipamento-item" ';
+            echo 'data-equip-id="' . $equip['id'] . '" ';
+            echo 'data-equip-info="' . htmlspecialchars($equipInfo) . '">';
+            echo '<i class="fa fa-line-chart"></i> Ver Histórico';
+            echo '</button>';
+            echo '</td>';
+            echo '</tr>';
+        }
+        
+        echo '</tbody>';
+        echo '</table>';
+        echo '</div>';
+        echo '</div>';
+        
+        // JavaScript for DataTable initialization with pagination (50 items per page)
+        echo '<script>';
+        echo '$(document).ready(function(){';
+        echo '    $("#tbBuscaEquipamentos").DataTable({';
+        echo '        "sDom": "Tflt<\'row DTTTFooter\'<\'col-sm-6\'i><\'col-sm-6\'p>>",';
+        echo '        "iDisplayLength": 50,';
+        echo '        "bProcessing": true,';
+        echo '        "bDeferRender": true,';
+        echo '        "oTableTools": {';
+        echo '            "aButtons": ["copy"],';
+        echo '            "sSwfPath": "assets/swf/copy_csv_xls_pdf.swf"';
+        echo '        },';
+        echo '        "aLengthMenu": [[25, 50, 100, -1], [25, 50, 100, "Todos"]],';
+        echo '        "language": {';
+        echo '            "search": "Buscar:",';
+        echo '            "sLengthMenu": "Mostrar _MENU_ registros",';
+        echo '            "sInfo": "Mostrando _START_ a _END_ de _TOTAL_ registros",';
+        echo '            "sInfoEmpty": "Mostrando 0 a 0 de 0 registros",';
+        echo '            "sInfoFiltered": "(filtrado de _MAX_ registros no total)",';
+        echo '            "oPaginate": {';
+        echo '                "sPrevious": "Anterior",';
+        echo '                "sNext": "Próximo",';
+        echo '                "sFirst": "Primeiro",';
+        echo '                "sLast": "Último"';
+        echo '            },';
+        echo '            "zeroRecords": "Nenhum resultado encontrado!"';
+        echo '        },';
+        echo '        "ordering": true,';
+        echo '        "order": [[0, "desc"]],';
+        echo '        "columnDefs": [';
+        echo '            { "orderable": false, "targets": [8] }';
+        echo '        ]';
+        echo '    });';
+        echo '    ';
+        echo '    // Re-bind click events after DataTable initialization';
+        echo '    $("#tbBuscaEquipamentos").on("click", ".equipamento-item", function(){';
+        echo '        var equipId = $(this).data("equip-id");';
+        echo '        var equipInfo = $(this).data("equip-info");';
+        echo '        mostrarGraficoTransacoes(equipId, equipInfo);';
+        echo '    });';
+        echo '});';
+        echo '</script>';
+        
+    } else {
+        echo '<div class="alert alert-warning">';
+        echo '<strong>Aviso:</strong> Nenhum equipamento encontrado com os critérios especificados.';
+        echo '<br>Tente alterar os filtros de busca.';
+        echo '</div>';
+    }
+    
+} else {
+    echo '<div class="alert alert-danger">';
+    echo '<strong>Erro:</strong> Ação não reconhecida.';
+    echo '</div>';
+}
+?>
+
+
+---------------------
+
+
+<?php
     @session_start();
     $cod_usu = $_SESSION['cod_usu'];
 
@@ -383,8 +552,308 @@
 
 <!-- JavaScript for new functionality -->
 <script>
+// Global function for showing transaction graphics (needed for pagination)
+function mostrarGraficoTransacoes(equipId, equipInfo) {
+    $('#equipamento-selecionado').text(equipInfo);
+    
+    $.ajax({
+        url: 'buscar_transacoes.php',
+        type: 'POST',
+        data: 'equip_id=' + equipId,
+        success: function(response){
+            $('#timeline-transacoes').html(response);
+            $('#grafico-container').show();
+            
+            // Scroll to graph container
+            $('html, body').animate({
+                scrollTop: $('#grafico-container').offset().top - 100
+            }, 800);
+        },
+        error: function(){
+            $('#timeline-transacoes').html('<p class="text-danger">Erro ao carregar histórico de transações.</p>');
+            $('#grafico-container').show();
+        }
+    });
+}
+
 $(document).ready(function(){
-    $(".valorAq").maskMoney({prefix:'R$' ,allowNegative: false, thousands:'.', decimal:','});
+    $(".valorAq").maskMoney({prefix:'R
+
+<!-- Keep all existing modals -->
+<!-- ================MODAL DE CADASTRO DE NOVOS EQUIPAMENTOS======================= -->
+<div class="modal fade bs-example-modal-sm" tabindex="-1" role="dialog" aria-labelledby="mySmallModalLabel" aria-hidden="true" id="incluir">
+    <div class="modal-dialog modal-sm" style="width: 70%;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-hidden="true">X</button>
+                <h4 class="modal-title" id="mySmallModalLabel">Novo Equipamento</h4>
+            </div>
+            <div class="modal-body">
+                <div class="widget-header bordered-top bordered-palegreen">
+                    <span class="widget-caption">Cadastrar</span>
+                </div>
+                <div class="widget-body">
+                    <div class="row">                            
+                        <div class="col-xs-12">   
+                            <strong>Dados Esquipamentos</strong>
+                            <hr style="margin-top: 0px;">
+                            <div class="col-xs-2">
+                                <label>Tipo:</label>
+                                <select class="form-control dadosMaquina" name="tipo" id="tipo">
+                                    <option selected disabled value="">Escolha o Tipo..</option>
+                                    <option>DESKTOP</option>
+                                    <option>NOTEBOOK</option>
+                                    <option>DISPOSITIVOS</option>
+                                </select>
+                            </div>
+                            <div class="col-xs-2">
+                                <label>Marca:</label>
+                                <input type="text" class="form-control dadosMaquina" name="marca" id="marca" placeholder="">
+                            </div>
+                            <div class="col-xs-2">
+                                <label>Modelo:</label>
+                                <input type="text" class="form-control dadosMaquina" name="modelo" id="modelo" placeholder="">
+                            </div>
+                            <div class="col-xs-2">
+                                <label>Status:</label>
+                                <select class="form-control dadosMaquina" name="sts_equip" id="sts_equip">
+                                    <option selected disabled value="">Escolha o Tipo..</option>
+                                    <option>DISPONIVEL</option>
+                                    <option>EM USO</option>
+                                    <option>RESERVADO</option>
+                                    <option>PADRONIZAR</option>                                        
+                                    <option>DESCARTE</option>
+                                </select>
+                            </div>                                
+                        </div>
+                    </div>
+                    <div class="row" style="margin-top: 5px;">                            
+                        <div class="col-xs-12">  
+                            <div class="col-xs-2">
+                                <label>Nº de Série</label>
+                                <input type="text" class="form-control dadosMaquina" name="num_serie" id="num_serie" placeholder="">
+                            </div>
+                            <div class="col-xs-2">
+                                <label>Hostname:</label>
+                                <input type="text" class="form-control dadosMaquina" name="hostname" placeholder="">
+                            </div>
+                            <div class="col-xs-2" hidden="" id="loc_instal_div">
+                                <label>Local de Uso:</label>
+                                <input type="text" class="form-control dadosMaquina" name="loc_instal" id="loc_instal" placeholder="">
+                            </div>
+                            <div class="col-xs-2" hidden="" id="cod_func_div">
+                                <label>Codigo Funcional:</label>
+                                <input type="text" class="form-control dadosMaquina" name="cod_func" id="cod_func" onkeyup="MascaraCodFunc(this,event);" placeholder="">
+                            </div>
+                            <div class="col-xs-4" hidden="" id="nome_func_fiv"></div>
+                        </div>
+                    </div>
+
+                    <div class="row" style="margin-top: 15px;">
+                        <div class="col-xs-12">
+                            <strong>Dados Hardware/SoftWare</strong>
+                            <hr>
+                            <div class="col-xs-2">
+                                <label>Processador:</label>
+                                <input type="text" class="form-control dadosMaquina" name="processador" placeholder="Intel Core I7">
+                            </div>
+                            <div class="col-xs-2">
+                                <label>RAM:</label>
+                                <input type="text" class="form-control dadosMaquina" name="RAM" placeholder="8GB">
+                            </div>
+                             <div class="col-xs-2">
+                                <label>HD:</label>
+                                <input type="text" class="form-control dadosMaquina" name="HD" placeholder="500GB">
+                            </div>
+                            <div class="col-xs-2">
+                                <label>Sistema Operacional:</label>
+                                <input type="text" class="form-control dadosMaquina" name="sistem_op" placeholder="Windows 10">
+                            </div>
+                            <div class="col-xs-3">
+                                <label>Aplicativos:</label>
+                                <input type="text" class="form-control dadosMaquina" name="apps" placeholder="Pacote Office 2010, Cisco Any Connect">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row disp_mov" style="margin-top: 15px;" hidden>
+                        <div class="col-xs-12">
+                            <strong>Dados Dispositivo</strong>
+                            <hr>
+                            <div class="col-xs-2">
+                                <label>IMEI:</label>
+                                <input type="text" class="form-control dadosMaquina disp" name="IMEI" placeholder="">
+                            </div>
+                            <div class="col-xs-2">
+                                <label>Nº CHIP:</label>
+                                <input type="text" class="form-control dadosMaquina disp" name="NUM_CHIP" placeholder="">
+                            </div>
+                            <div class="col-xs-2">
+                                <label>OPERADORA:</label>
+                                <input type="text" class="form-control dadosMaquina disp" name="OPERADORA" placeholder="">
+                            </div>
+                            <div class="col-xs-2">
+                                <label>DDD:</label>
+                                <input type="text" class="form-control dadosMaquina disp" name="DDD" placeholder="">
+                            </div>
+                            <div class="col-xs-2">
+                                <label>Nº TEL:</label>
+                                <input type="text" class="form-control dadosMaquina disp" name="TEL" placeholder="">
+                            </div>
+                        </div>
+
+                    </div>
+                    <div class="row" style="margin-top: 15px;">
+                        <div class="col-xs-12">
+                            <b>Dados Compra</b>
+                            <hr>
+                            <div class="col-xs-2">
+                                <label>Nº SAP:</label>
+                                <input type="text" name="num_sap" class="form-control dadosMaquina">
+                            </div>
+                            <div class="col-xs-2">
+                                <label>Data da Aquisição:</label>
+                                <input type="text" name="dt_compra" id="dt_compra" class="form-control" onkeyup="MascaraData(this,event);">
+                            </div>
+                             <div class="col-xs-2">
+                                <label>Valor da Aquisição:</label>
+                                <input type="text" name="val_compra" id="val_compra" class="form-control valorAq" placeholder="R$0,00">
+                            </div>
+                            <div class="col-xs-2">
+                                <label>Nota:</label>
+                                <input type="text" name="nota" class="form-control dadosMaquina" >
+                            </div>
+                           
+                            <div class="col-xs-2" style="margin-top: 24px; text-align: center;">                                    
+                                <a class="btn btn-success" id="novoEquip">Inserir <i class="fa fa-check right"></i></a>                                    
+                            </div>
+                            <div class="col-xs-2" style="margin-top: 24px; text-align: right;">                
+                                <a class="btn btn-danger" id="cancelCad">Cancelar</i></a>                
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div><!-- /.modal-content -->
+    </div><!-- /.modal-dialog -->
+</div><!--Fim-->
+</body>
+
+<!-- ================MODAL DE EDITAR EQUIPAMENTOS======================= -->
+<div class="modal fade bs-example-modal-sm" tabindex="-1" role="dialog" aria-labelledby="mySmallModalLabel" aria-hidden="true" id="editar">
+    <div class="modal-dialog modal-sm" style="width: 80%;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-hidden="true">X</button>
+                <h4 class="modal-title" id="mySmallModalLabel">Equipamento</h4>
+            </div>
+            <div class="modal-body">
+                <div class="widget-header bordered-top bordered-palegreen">
+                    <span class="widget-caption">Editar / Excluir</span>
+                </div>
+                <div class="widget-body">
+                    <div id="modalEditar"></div>
+                </div>
+            </div>
+        </div><!-- /.modal-content -->
+    </div><!-- /.modal-dialog -->
+</div><!--Fim-->
+
+<!-- ================MODAL DE TRANSAÇÕES EDIT======================= -->
+<div class="modal fade bs-example-modal-sm" tabindex="-1" role="dialog" aria-labelledby="mySmallModalLabel" aria-hidden="true" id="transEditar">
+    <div class="modal-dialog modal-sm" style="width: 80%;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-hidden="true">X</button>
+                <h4 class="modal-title" id="mySmallModalLabel">Equipamento</h4>
+            </div>
+            <div class="modal-body">
+                <div class="widget-header bordered-top bordered-palegreen">
+                    <span class="widget-caption">Mais Informações / Excluir</span>
+                </div>
+                <div class="widget-body">
+                    <div id="modalTransEditar"></div>
+                </div>
+            </div>
+        </div><!-- /.modal-content -->
+    </div><!-- /.modal-dialog -->
+</div><!--Fim-->
+
+<!-- ================MODAL CONFIRMAÇÃO DELETAR EQUIPAMENTOS======================= -->
+<div class="modal fade bs-example-modal-sm" tabindex="-1" role="dialog" aria-labelledby="mySmallModalLabel" aria-hidden="true" id="deletar">
+    <div class="modal-dialog modal-sm" style="width: 13%; margin-top: 300px;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-hidden="true">X</button>
+                <h4 class="modal-title" id="mySmallModalLabel">Alerta !!</h4>
+            </div>
+            <div class="modal-body">
+                <div class="widget-header bordered-top bordered-palegreen">
+                    <span class="widget-caption">Deseja mesmo Excluir ?</span>
+                </div>
+                <div class="widget-body">
+                    <div class="row">
+                        <div class="col-xs-6">                
+                            <a class="btn btn-success" id="btnConfirma" cod="<?php echo $_GET['id']?>">Sim&nbsp;&nbsp;&nbsp;<i class="fa fa-check right"></i></a>                
+                        </div>
+                        <div class="col-xs-6">                
+                            <a class="btn btn-danger" id="btnCancela" cod="<?php echo $_GET['id']?>">Não&nbsp;&nbsp;&nbsp;<i class="fa fa-times"></i></a>                
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div><!-- /.modal-content -->
+    </div><!-- /.modal-dialog -->
+</div><!--Fim-->
+
+<!-- ================MODAL CONFIRMAÇÃO DELETAR EQUIPAMENTOS======================= -->
+<div class="modal fade bs-example-modal-sm" tabindex="-1" role="dialog" aria-labelledby="mySmallModalLabel" aria-hidden="true" id="deletarTrans">
+    <div class="modal-dialog modal-sm" style="width: 13%; margin-top: 300px;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-hidden="true">X</button>
+                <h4 class="modal-title" id="mySmallModalLabel">Alerta !!</h4>
+            </div>
+            <div class="modal-body">
+                <div class="widget-header bordered-top bordered-palegreen">
+                    <span class="widget-caption">Deseja mesmo Excluir ?</span>
+                </div>
+                <div class="widget-body">
+                    <div class="row">
+                        <div class="col-xs-6">                
+                            <a class="btn btn-success" id="btnConfirmaTrans" cod="<?php echo $_GET['id']?>">Sim&nbsp;&nbsp;&nbsp;<i class="fa fa-check right"></i></a>                
+                        </div>
+                        <div class="col-xs-6">                
+                            <a class="btn btn-danger" id="btnCancelaTrans" cod="<?php echo $_GET['id']?>">Não&nbsp;&nbsp;&nbsp;<i class="fa fa-times"></i></a>                
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div><!-- /.modal-content -->
+    </div><!-- /.modal-dialog -->
+</div><!--Fim-->
+
+<!-- ================MODAL ENVIANDO======================= -->
+<button hidden class="btn-modal" data-toggle="modal" data-target="#modal-position">teste</button>
+
+<div class="modal fade bs-example-modal-sm" tabindex="-1" role="dialog" aria-labelledby="mySmallModalLabel" aria-hidden="true" id="modal-position">
+    <div class="modal-dialog modal-sm" style="width: 13%; margin-top: 300px;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-hidden="true">X</button>
+                <h4 class="modal-title" id="mySmallModalLabel">Alerta !!</h4>
+            </div>
+            <div class="modal-body">
+                <div class="widget-body">
+                    <div class="row">
+                        <div class="col-xs-12" style="text-align: center;">                
+                            <b><h1 id="position" style="font-size: 12px;"></h1></b>
+                        </div>                   
+                    </div>
+                </div>
+            </div>
+        </div><!-- /.modal-content -->
+    </div><!-- /.modal-dialog -->
+</div><!--Fim--> ,allowNegative: false, thousands:'.', decimal:','});
     
     // Search equipment functionality
     $('#btnBuscarEquip').click(function(){
@@ -394,6 +863,9 @@ $(document).ready(function(){
         var cod_func = $('#busca_cod_func').val();
         var status = $('#busca_status').val();
         var num_serie = $('#busca_num_serie').val();
+        
+        // Show loading message
+        $('#resultadosBusca').html('<div class="text-center"><i class="fa fa-spinner fa-spin"></i> Buscando equipamentos...</div>');
         
         // Build query parameters
         var params = 'action=buscar_equipamento';
@@ -410,37 +882,18 @@ $(document).ready(function(){
             data: params,
             success: function(response){
                 $('#resultadosBusca').html(response);
-                
-                // Add click event to equipment items
-                $('.equipamento-item').click(function(){
-                    var equipId = $(this).data('equip-id');
-                    var equipInfo = $(this).data('equip-info');
-                    mostrarGraficoTransacoes(equipId, equipInfo);
-                });
+                // Event binding is now handled in the AJAX response script
             },
             error: function(){
-                $('#resultadosBusca').html('<p class="text-danger">Erro ao buscar equipamentos.</p>');
+                $('#resultadosBusca').html('<div class="alert alert-danger">Erro ao buscar equipamentos. Tente novamente.</div>');
             }
         });
     });
     
-    function mostrarGraficoTransacoes(equipId, equipInfo) {
-        $('#equipamento-selecionado').text(equipInfo);
-        
-        $.ajax({
-            url: 'buscar_transacoes.php',
-            type: 'POST',
-            data: 'equip_id=' + equipId,
-            success: function(response){
-                $('#timeline-transacoes').html(response);
-                $('#grafico-container').show();
-            },
-            error: function(){
-                $('#timeline-transacoes').html('<p class="text-danger">Erro ao carregar histórico de transações.</p>');
-                $('#grafico-container').show();
-            }
-        });
-    }
+    // Clear search results when changing filters
+    $('#formBuscaEquip input, #formBuscaEquip select').change(function(){
+        $('#grafico-container').hide();
+    });
 });
 
 InitiateSimpleDataTable.init();
@@ -724,796 +1177,3 @@ InitiateSearchableDataTable.init();
         </div><!-- /.modal-content -->
     </div><!-- /.modal-dialog -->
 </div><!--Fim-->
-
-
---------------------
-
-
-
-<?php
-
-    //require_once('R:\Secoes\D4920S012\Comum_S012\xampp\htdocs\ERP_V.01.02\ClassRepository\geral\MSSQL\MSSQL2008.class.php');
-    require_once('\\\\mz-vv-fs-237\D4920\Secoes\D4920S012\Comum_S012\j\Server2Go\htdocs\erp\ClassRepository\geral\MSSQL\MSSQL.class.php');    
-    require_once("../../view/assets/dompdf/dompdf/dompdf_config.inc.php");
-    require_once('TratamentosInv.php');
-
-    @session_start();
-
-    $cod_usu = $_SESSION['cod_usu'];
-
-    $consulta = new ClassDados();
-
-    class ClassDados {       
-
-        function ClassDados(){
-            $this->sqlDb = new MSSQL("MESU");
-            $this->sqlTeste = new MSSQL("TESTE");
-         }
-
-        // OPTIMIZED: Join with FUNCIONARIOS table to avoid multiple queries
-        function selectInventarioOptimized(){
-            $query = 'SELECT 
-                        I.*,
-                        COALESCE(F.nome_func, SF.nomeFuncionario, \'\') as nome_func,
-                        COALESCE(F.RAMAL, SF.foneCelular, \'\') as RAMAL,
-                        COALESCE(F.RAMAL_INTERNO, \'\') as RAMAL_INTERNO,
-                        COALESCE(F.DDD_CEL_CORPORATIVO, \'\') as DDD_CEL_CORPORATIVO,
-                        COALESCE(F.CELULAR_CORPORATIVO, \'\') as CELULAR_CORPORATIVO
-                      FROM INFRA.DBO.TB_INVENTARIO_BE I
-                      LEFT JOIN MESU.DBO.FUNCIONARIOS F ON I.cod_func = F.COD_FUNC
-                      LEFT JOIN RH.DBO.STG_FUNCIONARIOS SF ON I.cod_func = SF.idFuncionario AND SF.dataDemissao IS NULL
-                      ORDER BY I.id DESC';
-                
-            $dados = $this->sqlDb->select($query);
-            
-            return $dados;
-        }
-
-        // OPTIMIZED: Join with FUNCIONARIOS table for both old and new employees
-        function selectTransacoesOptimized(){
-            $query = 'SELECT 
-                        A.id AS id_trans, 
-                        A.sts_ant,
-                        A.cod_func_antigo,
-                        A.sts_atual, 
-                        A.cod_func_atual,
-                        CONVERT(VARCHAR,A.data_modifi,103) AS dt_trans,
-                        A.id_equip,
-                        A.TERMO_RESP,
-                        A.TERMO_DEV,
-                        COALESCE(F1.NOME_FUNC, SF1.nomeFuncionario, \'\') as nome_func_antigo,
-                        COALESCE(F2.NOME_FUNC, SF2.nomeFuncionario, \'\') as nome_func_atual
-                      FROM INFRA.DBO.TB_TRANSICOES_INV A 
-                      LEFT JOIN MESU.DBO.FUNCIONARIOS F1 ON A.cod_func_antigo = F1.COD_FUNC
-                      LEFT JOIN RH.DBO.STG_FUNCIONARIOS SF1 ON A.cod_func_antigo = SF1.idFuncionario AND SF1.dataDemissao IS NULL
-                      LEFT JOIN MESU.DBO.FUNCIONARIOS F2 ON A.cod_func_atual = F2.COD_FUNC
-                      LEFT JOIN RH.DBO.STG_FUNCIONARIOS SF2 ON A.cod_func_atual = SF2.idFuncionario AND SF2.dataDemissao IS NULL
-                      LEFT JOIN INFRA.DBO.TB_INVENTARIO_BE C ON A.id_equip = C.id
-                      ORDER BY A.id';
-
-            $dados = $this->sqlDb->select($query);
-
-            return $dados;
-        }
-
-        // Keep original methods for compatibility
-        function selectInventario(){
-            $query = 'SELECT * FROM INFRA.DBO.TB_INVENTARIO_BE
-                        ORDER BY id DESC';
-                
-            $dados = $this->sqlDb->select($query);
-            
-            return $dados;
-        }
-
-        function selectTransacoes(){
-            $query =     'SELECT 
-                            A.id AS id_trans, 
-                            A.sts_ant,
-                            A.cod_func_antigo,
-                            A.sts_atual, 
-                            A.cod_func_atual,
-                            B.NOME_FUNC as nome_func,
-                            CONVERT(VARCHAR,A.data_modifi,103)AS dt_trans,
-                            A.id_equip,
-                            A.TERMO_RESP,
-                            A.TERMO_DEV
-                        FROM 
-                            INFRA.DBO.TB_TRANSICOES_INV A 
-                        JOIN 
-                            MESU.DBO.FUNCIONARIOS B
-                        ON 
-                            A.cod_func_atual = B.COD_FUNC or A.cod_func_antigo = B.COD_FUNC
-                        JOIN 
-                            INFRA.DBO.TB_INVENTARIO_BE C
-                        ON
-                            A.id_equip = C.id
-                            
-                        ORDER BY A.id';
-
-            $dados = $this->sqlDb->select($query);
-
-            return $dados;
-        }
-
-        // NEW: Search equipment with multiple filters
-        function buscarEquipamentosFiltros($filtros){
-            $where_conditions = array();
-            
-            if(!empty($filtros['tipo'])){
-                $where_conditions[] = "I.tipo = '" . $filtros['tipo'] . "'";
-            }
-            
-            if(!empty($filtros['marca'])){
-                $where_conditions[] = "I.marca LIKE '%" . $filtros['marca'] . "%'";
-            }
-            
-            if(!empty($filtros['nome'])){
-                $where_conditions[] = "(F.nome_func LIKE '%" . $filtros['nome'] . "%' OR SF.nomeFuncionario LIKE '%" . $filtros['nome'] . "%')";
-            }
-            
-            if(!empty($filtros['cod_func'])){
-                $where_conditions[] = "I.cod_func = '" . $filtros['cod_func'] . "'";
-            }
-            
-            if(!empty($filtros['status'])){
-                $where_conditions[] = "I.sts_equip = '" . $filtros['status'] . "'";
-            }
-            
-            if(!empty($filtros['num_serie'])){
-                $where_conditions[] = "I.num_serie LIKE '%" . $filtros['num_serie'] . "%'";
-            }
-            
-            $where_clause = '';
-            if(!empty($where_conditions)){
-                $where_clause = 'WHERE ' . implode(' AND ', $where_conditions);
-            }
-            
-            $query = "SELECT 
-                        I.id,
-                        I.tipo,
-                        I.marca,
-                        I.modelo,
-                        I.hostname,
-                        I.num_serie,
-                        I.sts_equip,
-                        I.cod_func,
-                        COALESCE(F.nome_func, SF.nomeFuncionario, '') as nome_func
-                      FROM INFRA.DBO.TB_INVENTARIO_BE I
-                      LEFT JOIN MESU.DBO.FUNCIONARIOS F ON I.cod_func = F.COD_FUNC
-                      LEFT JOIN RH.DBO.STG_FUNCIONARIOS SF ON I.cod_func = SF.idFuncionario AND SF.dataDemissao IS NULL
-                      $where_clause
-                      ORDER BY I.id DESC";
-
-            $dados = $this->sqlDb->select($query);
-            return $dados;
-        }
-
-        // NEW: Get transaction history for a specific equipment
-        function buscarTransacoesEquipamento($equip_id){
-            $query = "SELECT 
-                        A.id AS id_trans, 
-                        A.sts_ant,
-                        A.cod_func_antigo,
-                        A.sts_atual, 
-                        A.cod_func_atual,
-                        CONVERT(VARCHAR,A.data_modifi,103) AS dt_trans,
-                        A.id_equip,
-                        A.TERMO_RESP,
-                        A.TERMO_DEV,
-                        COALESCE(F1.NOME_FUNC, SF1.nomeFuncionario, 'Sistema') as nome_func_antigo,
-                        COALESCE(F2.NOME_FUNC, SF2.nomeFuncionario, 'Sistema') as nome_func_atual
-                      FROM INFRA.DBO.TB_TRANSICOES_INV A 
-                      LEFT JOIN MESU.DBO.FUNCIONARIOS F1 ON A.cod_func_antigo = F1.COD_FUNC
-                      LEFT JOIN RH.DBO.STG_FUNCIONARIOS SF1 ON A.cod_func_antigo = SF1.idFuncionario AND SF1.dataDemissao IS NULL
-                      LEFT JOIN MESU.DBO.FUNCIONARIOS F2 ON A.cod_func_atual = F2.COD_FUNC
-                      LEFT JOIN RH.DBO.STG_FUNCIONARIOS SF2 ON A.cod_func_atual = SF2.idFuncionario AND SF2.dataDemissao IS NULL
-                      WHERE A.id_equip = " . intval($equip_id) . "
-                      ORDER BY A.data_modifi ASC";
-
-            $dados = $this->sqlDb->select($query);
-            return $dados;
-        }
-
-        function searchById($id){
-
-            $query = "SELECT * FROM INFRA.DBO.TB_INVENTARIO_BE
-                        WHERE ID LIKE ".$id;
-
-            $dados = $this->sqlDb->select($query);
-
-            return $dados;
-
-        }
-        function searchByIdTrans($id){
-
-            $query = "SELECT 
-                            A.id AS id_trans, 
-                            A.sts_ant,
-                            A.cod_func_antigo,
-                            A.sts_atual, 
-                            A.cod_func_atual,
-                            B.NOME_FUNC as nome_func,
-                            CONVERT(VARCHAR,A.data_modifi,103)AS dt_trans,
-                            A.id_equip,
-                            A.TERMO_RESP,
-                            A.TERMO_DEV
-                        FROM 
-                            INFRA.DBO.TB_TRANSICOES_INV A 
-                        JOIN 
-                            MESU.DBO.FUNCIONARIOS B
-                        ON 
-                            A.cod_func_atual = B.COD_FUNC or A.cod_func_antigo = B.COD_FUNC
-                        JOIN 
-                            INFRA.DBO.TB_INVENTARIO_BE C
-                        ON
-                            A.id_equip = C.id
-                            
-
-                        WHERE A.id_equip = ".$id;
-
-            $dados = $this->sqlDb->select($query);
-
-            return $dados;
-
-        }
-
-        function selectTransacoesOne($id){
-            $query =     'SELECT 
-                            A.id as id_trans, 
-                            A.sts_ant,
-                            A.cod_func_antigo,
-                            A.sts_atual, 
-                            A.cod_func_atual,
-                            B.NOME_FUNC as nome_func,
-                            CONVERT(VARCHAR,A.data_modifi,103) AS dt_trans,
-                            A.id_equip,
-                            A.TERMO_RESP,
-                            A.TERMO_DEV,
-                            C.*
-                        FROM 
-                            INFRA.DBO.TB_TRANSICOES_INV A 
-                        JOIN 
-                            MESU.DBO.FUNCIONARIOS B
-                        ON 
-                            A.cod_func_atual = B.COD_FUNC or A.cod_func_antigo = B.COD_FUNC
-                        JOIN 
-                            INFRA.DBO.TB_INVENTARIO_BE C
-                        ON
-                            A.id_equip = C.id
-                            
-                        WHERE A.id = '.$id;
-
-            $dados = $this->sqlDb->select($query);
-
-            return $dados;
-        }
-
-        function dataDev($id ,$cod_func){
-            $query = 'SELECT CONVERT(VARCHAR, data_modifi, 103) AS DATA_MODIFI FROM INFRA.DBO.TB_TRANSICOES_INV
-                        where id_equip = '.$id.' and cod_func_atual = '.$cod_func;
-
-            $dados = $this->sqlDb->select($query);
-
-            return $dados;
-
-        }
-
-        function insertNovoEquip($query){
-            $dados = $this->sqlDb->insert($query);
-            return $dados;
-        }
-
-        function selectOne($cod){
-             $query = "    SELECT 
-                        A.cod_func,
-                        A.nome_func,
-                        A.E_MAIL AS Email_Func,
-                        RAMAL,
-                        RAMAL_INTERNO,
-                        DDD_CEL_CORPORATIVO,
-                        CELULAR_CORPORATIVO
-                    FROM MESU..FUNCIONARIOS AS A
-                    WHERE cod_func =".$cod;
-
-            $dados = $this->sqlDb->select($query);
-
-            if($dados){
-                return $dados;
-            }else{
-                $query = "    SELECT
-                            B.idFuncionario AS cod_func,
-                            B.nomeFuncionario AS nome_func,
-                            A.E_MAIL as Email_Func,
-                            B.foneCelular AS RAMAL,
-                            RAMAL_INTERNO,
-                            DDD_CEL_CORPORATIVO,
-                            CELULAR_CORPORATIVO
-                        FROM 
-                            MESU..FUNCIONARIOS AS A
-                        RIGHT JOIN 
-                            RH..STG_FUNCIONARIOS AS B
-                        ON
-                            A.COD_FUNC = B.idFuncionario
-                            
-                        WHERE 
-                            B.dataDemissao IS NULL AND
-                            B.idFuncionario = ".$cod;
-                $dados = $this->sqlDb->select($query);
-
-                return $dados;
-            }
-
-            
-        }    
-
-        function filtroTb($tipo){
-
-            $query = "SELECT * FROM INFRA.DBO.TB_INVENTARIO_BE where sts_equip = '".$tipo."' ORDER BY id";
-
-            $dados = $this->sqlDb->select($query);
-
-            return $dados;
-        }
-
-        function selectEquip($id){
-            $query = "SELECT *,CONVERT(varchar,dt_compra,103) as dt_compra_form FROM INFRA.DBO.TB_INVENTARIO_BE
-                        where id = ".$id;
-
-            $dados = $this->sqlDb->select($query);
-
-            return $dados;
-        }
-
-        function updateEquip($query){
-            $dados = $this->sqlDb->update($query);
-
-            return $dados;
-        }    
-
-        function deletarEquip($id){
-            $query = "DELETE FROM INFRA.DBO.TB_INVENTARIO_BE
-                        WHERE id = ".$id;
-
-            $dados = $this->sqlDb->delete($query);
-
-            return $dados;
-        }
-        function deletarTrans($id){
-            $query = "DELETE FROM INFRA.DBO.TB_TRANSICOES_INV
-                        WHERE id = ".$id;
-
-            $dados = $this->sqlDb->delete($query);
-
-            return $dados;
-        }
-
-        function fazerTransicao($after, $before){
-
-            if($after[0]['sts_equip'] != $before[0]['sts_equip'] || $after[0]['cod_func'] != $before[0]['cod_func']){
-                $data = getDate();
-
-                $data = $data['year'].'-'.$data['mon'].'-'.$data['mday'];
-
-                if($after[0]['sts_equip'] == 'EM USO'){
-                    $cod_uso_after = $after[0]['cod_func'];
-                }else{
-                    $cod_uso_after = 'NULL';
-                }
-
-                if($before[0]['sts_equip'] == 'EM USO'){
-                    $cod_uso_before = $before[0]['cod_func'];
-                }else{
-                    $cod_uso_before = 'NULL';
-                }            
-
-                $query = "insert into INFRA..TB_TRANSICOES_INV (sts_atual, cod_func_atual, sts_ant, cod_func_antigo, data_modifi, id_equip) VALUES ('".$before[0]['sts_equip']."', ".$cod_uso_before.", '".$after[0]['sts_equip']."', ".$cod_uso_after.", '".$data."', ".$before[0]['id'].")";
-
-                $dados = $this->sqlDb->insert($query);
-
-                return $dados;
-            }else
-                return 0;
-        }
-
-        function updateTermo($query){ 
-            $dados = $this->sqlDb->update($query);
-            return $dados;
-        }    
-
-    }
-?>
-
-
-
----------------
-
-
-
-<?php
-@session_start();
-
-require_once('TratamentosInv.php');
-
-if(isset($_POST['action']) && $_POST['action'] == 'buscar_equipamento'){
-    
-    $consulta = new ClassDados();
-    
-    // Sanitize input data
-    $filtros = array();
-    
-    if(isset($_POST['tipo']) && !empty($_POST['tipo'])){
-        $filtros['tipo'] = trim($_POST['tipo']);
-    }
-    
-    if(isset($_POST['marca']) && !empty($_POST['marca'])){
-        $filtros['marca'] = trim($_POST['marca']);
-    }
-    
-    if(isset($_POST['nome']) && !empty($_POST['nome'])){
-        $filtros['nome'] = trim($_POST['nome']);
-    }
-    
-    if(isset($_POST['cod_func']) && !empty($_POST['cod_func'])){
-        $filtros['cod_func'] = trim($_POST['cod_func']);
-    }
-    
-    if(isset($_POST['status']) && !empty($_POST['status'])){
-        $filtros['status'] = trim($_POST['status']);
-    }
-    
-    if(isset($_POST['num_serie']) && !empty($_POST['num_serie'])){
-        $filtros['num_serie'] = trim($_POST['num_serie']);
-    }
-    
-    // Get filtered equipment data
-    $equipamentos = $consulta->buscarEquipamentosFiltros($filtros);
-    
-    if(!empty($equipamentos)){
-        echo '<div class="table-responsive">';
-        echo '<table class="table table-striped table-hover">';
-        echo '<thead>';
-        echo '<tr>';
-        echo '<th>ID</th>';
-        echo '<th>Tipo</th>';
-        echo '<th>Marca</th>';
-        echo '<th>Modelo</th>';
-        echo '<th>Hostname</th>';
-        echo '<th>Nº Série</th>';
-        echo '<th>Status</th>';
-        echo '<th>Usuário</th>';
-        echo '<th>Ação</th>';
-        echo '</tr>';
-        echo '</thead>';
-        echo '<tbody>';
-        
-        foreach($equipamentos as $equip){
-            $equipInfo = $equip['modelo'] . ' / ' . $equip['hostname'] . ' / ' . $equip['num_serie'];
-            
-            echo '<tr>';
-            echo '<td>' . $equip['id'] . '</td>';
-            echo '<td>' . $equip['tipo'] . '</td>';
-            echo '<td>' . $equip['marca'] . '</td>';
-            echo '<td>' . $equip['modelo'] . '</td>';
-            echo '<td>' . $equip['hostname'] . '</td>';
-            echo '<td>' . $equip['num_serie'] . '</td>';
-            echo '<td><span class="label label-';
-            
-            // Add label colors based on status
-            switch(strtoupper($equip['sts_equip'])){
-                case 'DISPONIVEL':
-                    echo 'success">Disponível';
-                    break;
-                case 'EM USO':
-                    echo 'info">Em Uso';
-                    break;
-                case 'RESERVADO':
-                    echo 'warning">Reservado';
-                    break;
-                case 'PADRONIZAR':
-                    echo 'danger">Padronizar';
-                    break;
-                case 'DESCARTE':
-                    echo 'default">Descarte';
-                    break;
-                default:
-                    echo 'default">' . $equip['sts_equip'];
-            }
-            echo '</span></td>';
-            
-            echo '<td>' . $equip['nome_func'] . '</td>';
-            echo '<td>';
-            echo '<button class="btn btn-primary btn-sm equipamento-item" ';
-            echo 'data-equip-id="' . $equip['id'] . '" ';
-            echo 'data-equip-info="' . htmlspecialchars($equipInfo) . '">';
-            echo '<i class="fa fa-line-chart"></i> Ver Histórico';
-            echo '</button>';
-            echo '</td>';
-            echo '</tr>';
-        }
-        
-        echo '</tbody>';
-        echo '</table>';
-        echo '</div>';
-        
-        if(count($equipamentos) > 10){
-            echo '<div class="alert alert-info">';
-            echo '<strong>Info:</strong> Foram encontrados ' . count($equipamentos) . ' equipamentos. ';
-            echo 'Considere refinar sua busca para obter resultados mais específicos.';
-            echo '</div>';
-        }
-        
-    } else {
-        echo '<div class="alert alert-warning">';
-        echo '<strong>Aviso:</strong> Nenhum equipamento encontrado com os critérios especificados.';
-        echo '<br>Tente alterar os filtros de busca.';
-        echo '</div>';
-    }
-    
-} else {
-    echo '<div class="alert alert-danger">';
-    echo '<strong>Erro:</strong> Ação não reconhecida.';
-    echo '</div>';
-}
-?>
-
-
-
-
---------------
-
-
-
-<?php
-@session_start();
-
-require_once('TratamentosInv.php');
-
-if(isset($_POST['equip_id'])){
-    
-    $consulta = new ClassDados();
-    $equip_id = intval($_POST['equip_id']);
-    
-    // Get equipment basic info
-    $equipInfo = $consulta->selectEquip($equip_id);
-    
-    if(empty($equipInfo)){
-        echo '<div class="alert alert-danger">';
-        echo '<strong>Erro:</strong> Equipamento não encontrado.';
-        echo '</div>';
-        exit;
-    }
-    
-    // Get transaction history
-    $transacoes = $consulta->buscarTransacoesEquipamento($equip_id);
-    
-    echo '<div class="row">';
-    echo '<div class="col-xs-12">';
-    
-    // Equipment info card
-    echo '<div class="panel panel-info">';
-    echo '<div class="panel-heading">';
-    echo '<h4 class="panel-title">Informações do Equipamento</h4>';
-    echo '</div>';
-    echo '<div class="panel-body">';
-    echo '<div class="row">';
-    echo '<div class="col-md-3"><strong>ID:</strong> ' . $equipInfo[0]['id'] . '</div>';
-    echo '<div class="col-md-3"><strong>Tipo:</strong> ' . $equipInfo[0]['tipo'] . '</div>';
-    echo '<div class="col-md-3"><strong>Marca:</strong> ' . $equipInfo[0]['marca'] . '</div>';
-    echo '<div class="col-md-3"><strong>Modelo:</strong> ' . $equipInfo[0]['modelo'] . '</div>';
-    echo '</div>';
-    echo '<div class="row" style="margin-top: 10px;">';
-    echo '<div class="col-md-6"><strong>Hostname:</strong> ' . $equipInfo[0]['hostname'] . '</div>';
-    echo '<div class="col-md-6"><strong>Nº Série:</strong> ' . $equipInfo[0]['num_serie'] . '</div>';
-    echo '</div>';
-    echo '</div>';
-    echo '</div>';
-    
-    if(!empty($transacoes)){
-        echo '<div class="panel panel-primary">';
-        echo '<div class="panel-heading">';
-        echo '<h4 class="panel-title">Linha do Tempo das Transações</h4>';
-        echo '</div>';
-        echo '<div class="panel-body">';
-        
-        // Create timeline
-        echo '<div class="transition-timeline">';
-        
-        // Initial state (creation)
-        echo '<div class="transition-block status-' . strtolower(str_replace(' ', '-', $equipInfo[0]['sts_equip'])) . '">';
-        echo '<strong>Estado Inicial</strong><br>';
-        echo '<span class="label label-default">Criação do equipamento</span><br>';
-        echo 'Status: ' . $equipInfo[0]['sts_equip'];
-        echo '</div>';
-        
-        // Process each transaction
-        foreach($transacoes as $i => $trans){
-            echo '<span class="transition-arrow">→</span>';
-            
-            // Transaction block
-            echo '<div class="transition-block status-' . strtolower(str_replace(' ', '-', $trans['sts_atual'])) . '">';
-            echo '<strong>Transação #' . ($i + 1) . '</strong><br>';
-            echo '<small>' . $trans['dt_trans'] . '</small><br>';
-            
-            // Status change
-            if($trans['sts_ant'] != $trans['sts_atual']){
-                echo '<div style="margin: 5px 0;">';
-                echo '<span class="label label-warning">' . $trans['sts_ant'] . '</span>';
-                echo ' → ';
-                echo '<span class="label label-info">' . $trans['sts_atual'] . '</span>';
-                echo '</div>';
-            }
-            
-            // User change
-            if($trans['cod_func_antigo'] != $trans['cod_func_atual']){
-                echo '<div style="margin: 5px 0; font-size: 11px;">';
-                if(!empty($trans['nome_func_antigo']) && $trans['nome_func_antigo'] != 'Sistema'){
-                    echo '<strong>De:</strong> ' . $trans['nome_func_antigo'] . ' (' . $trans['cod_func_antigo'] . ')<br>';
-                }
-                if(!empty($trans['nome_func_atual']) && $trans['nome_func_atual'] != 'Sistema'){
-                    echo '<strong>Para:</strong> ' . $trans['nome_func_atual'] . ' (' . $trans['cod_func_atual'] . ')';
-                } else {
-                    echo '<strong>Para:</strong> Sistema';
-                }
-                echo '</div>';
-            }
-            
-            // Terms info
-            if($trans['TERMO_RESP'] == 'S' || $trans['TERMO_DEV'] == 'S'){
-                echo '<div style="margin-top: 5px;">';
-                if($trans['TERMO_RESP'] == 'S'){
-                    echo '<span class="label label-success" style="margin-right: 3px;">T.Resp</span>';
-                }
-                if($trans['TERMO_DEV'] == 'S'){
-                    echo '<span class="label label-warning">T.Dev</span>';
-                }
-                echo '</div>';
-            }
-            
-            echo '</div>';
-        }
-        
-        // Current state
-        echo '<span class="transition-arrow">→</span>';
-        echo '<div class="transition-block status-' . strtolower(str_replace(' ', '-', $equipInfo[0]['sts_equip'])) . '">';
-        echo '<strong>Estado Atual</strong><br>';
-        echo '<span class="label label-primary">Situação Presente</span><br>';
-        echo 'Status: ' . $equipInfo[0]['sts_equip'];
-        if(!empty($equipInfo[0]['cod_func'])){
-            $dadosFunc = $consulta->selectOne($equipInfo[0]['cod_func']);
-            if(!empty($dadosFunc)){
-                echo '<br>Usuário: ' . $dadosFunc[0]['nome_func'] . ' (' . $equipInfo[0]['cod_func'] . ')';
-            }
-        }
-        echo '</div>';
-        
-        echo '</div>'; // end timeline
-        
-        // Transaction details table
-        echo '<div style="margin-top: 30px;">';
-        echo '<h5>Detalhes das Transações</h5>';
-        echo '<div class="table-responsive">';
-        echo '<table class="table table-striped table-bordered table-condensed">';
-        echo '<thead>';
-        echo '<tr>';
-        echo '<th>Data</th>';
-        echo '<th>Status Anterior</th>';
-        echo '<th>Usuário Anterior</th>';
-        echo '<th>Status Atual</th>';
-        echo '<th>Usuário Atual</th>';
-        echo '<th>Termos</th>';
-        echo '</tr>';
-        echo '</thead>';
-        echo '<tbody>';
-        
-        foreach($transacoes as $trans){
-            echo '<tr>';
-            echo '<td>' . $trans['dt_trans'] . '</td>';
-            echo '<td><span class="label label-default">' . $trans['sts_ant'] . '</span></td>';
-            echo '<td>' . ($trans['nome_func_antigo'] ? $trans['nome_func_antigo'] : '-') . '</td>';
-            echo '<td><span class="label label-info">' . $trans['sts_atual'] . '</span></td>';
-            echo '<td>' . ($trans['nome_func_atual'] ? $trans['nome_func_atual'] : '-') . '</td>';
-            echo '<td>';
-            if($trans['TERMO_RESP'] == 'S'){
-                echo '<span class="label label-success">Resp</span> ';
-            }
-            if($trans['TERMO_DEV'] == 'S'){
-                echo '<span class="label label-warning">Dev</span>';
-            }
-            if($trans['TERMO_RESP'] != 'S' && $trans['TERMO_DEV'] != 'S'){
-                echo '-';
-            }
-            echo '</td>';
-            echo '</tr>';
-        }
-        
-        echo '</tbody>';
-        echo '</table>';
-        echo '</div>';
-        echo '</div>';
-        
-        echo '</div>'; // panel-body
-        echo '</div>'; // panel
-        
-        // Statistics
-        echo '<div class="row" style="margin-top: 20px;">';
-        echo '<div class="col-md-3">';
-        echo '<div class="panel panel-success">';
-        echo '<div class="panel-body text-center">';
-        echo '<h4>' . count($transacoes) . '</h4>';
-        echo '<p>Total de Transações</p>';
-        echo '</div>';
-        echo '</div>';
-        echo '</div>';
-        
-        // Count unique users
-        $usuarios = array();
-        foreach($transacoes as $trans){
-            if(!empty($trans['nome_func_antigo']) && $trans['nome_func_antigo'] != 'Sistema'){
-                $usuarios[$trans['cod_func_antigo']] = $trans['nome_func_antigo'];
-            }
-            if(!empty($trans['nome_func_atual']) && $trans['nome_func_atual'] != 'Sistema'){
-                $usuarios[$trans['cod_func_atual']] = $trans['nome_func_atual'];
-            }
-        }
-        
-        echo '<div class="col-md-3">';
-        echo '<div class="panel panel-info">';
-        echo '<div class="panel-body text-center">';
-        echo '<h4>' . count($usuarios) . '</h4>';
-        echo '<p>Usuários Únicos</p>';
-        echo '</div>';
-        echo '</div>';
-        echo '</div>';
-        
-        // Count status changes
-        $mudancas_status = 0;
-        foreach($transacoes as $trans){
-            if($trans['sts_ant'] != $trans['sts_atual']){
-                $mudancas_status++;
-            }
-        }
-        
-        echo '<div class="col-md-3">';
-        echo '<div class="panel panel-warning">';
-        echo '<div class="panel-body text-center">';
-        echo '<h4>' . $mudancas_status . '</h4>';
-        echo '<p>Mudanças de Status</p>';
-        echo '</div>';
-        echo '</div>';
-        echo '</div>';
-        
-        // Terms count
-        $termos_count = 0;
-        foreach($transacoes as $trans){
-            if($trans['TERMO_RESP'] == 'S' || $trans['TERMO_DEV'] == 'S'){
-                $termos_count++;
-            }
-        }
-        
-        echo '<div class="col-md-3">';
-        echo '<div class="panel panel-primary">';
-        echo '<div class="panel-body text-center">';
-        echo '<h4>' . $termos_count . '</h4>';
-        echo '<p>Termos Gerados</p>';
-        echo '</div>';
-        echo '</div>';
-        echo '</div>';
-        
-        echo '</div>'; // end stats row
-        
-    } else {
-        echo '<div class="alert alert-info">';
-        echo '<strong>Info:</strong> Este equipamento ainda não possui histórico de transações.';
-        echo '</div>';
-    }
-    
-    echo '</div>'; // col-xs-12
-    echo '</div>'; // row
-    
-} else {
-    echo '<div class="alert alert-danger">';
-    echo '<strong>Erro:</strong> ID do equipamento não fornecido.';
-    echo '</div>';
-}
-?>
