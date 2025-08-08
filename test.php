@@ -1,493 +1,400 @@
 <?php
+// Replace the existing validation fields display section (around lines for 2Via_Cartao, Holerite_INSS, etc.)
 
-// Add these methods to your EnhancedInventoryModel class
+// Check if ORGAO_PAGADOR is empty for this row
+$orgaoPagadorEmpty = empty($row['ORGAO_PAGADOR']) || trim($row['ORGAO_PAGADOR']) === '';
 
-/**
- * Get inventory count by SECAO (fixed version)
- */
-function getInventarioCountBySecao($secao){
-    $query = "SELECT COUNT(B.SECAO) as total FROM INFRA.DBO.TB_INVENTARIO_BE A 
-                RIGHT JOIN (SELECT DISTINCT
-                        A.cod_func,
-                        A.nome_func,
-                        A.E_MAIL AS Email_Func,
-                        RAMAL,
-                        RAMAL_INTERNO,
-                        DDD_CEL_CORPORATIVO,
-                        CELULAR_CORPORATIVO,
-                        A.SECAO
-                    FROM MESU..FUNCIONARIOS AS A
-                    WHERE DT_TransDem IS NULL
-                    ) B ON B.COD_FUNC=A.COD_FUNC
-                    WHERE B.SECAO = '$secao'";
-    $result = $this->sqlDb->select($query);
-    return isset($result[0]['total']) ? $result[0]['total'] : 0;
-}
+// SEGUNDA_VIA_CARTAO (2Via_Cartao)
+$bgColor = empty($row['SEGUNDA_VIA_CARTAO_VALID']) ? '#ffb7bb' : 'transparent';
+$value = '';
 
-/**
- * Get all SECAO counts at once (more efficient)
- */
-function getAllSecaosCounts($secaos){
-    $secaoList = "'" . implode("','", $secaos) . "'";
-    $query = "SELECT B.SECAO, COUNT(B.SECAO) as total FROM INFRA.DBO.TB_INVENTARIO_BE A 
-                RIGHT JOIN (SELECT DISTINCT
-                        A.cod_func,
-                        A.nome_func,
-                        A.E_MAIL AS Email_Func,
-                        RAMAL,
-                        RAMAL_INTERNO,
-                        DDD_CEL_CORPORATIVO,
-                        CELULAR_CORPORATIVO,
-                        A.SECAO
-                    FROM MESU..FUNCIONARIOS AS A
-                    WHERE DT_TransDem IS NULL
-                    ) B ON B.COD_FUNC=A.COD_FUNC
-                    WHERE B.SECAO IN ($secaoList)
-                    GROUP BY B.SECAO
-                    ORDER BY B.SECAO";
-    $result = $this->sqlDb->select($query);
-    return $result;
-}
-
-/**
- * Simple output function for PHP 5.3 compatibility
- */
-function outputData($data) {
-    if (is_array($data)) {
-        $output = "";
-        foreach ($data as $key => $value) {
-            $output .= $key . ":" . $value . "|";
-        }
-        echo rtrim($output, "|");
-    } else {
-        echo $data;
-    }
-}
-
-?>
-
----------------
-
-
-<?php
-// File: secao_endpoint.php
-// AJAX endpoint for getting SECAO data
-
-require_once('path/to/your/EnhancedInventoryModel.php'); // Adjust path as needed
-
-// Initialize model
-$inventoryModel = new EnhancedInventoryModel();
-
-// Set content type for plain text (PHP 5.3 compatible)
-if (function_exists('http_response_code')) {
-    http_response_code(200);
-}
-
-// Get action parameter
-$action = isset($_GET['action']) ? $_GET['action'] : '';
-
-if ($action == 'single_secao') {
-    // Get single SECAO count
-    $secao = isset($_GET['secao']) ? $_GET['secao'] : '';
-    
-    if ($secao !== '') {
-        $count = $inventoryModel->getInventarioCountBySecao($secao);
-        echo $count;
-    } else {
-        echo '0';
-    }
-    
-} elseif ($action == 'all_secaos') {
-    // Get all SECAOs data at once (more efficient)
-    $secaos = array('008', '009', '012', '015', '018', '022', '028', '032', '042', '043', '047', 
-                   '060', '066', '073', '078', '081', '092', '10', '100', '113', '12', '13', '14', 
-                   '15', '16', '17', '18', '2', '23', '26', '27', '28', '30', '32', '33', '34', 
-                   '35', '36', '40', '43', '45', '46', '47', '49', '54', '55', '6', '60', '67', 
-                   '68', '7', '70', '73', '75', '76', '79', '8', '81', '898', '9', '910', '92');
-    
-    $results = $inventoryModel->getAllSecaosCounts($secaos);
-    
-    // Format output for easy parsing in JavaScript
-    $output = "";
-    foreach ($results as $row) {
-        $secao = isset($row['SECAO']) ? $row['SECAO'] : (isset($row['secao']) ? $row['secao'] : '');
-        $total = isset($row['total']) ? $row['total'] : 0;
-        $output .= $secao . ":" . $total . "|";
-    }
-    
-    // Remove trailing pipe
-    echo rtrim($output, "|");
-    
+if ($orgaoPagadorEmpty) {
+    $value = ' - ';
+    $bgColor = 'transparent'; // No red background for horizontal line
 } else {
-    echo 'Invalid action';
+    if(isset($row['SEGUNDA_VIA_CARTAO_VALID'])){
+        $value = ($row['SEGUNDA_VIA_CARTAO_VALID'] === 1) ? 'Apto' : 'Nao Apto';
+    }
+}
+echo '<td style="background-color: ' . $bgColor . '; text-align: center; vertical-align: middle;">' . $value . '</td>';
+
+// HOLERITE_INSS
+$bgColor = empty($row['HOLERITE_INSS_VALID']) ? '#ffb7bb' : 'transparent';
+$value = '';
+
+if ($orgaoPagadorEmpty) {
+    $value = ' - ';
+    $bgColor = 'transparent'; // No red background for horizontal line
+} else {
+    if(isset($row['HOLERITE_INSS_VALID'])){
+        $value = ($row['HOLERITE_INSS_VALID'] === 1) ? 'Apto' : 'Nao Apto';
+    }
+}
+echo '<td style="background-color: ' . $bgColor . '; text-align: center; vertical-align: middle;">' . $value . '</td>';
+
+// CONSULTA_INSS (Cons_INSS)
+$bgColor = empty($row['CONSULTA_INSS_VALID']) ? '#ffb7bb' : 'transparent';
+$value = '';
+
+if ($orgaoPagadorEmpty) {
+    $value = ' - ';
+    $bgColor = 'transparent'; // No red background for horizontal line
+} else {
+    if(isset($row['CONSULTA_INSS_VALID'])){
+        $value = ($row['CONSULTA_INSS_VALID'] === 1) ? 'Apto' : 'Nao Apto';
+    }
+}
+echo '<td style="background-color: ' . $bgColor . '; text-align: center; vertical-align: middle;">' . $value . '</td>';
+
+// PROVA_DE_VIDA
+$bgColor = empty($row['PROVA_DE_VIDA_VALID']) ? '#ffb7bb' : 'transparent';
+$value = '';
+
+if ($orgaoPagadorEmpty) {
+    $value = ' - ';
+    $bgColor = 'transparent'; // No red background for horizontal line
+} else {
+    if(isset($row['PROVA_DE_VIDA_VALID'])){
+        $value = ($row['PROVA_DE_VIDA_VALID'] === 1) ? 'Apto' : 'Nao Apto';
+    }
+}
+echo '<td style="background-color: ' . $bgColor . '; text-align: center; vertical-align: middle;">' . $value . '</td>';
+?>
+
+
+
+
+----------------------
+
+
+
+
+
+
+
+// Replace the existing addValidationFields method in PaginationModule
+addValidationFields: function(rowData, row) {
+    const validationConfigs = [
+        { field: 'dep_dinheiro', limits: { presenca: 'R$ 3.000,00', avancado: 'R$ 10.000,00' }, validField: 'DEP_DINHEIRO_VALID' },
+        { field: 'dep_cheque', limits: { presenca: 'R$ 5.000,00', avancado: 'R$ 10.000,00' }, validField: 'DEP_CHEQUE_VALID' },
+        { field: 'rec_retirada', limits: { presenca: 'R$ 2.000,00', avancado: 'R$ 3.500,00' }, validField: 'REC_RETIRADA_VALID' },
+        { field: 'saque_cheque', limits: { presenca: 'R$ 2.000,00', avancado: 'R$ 3.500,00' }, validField: 'SAQUE_CHEQUE_VALID' }
+    ];
+    
+    validationConfigs.forEach(config => {
+        rowData.push(this.createValidationCell(row, config));
+    });
+    
+    // Check if ORGAO_PAGADOR is empty for this row
+    const orgaoPagadorEmpty = !row.ORGAO_PAGADOR || row.ORGAO_PAGADOR.toString().trim() === '';
+    
+    // Create the 4 special validation cells that depend on ORGAO_PAGADOR
+    rowData.push(this.createConditionalValidationCell(row, 'SEGUNDA_VIA_CARTAO_VALID', orgaoPagadorEmpty));
+    rowData.push(this.createConditionalValidationCell(row, 'HOLERITE_INSS_VALID', orgaoPagadorEmpty));
+    rowData.push(this.createConditionalValidationCell(row, 'CONSULTA_INSS_VALID', orgaoPagadorEmpty));
+    rowData.push(this.createConditionalValidationCell(row, 'PROVA_DE_VIDA_VALID', orgaoPagadorEmpty));
+},
+
+// Add this new method to PaginationModule
+createConditionalValidationCell: function(row, validField, orgaoPagadorEmpty) {
+    let value = '';
+    let style = 'text-align: center; vertical-align: middle;';
+    
+    if (orgaoPagadorEmpty) {
+        value = ' - ';
+        // No red background for horizontal line
+    } else {
+        const isValid = row[validField] === '1';
+        value = isValid ? 'Apto' : 'Não Apto';
+        
+        if (!isValid) {
+            style += ' background-color: #ffb7bb;';
+        }
+    }
+    
+    return $('<td>').attr('style', style).text(value);
+},
+
+// Replace the existing createSimpleValidationCell method
+createSimpleValidationCell: function(row, validField) {
+    // This method is now only used for the 4 monetary validation fields
+    // The ORGAO_PAGADOR dependent fields use createConditionalValidationCell instead
+    const isValid = row[validField] === '1';
+    const value = isValid ? 'Apto' : 'Não Apto';
+    const style = isValid ? 'text-align: center; vertical-align: middle;' : 'text-align: center; vertical-align: middle; background-color: #ffb7bb;';
+    
+    return $('<td>').attr('style', style).text(value);
 }
 
-// Ensure output is sent
-if (ob_get_level()) {
-    ob_end_flush();
-}
-?>
+
+
 
 --------------------
 
-// Custom Charts for SISB Dashboard with SECAO Data
-// File: assets/js/custom-charts.js
 
-// Global variables for chart data
-var secaoData = [];
-var chartsInitialized = false;
 
-// List of all SECAOs
-var allSecaos = ['008', '009', '012', '015', '018', '022', '028', '032', '042', '043', '047', 
-                '060', '066', '073', '078', '081', '092', '10', '100', '113', '12', '13', '14', 
-                '15', '16', '17', '18', '2', '23', '26', '27', '28', '30', '32', '33', '34', 
-                '35', '36', '40', '43', '45', '46', '47', '49', '54', '55', '6', '60', '67', 
-                '68', '7', '70', '73', '75', '76', '79', '8', '81', '898', '9', '910', '92'];
 
-// Function to fetch SECAO data
-function fetchSecaoData(callback) {
-    $.ajax({
-        url: 'secao_endpoint.php?action=all_secaos', // Adjust path as needed
-        method: 'GET',
-        dataType: 'text',
-        success: function(response) {
-            console.log('Raw response:', response);
-            
-            // Parse the response (format: "secao1:count1|secao2:count2|...")
-            var pairs = response.split('|');
-            secaoData = [];
-            
-            for (var i = 0; i < pairs.length; i++) {
-                if (pairs[i].trim() !== '') {
-                    var parts = pairs[i].split(':');
-                    if (parts.length === 2) {
-                        var secao = parts[0].trim();
-                        var count = parseInt(parts[1]) || 0;
-                        
-                        // Only add if count > 0 to avoid empty slices
-                        if (count > 0) {
-                            secaoData.push({
-                                name: 'Seção ' + secao,
-                                y: count,
-                                secao: secao
-                            });
-                        }
-                    }
-                }
-            }
-            
-            // Sort by count (descending)
-            secaoData.sort(function(a, b) { return b.y - a.y; });
-            
-            console.log('Parsed SECAO data:', secaoData);
-            
-            if (callback && typeof callback === 'function') {
-                callback();
-            }
-        },
-        error: function(xhr, status, error) {
-            console.error('Error fetching SECAO data:', error);
-            console.error('Status:', status);
-            console.error('Response:', xhr.responseText);
-            
-            // Use fallback data if AJAX fails
-            secaoData = [
-                { name: 'Seção 012', y: 45 },
-                { name: 'Seção 015', y: 32 },
-                { name: 'Seção 008', y: 28 },
-                { name: 'Seção 022', y: 15 },
-                { name: 'Seção 032', y: 12 }
-            ];
-            
-            if (callback && typeof callback === 'function') {
-                callback();
-            }
-        }
-    });
-}
 
-// Function to fetch single SECAO count (alternative method)
-function fetchInventarioCount(secao, callback) {
-    $.ajax({
-        url: 'secao_endpoint.php?action=single_secao&secao=' + encodeURIComponent(secao),
-        method: 'GET',
-        dataType: 'text',
-        success: function(count) {
-            console.log('Inventário count for ' + secao + ':', count);
-            if (callback && typeof callback === 'function') {
-                callback(parseInt(count) || 0);
-            }
-        },
-        error: function(xhr, status, error) {
-            console.error('Error fetching inventário count for ' + secao + ':', error);
-            if (callback && typeof callback === 'function') {
-                callback(0);
-            }
-        }
-    });
-}
 
-$(document).ready(function() {
+
+
+<?php
+// Replace the addValidationFieldsToXML method in Wxkd_DashboardController class
+
+private function addValidationFieldsToXML(&$xml, $row) {
+    $validationFields = array(
+        'dep_dinheiro' => 'DEP_DINHEIRO_VALID',
+        'dep_cheque' => 'DEP_CHEQUE_VALID',
+        'rec_retirada' => 'REC_RETIRADA_VALID',
+        'saque_cheque' => 'SAQUE_CHEQUE_VALID'
+    );
     
-    // Common chart options
-    var commonOptions = {
-        credits: {
-            enabled: false
-        },
-        exporting: {
-            enabled: true,
-            buttons: {
-                contextButton: {
-                    menuItems: ['downloadPNG', 'downloadJPEG', 'downloadPDF', 'downloadSVG']
-                }
+    foreach ($validationFields as $xmlField => $validField) {
+        $xml .= '<' . $xmlField . '>';
+        if (isset($row[$validField]) && isset($row['TIPO_LIMITES'])) {
+            $isPresencaOrOrgao = (strpos($row['TIPO_LIMITES'], 'PRESENCA') !== false || 
+                            strpos($row['TIPO_LIMITES'], 'ORG_PAGADOR') !== false);
+            $isAvancadoOrApoio = (strpos($row['TIPO_LIMITES'], 'AVANCADO') !== false || 
+                            strpos($row['TIPO_LIMITES'], 'UNIDADE_NEGOCIO') !== false);
+            
+            $limits = $this->getLimitsForField($xmlField, $isPresencaOrOrgao, $isAvancadoOrApoio);
+            
+            if ($row[$validField] == 1) {
+                $xml .= $limits['valid'];
+            } else {
+                $xml .= $limits['invalid'];
             }
+        } else {
+            $xml .= 'Tipo não definido';
         }
-    };
-
-    // Pie Chart - SECAO Distribution (will be populated with real data)
-    var pieChartOptions = $.extend(true, {}, commonOptions, {
-        chart: {
-            type: 'pie',
-            backgroundColor: 'transparent'
-        },
-        title: {
-            text: 'Distribuição por Seção'
-        },
-        tooltip: {
-            pointFormat: '{series.name}: <b>{point.percentage:.1f}%</b><br/>Quantidade: <b>{point.y}</b>'
-        },
-        plotOptions: {
-            pie: {
-                allowPointSelect: true,
-                cursor: 'pointer',
-                dataLabels: {
-                    enabled: true,
-                    format: '<b>{point.name}</b>: {point.y} ({point.percentage:.1f}%)',
-                    style: {
-                        fontSize: '11px'
-                    }
-                },
-                showInLegend: true,
-                colors: ['#AC193D', '#5DB2FF', '#53a93f', '#FF8F32', '#8C0095', '#03B3B2', '#cc324b', 
-                        '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98FB98',
-                        '#F0E68C', '#FFA07A', '#20B2AA', '#87CEEB', '#DEB887', '#5F9EA0'] // More colors for more sections
-            }
-        },
-        series: [{
-            name: 'Seções',
-            data: [] // Will be populated with real data
-        }]
-    });
-
-    // Bar Chart - Monthly Sales (existing)
-    var barChartOptions = $.extend(true, {}, commonOptions, {
-        chart: {
-            type: 'column',
-            backgroundColor: 'transparent'
-        },
-        title: {
-            text: 'Vendas Mensais'
-        },
-        xAxis: {
-            categories: ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'],
-            crosshair: true
-        },
-        yAxis: {
-            min: 0,
-            title: {
-                text: 'Vendas (R$ mil)'
-            }
-        },
-        tooltip: {
-            headerFormat: '<span style="font-size:10px; ">{point.key}</span><table>',
-            pointFormat: '<tr><td style="color:{series.color};padding:0">{series.name}: </td>' +
-                '<td style="padding:0; "><b>R$ {point.y:.1f}k</b></td></tr>',
-            footerFormat: '</table>',
-            shared: true,
-            useHTML: true
-        },
-        plotOptions: {
-            column: {
-                pointPadding: 0.2,
-                borderWidth: 0,
-                dataLabels: {
-                    enabled: true,
-                    format: 'R$ {point.y}k'
-                }
-            }
-        },
-        colors: ['#AC193D', '#5DB2FF'],
-        series: [{
-            name: '2024',
-            data: [150, 180, 220, 190, 240, 280, 320, 290, 250, 310, 340, 380]
-        }, {
-            name: '2023',
-            data: [120, 140, 160, 150, 180, 210, 240, 220, 200, 230, 260, 290]
-        }]
-    });
-
-    // Quarterly Performance Chart (existing)
-    var quarterlyChartOptions = $.extend(true, {}, commonOptions, {
-        chart: {
-            type: 'line',
-            backgroundColor: 'transparent'
-        },
-        title: {
-            text: 'Performance Trimestral'
-        },
-        xAxis: {
-            categories: ['Q1 2023', 'Q2 2023', 'Q3 2023', 'Q4 2023', 'Q1 2024', 'Q2 2024', 'Q3 2024', 'Q4 2024']
-        },
-        yAxis: {
-            title: {
-                text: 'Performance (%)'
-            }
-        },
-        tooltip: {
-            valueSuffix: '%'
-        },
-        plotOptions: {
-            line: {
-                dataLabels: {
-                    enabled: true,
-                    format: '{point.y}%'
-                },
-                enableMouseTracking: true
-            }
-        },
-        colors: ['#AC193D', '#5DB2FF', '#53a93f'],
-        series: [{
-            name: 'Meta',
-            data: [85, 88, 90, 92, 85, 88, 90, 92]
-        }, {
-            name: 'Realizado',
-            data: [82, 91, 87, 89, 88, 94, 92, 95]
-        }, {
-            name: 'Projeção',
-            data: [80, 85, 88, 90, 85, 90, 94, 97]
-        }]
-    });
-
-    // Initialize charts when page loads
-    function initializeCharts() {
-        try {
-            // Check if containers exist before creating charts
-            if ($('#pieChart').length && secaoData.length > 0) {
-                // Update pie chart with real SECAO data
-                pieChartOptions.series[0].data = secaoData;
-                // Highlight the first (largest) slice
-                if (secaoData.length > 0) {
-                    secaoData[0].sliced = true;
-                    secaoData[0].selected = true;
-                }
-                Highcharts.chart('pieChart', pieChartOptions);
-            } else if ($('#pieChart').length) {
-                // Show loading message
-                $('#pieChart').html('<div style="text-align:center; padding:50px;">Carregando dados das seções...</div>');
-            }
-            
-            if ($('#barChart').length) {
-                Highcharts.chart('barChart', barChartOptions);
-            }
-            
-            if ($('#quarterlyChart').length) {
-                Highcharts.chart('quarterlyChart', quarterlyChartOptions);
-            }
-            
-            console.log('Charts initialized successfully');
-            chartsInitialized = true;
-        } catch (error) {
-            console.error('Error initializing charts:', error);
+        $xml .= '</' . $xmlField . '>';
+    }
+    
+    // Check if ORGAO_PAGADOR is empty for this row
+    $orgaoPagadorEmpty = empty($row['ORGAO_PAGADOR']) || trim($row['ORGAO_PAGADOR']) === '';
+    
+    // Handle the 4 validation fields that depend on ORGAO_PAGADOR
+    $xml .= '<segunda_via_cartao>';
+    if ($orgaoPagadorEmpty) {
+        $xml .= ' - ';
+    } else {
+        if (isset($row['SEGUNDA_VIA_CARTAO_VALID'])) {
+            $xml .= ($row['SEGUNDA_VIA_CARTAO_VALID'] === 1) ? 'Apto' : 'Nao Apto';
         }
     }
-
-    // Load SECAO data and then initialize charts
-    function loadDataAndInitializeCharts() {
-        console.log('Loading SECAO data...');
-        fetchSecaoData(function() {
-            console.log('SECAO data loaded, initializing charts...');
-            initializeCharts();
-        });
-    }
-
-    // Start the process
-    loadDataAndInitializeCharts();
-
-    // Responsive handling
-    $(window).resize(function() {
-        setTimeout(function() {
-            // Redraw charts on window resize
-            if (window.Highcharts) {
-                $.each(Highcharts.charts, function(i, chart) {
-                    if (chart) {
-                        chart.reflow();
-                    }
-                });
-            }
-        }, 100);
-    });
-
-    // Function to refresh SECAO data
-    window.refreshSecaoData = function() {
-        console.log('Refreshing SECAO data...');
-        fetchSecaoData(function() {
-            console.log('Data refreshed, updating pie chart...');
-            updatePieChart(secaoData);
-        });
-    };
-
-    // Function to update pie chart data
-    window.updatePieChart = function(newData) {
-        var chart = Highcharts.charts.find(function(chart) {
-            return chart && chart.renderTo.id === 'pieChart';
-        });
-        
-        if (chart) {
-            chart.series[0].setData(newData || secaoData);
+    $xml .= '</segunda_via_cartao>';
+    
+    $xml .= '<holerite_inss>';
+    if ($orgaoPagadorEmpty) {
+        $xml .= ' - ';
+    } else {
+        if (isset($row['HOLERITE_INSS_VALID'])) {
+            $xml .= ($row['HOLERITE_INSS_VALID'] === 1) ? 'Apto' : 'Nao Apto';
         }
-    };
-
-    // Function to update bar chart data (for future use with AJAX)
-    window.updateBarChart = function(categories, series) {
-        var chart = Highcharts.charts.find(function(chart) {
-            return chart && chart.renderTo.id === 'barChart';
-        });
-        
-        if (chart) {
-            chart.xAxis[0].setCategories(categories);
-            chart.series[0].setData(series[0].data);
-            if (series[1]) {
-                chart.series[1].setData(series[1].data);
-            }
-        }
-    };
-
-    // Function to refresh all charts
-    window.refreshCharts = function() {
-        loadDataAndInitializeCharts();
-    };
-
-});
-
-// Utility function to generate random data for testing
-function generateRandomData(count, min, max) {
-    var data = [];
-    for (var i = 0; i < count; i++) {
-        data.push(Math.floor(Math.random() * (max - min + 1)) + min);
     }
-    return data;
+    $xml .= '</holerite_inss>';
+    
+    $xml .= '<cons_inss>';
+    if ($orgaoPagadorEmpty) {
+        $xml .= ' - ';
+    } else {
+        if (isset($row['CONSULTA_INSS_VALID'])) {
+            $xml .= ($row['CONSULTA_INSS_VALID'] === 1) ? 'Apto' : 'Nao Apto';
+        }
+    }
+    $xml .= '</cons_inss>';
+
+    $xml .= '<prova_de_vida>';
+    if ($orgaoPagadorEmpty) {
+        $xml .= ' - ';
+    } else {
+        if (isset($row['PROVA_DE_VIDA_VALID'])) {
+            $xml .= ($row['PROVA_DE_VIDA_VALID'] === 1) ? 'Apto' : 'Nao Apto';
+        }
+    }
+    $xml .= '</prova_de_vida>';
+    
+    $xml .= '<data_contrato>' . addcslashes(isset($row['DATA_CONTRATO']) ? $row['DATA_CONTRATO'] : '', '"<>&') . '</data_contrato>';
+    $xml .= '<tipo_contrato>' . addcslashes(isset($row['TIPO_CONTRATO']) ? $row['TIPO_CONTRATO'] : '', '"<>&') . '</tipo_contrato>';
 }
 
-// Function to export all charts as images (optional feature)
-function exportAllCharts() {
-    if (window.Highcharts) {
-        $.each(Highcharts.charts, function(i, chart) {
-            if (chart) {
-                chart.exportChart({
-                    type: 'image/png',
-                    filename: 'chart-' + (i + 1)
-                });
+// Also update the getValidationErrorMessage method to handle the ORGAO_PAGADOR check
+public function getValidationError($row) {
+    $cutoff = Wxkd_Config::getCutoffTimestamp();
+    $activeTypes = $this->getActiveTypes($row, $cutoff);
+    
+    foreach ($activeTypes as $type) {
+        if ($type === 'AV' || $type === 'PR' || $type === 'UN') {
+            $basicValidation = $this->checkBasicValidations($row);
+            if ($basicValidation !== true) {
+                return 'Tipo ' . $type . ' - ' . str_replace(array('ç', 'õ', 'ã'), array('c', 'o', 'a'), $basicValidation);
             }
-        });
+        } elseif ($type === 'OP') {
+            // For OP type, we need to check if ORGAO_PAGADOR has a value
+            $orgaoPagadorEmpty = empty($row['ORGAO_PAGADOR']) || trim($row['ORGAO_PAGADOR']) === '';
+            
+            if ($orgaoPagadorEmpty) {
+                return 'Tipo OP - ORGAO_PAGADOR sem data valida';
+            }
+            
+            $opValidation = $this->checkOPValidations($row);
+            if ($opValidation !== true) {
+                return str_replace(array('ç', 'õ', 'ã'), array('c', 'o', 'a'), $opValidation);
+            }
+        }
     }
+    
+    return null; 
 }
+?>
+
+
+
+
+
+---------------------
+
+
+
+
+
+
+<?php
+// Replace the getValidationValue method in Wxkd_DashboardModel class
+
+private function getValidationValue($record, $fieldNames) {
+    // Check if this is one of the ORGAO_PAGADOR dependent fields
+    $orgaoPagadorDependentFields = array('SEGUNDA_VIA_CARTAO_VALID', 'SEGUNDA_VIA_CARTAO', 'HOLERITE_INSS_VALID', 'HOLERITE_INSS', 'CONSULTA_INSS_VALID', 'CONS_INSS', 'PROVA_DE_VIDA_VALID', 'PROVA_DE_VIDA');
+    
+    $isOrgaoPagadorDependent = false;
+    foreach ($fieldNames as $fieldName) {
+        if (in_array($fieldName, $orgaoPagadorDependentFields)) {
+            $isOrgaoPagadorDependent = true;
+            break;
+        }
+    }
+    
+    // If this is an ORGAO_PAGADOR dependent field, check if ORGAO_PAGADOR is empty
+    if ($isOrgaoPagadorDependent) {
+        $orgaoPagadorEmpty = empty($record['ORGAO_PAGADOR']) || trim($record['ORGAO_PAGADOR']) === '';
+        
+        if ($orgaoPagadorEmpty) {
+            return ' - ';
+        }
+    }
+    
+    // Continue with normal validation logic
+    foreach ($fieldNames as $fieldName) {
+        if (isset($record[$fieldName])) {
+            $value = $record[$fieldName];
+            if (is_string($value) && (strpos($value, 'Apto') !== false || strpos($value, 'apto') !== false)) {
+                return $value;
+            }
+            if (is_numeric($value)) {
+                return $value == 1 ? 'Apto' : 'Nao Apto';
+            }
+        }
+    }
+    return 'Nao Apto';
+}
+
+// Also update the updateWxkdFlag method to properly handle ORGAO_PAGADOR dependent validations
+// Replace the validation value retrieval section in updateWxkdFlag method:
+
+// Check if ORGAO_PAGADOR is empty for this record
+$orgaoPagadorEmpty = empty($record['ORGAO_PAGADOR']) || trim($record['ORGAO_PAGADOR']) === '';
+
+$segundaVia = $orgaoPagadorEmpty ? ' - ' : $this->getValidationValue($record, array('SEGUNDA_VIA_CARTAO_VALID', 'SEGUNDA_VIA_CARTAO'));
+$holeriteInss = $orgaoPagadorEmpty ? ' - ' : $this->getValidationValue($record, array('HOLERITE_INSS_VALID', 'HOLERITE_INSS'));
+$consultaInss = $orgaoPagadorEmpty ? ' - ' : $this->getValidationValue($record, array('CONSULTA_INSS_VALID', 'CONS_INSS'));
+$provaVida = $orgaoPagadorEmpty ? ' - ' : $this->getValidationValue($record, array('PROVA_DE_VIDA_VALID', 'PROVA_DE_VIDA'));
+?>
+
+
+
+
+-------------------------
+
+
+
+
+// Add this method to the HistoricoModule object in TestJ
+formatValidationField: function(rowData, fieldName, orgaoPagadorValue) {
+    // Check if ORGAO_PAGADOR is empty
+    const orgaoPagadorEmpty = !orgaoPagadorValue || orgaoPagadorValue.toString().trim() === '';
+    
+    // These fields depend on ORGAO_PAGADOR having a value
+    const orgaoPagadorDependentFields = ['SEGUNDA_VIA_CARTAO', 'HOLERITE_INSS', 'CONS_INSS', 'PROVA_DE_VIDA'];
+    
+    if (orgaoPagadorDependentFields.includes(fieldName) && orgaoPagadorEmpty) {
+        return ' - ';
+    }
+    
+    // For other fields or when ORGAO_PAGADOR has value, return the original value
+    return this.escapeHtml(rowData[fieldName]);
+},
+
+// Update the buildTableRow method to use the new validation logic
+buildTableRow: function(rowData, detailId, chaveLote) {
+    if (rowData.RAW_DATA) {
+        return `
+            <tr class="debug-row">
+                <td class="checkbox-column">
+                    <label>
+                        <input type="checkbox" class="form-check-input historico-detail-checkbox" 
+                               value="${detailId}" data-chave-lote="${chaveLote}">
+                        <span class="text"></span>
+                    </label>
+                </td>
+                <td colspan="19" style="background-color: #fff3cd; padding: 10px;">
+                    <strong>Dados não estruturados (debug):</strong><br>
+                    <pre style="margin-top: 5px; font-size: 11px;">${this.escapeHtml(rowData.RAW_DATA)}</pre>
+                    <small><em>Contate o desenvolvedor para corrigir a estrutura dos dados.</em></small>
+                </td>
+            </tr>
+        `;
+    }
+    
+    // Get ORGAO_PAGADOR value for validation logic
+    const orgaoPagadorValue = rowData.ORGAO_PAGADOR || '';
+    
+    return `
+        <tr>
+            <td class="checkbox-column">
+                <label>
+                    <input type="checkbox" class="form-check-input historico-detail-checkbox" 
+                           value="${detailId}" data-chave-lote="${chaveLote}">
+                    <span class="text"></span>
+                </label>
+            </td>
+            <td>${this.escapeHtml(rowData.CHAVE_LOJA)}</td>
+            <td>${this.escapeHtml(rowData.NOME_LOJA)}</td>
+            <td>${this.escapeHtml(rowData.COD_EMPRESA)}</td>
+            <td>${this.escapeHtml(rowData.COD_LOJA)}</td>
+            <td>${this.escapeHtml(rowData.TIPO_CORRESPONDENTE)}</td>
+            <td>${this.formatDate(rowData.DATA_CONCLUSAO)}</td>
+            <td>${this.formatDate(rowData.DATA_SOLICITACAO)}</td>
+            <td>${this.formatCurrency(rowData.DEP_DINHEIRO)}</td>
+            <td>${this.formatCurrency(rowData.DEP_CHEQUE)}</td>
+            <td>${this.formatCurrency(rowData.REC_RETIRADA)}</td>
+            <td>${this.formatCurrency(rowData.SAQUE_CHEQUE)}</td>
+            <td>${this.formatValidationField(rowData, 'SEGUNDA_VIA_CARTAO', orgaoPagadorValue)}</td>
+            <td>${this.formatValidationField(rowData, 'HOLERITE_INSS', orgaoPagadorValue)}</td>
+            <td>${this.formatValidationField(rowData, 'CONS_INSS', orgaoPagadorValue)}</td>
+            <td>${this.formatValidationField(rowData, 'PROVA_DE_VIDA', orgaoPagadorValue)}</td>
+            <td>${this.formatDate(rowData.DATA_CONTRATO)}</td>
+            <td>${this.escapeHtml(rowData.TIPO_CONTRATO)}</td>
+            <td>${this.formatDate(rowData.DATA_LOG)}</td>
+            <td><span class="badge badge-info">${this.escapeHtml(rowData.FILTRO)}</span></td>
+        </tr>
+    `;
+}
+
+
+
+
+--------------------------
+
+
+
+
