@@ -1,312 +1,345 @@
-<?php
-// Add these methods to your EnhancedInventoryModel class in Testy (3).txt
+// Add this JavaScript to your existing script section or create a new script tag
 
-    /**
-     * Get materials currently in use by a specific employee
-     */
-    function getMaterialsInUseByEmployee($cod_func){
-        $query = "SELECT 
-                    I.*,
-                    F.nome_func,
-                    F.E_MAIL as email_func
-                  FROM INFRA.DBO.TB_INVENTARIO_BE I
-                  LEFT JOIN MESU.DBO.FUNCIONARIOS F ON I.cod_func = F.COD_FUNC
-                  WHERE I.cod_func = $cod_func AND I.sts_equip = 'EM USO'
-                  ORDER BY I.tipo, I.marca, I.modelo";
-        
-        $dados = $this->sqlDb->select($query);
-        return $dados ? $dados : array();
-    }
-
-    /**
-     * Get all available materials that can be assigned
-     */
-    function getAvailableMaterials(){
-        $query = "SELECT 
-                    I.*
-                  FROM INFRA.DBO.TB_INVENTARIO_BE I
-                  WHERE I.sts_equip = 'DISPONIVEL' 
-                  AND I.tipo IN ('NOTEBOOK', 'DESKTOP', 'DISPOSITIVOS', 'KIT TECLADO/MOUSE')
-                  ORDER BY I.tipo, I.marca, I.modelo";
-        
-        $dados = $this->sqlDb->select($query);
-        return $dados ? $dados : array();
-    }
-
-    /**
-     * Get single equipment data for assignment operations
-     */
-    function getEquipmentForAssignment($id_equip){
-        $query = "SELECT * FROM INFRA.DBO.TB_INVENTARIO_BE WHERE id = $id_equip";
-        $dados = $this->sqlDb->select($query);
-        return $dados;
-    }
-
-    /**
-     * Log assignment transaction
-     */
-    function logAssignmentTransaction($id_equip, $old_status, $new_status, $old_cod_func, $new_cod_func){
-        $data = getDate();
-        $data = $data['year'].'-'.$data['mon'].'-'.$data['mday'];
-        
-        $query = "INSERT INTO INFRA.DBO.TB_TRANSICOES_INV (sts_atual, cod_func_atual, sts_ant, cod_func_antigo, data_modifi, id_equip) 
-                  VALUES ('$new_status', " . ($new_cod_func ? $new_cod_func : 'NULL') . ", '$old_status', " . ($old_cod_func ? $old_cod_func : 'NULL') . ", '$data', $id_equip)";
-        
-        $dados = $this->sqlDb->insert($query);
-        return $dados;
-    }
-
-    /**
-     * Assign material to employee
-     */
-    function assignMaterialToEmployee($id_equip, $cod_func){
-        // First get the equipment current state
-        $equipBefore = $this->getEquipmentForAssignment($id_equip);
-        
-        if(!$equipBefore || empty($equipBefore)){
-            return false;
+$(document).ready(function() {
+    var selectedEmployeeCode = null;
+    
+    // Helper function to parse array data from text response
+    function parseArrayData(dataString) {
+        var result = [];
+        if (!dataString || dataString === '') {
+            return result;
         }
         
-        // Check if equipment is available
-        if($equipBefore[0]['sts_equip'] != 'DISPONIVEL'){
-            return false;
-        }
-        
-        // Update equipment status and assign to employee
-        $query = "UPDATE INFRA.DBO.TB_INVENTARIO_BE 
-                  SET sts_equip = 'EM USO', cod_func = $cod_func 
-                  WHERE id = $id_equip AND sts_equip = 'DISPONIVEL'";
-        
-        $result = $this->sqlDb->update($query);
-        
-        if($result){
-            // Log the transaction
-            $old_status = $equipBefore[0]['sts_equip'];
-            $old_cod_func = $equipBefore[0]['cod_func'];
-            $new_status = 'EM USO';
-            $new_cod_func = $cod_func;
-            
-            $this->logAssignmentTransaction($id_equip, $old_status, $new_status, $old_cod_func, $new_cod_func);
-            
-            return true;
-        }
-        
-        return false;
-    }
-
-    /**
-     * Remove material from employee (set back to available)
-     */
-    function removeMaterialFromEmployee($id_equip, $cod_func){
-        // First get the equipment current state
-        $equipBefore = $this->getEquipmentForAssignment($id_equip);
-        
-        if(!$equipBefore || empty($equipBefore)){
-            return false;
-        }
-        
-        // Verify the equipment belongs to this employee and is in use
-        if($equipBefore[0]['cod_func'] != $cod_func || $equipBefore[0]['sts_equip'] != 'EM USO'){
-            return false;
-        }
-        
-        // Update equipment status back to available
-        $query = "UPDATE INFRA.DBO.TB_INVENTARIO_BE 
-                  SET sts_equip = 'DISPONIVEL', cod_func = NULL 
-                  WHERE id = $id_equip AND cod_func = $cod_func";
-        
-        $result = $this->sqlDb->update($query);
-        
-        if($result){
-            // Log the transaction
-            $old_status = $equipBefore[0]['sts_equip'];
-            $old_cod_func = $equipBefore[0]['cod_func'];
-            $new_status = 'DISPONIVEL';
-            $new_cod_func = null;
-            
-            $this->logAssignmentTransaction($id_equip, $old_status, $new_status, $old_cod_func, $new_cod_func);
-            
-            return true;
-        }
-        
-        return false;
-    }
-
-    /**
-     * Search employees by name or code
-     */
-    function searchEmployees($search = ''){
-        $whereClause = "";
-        if(!empty($search)){
-            $whereClause = "AND (A.nome_func LIKE '%$search%' OR A.cod_func LIKE '%$search%')";
-        }
-        
-        $query = "SELECT DISTINCT
-                    A.cod_func,
-                    A.nome_func,
-                    A.E_MAIL AS Email_Func,
-                    A.SECAO
-                  FROM MESU..FUNCIONARIOS AS A
-                  WHERE A.DT_TransDem IS NULL $whereClause
-                  ORDER BY A.nome_func";
-        
-        $dados = $this->sqlDb->select($query);
-        return $dados ? $dados : array();
-    }
-
-    /**
-     * Get employee details for assignment
-     */
-    function getEmployeeForAssignment($cod_func){
-        $query = "SELECT 
-                    A.cod_func,
-                    A.nome_func,
-                    A.E_MAIL AS Email_Func,
-                    A.RAMAL,
-                    A.RAMAL_INTERNO,
-                    A.DDD_CEL_CORPORATIVO,
-                    A.CELULAR_CORPORATIVO,
-                    A.SECAO
-                FROM MESU..FUNCIONARIOS AS A
-                WHERE A.cod_func = $cod_func AND A.DT_TransDem IS NULL";
-
-        $dados = $this->sqlDb->select($query);
-
-        if($dados){
-            return $dados;
-        } else {
-            // Try alternate employee table if not found in main table
-            $query = "SELECT
-                        B.idFuncionario AS cod_func,
-                        B.nomeFuncionario AS nome_func,
-                        '' as Email_Func,
-                        B.foneCelular AS RAMAL,
-                        '' AS RAMAL_INTERNO,
-                        '' AS DDD_CEL_CORPORATIVO,
-                        '' AS CELULAR_CORPORATIVO,
-                        '' AS SECAO
-                    FROM 
-                        RH..STG_FUNCIONARIOS AS B 
-                    WHERE 
-                        B.dataDemissao IS NULL AND
-                        B.idFuncionario = $cod_func";
-            
-            $dados = $this->sqlDb->select($query);
-            return $dados ? $dados : array();
-        }
-    }
-?>
-
-
-
----------
-
-
-
-<?php
-// Create this file as: atribuir_material_ajax.php
-
-@session_start();
-if($_SESSION['cod_usu'] == ''){   
-    echo 'ERROR|Sessão expirada';
-    die();
-}
-
-require_once('Inventario/indexValueController.php');
-$consulta = new EnhancedInventoryModel();
-
-$action = isset($_POST['action']) ? $_POST['action'] : '';
-
-// Helper function to format array data for output
-function formatArrayData($data) {
-    $output = "";
-    if(is_array($data) && count($data) > 0) {
-        foreach($data as $row) {
-            $rowData = "";
-            foreach($row as $key => $value) {
-                $rowData .= $key . ":" . $value . ";";
+        var rows = dataString.split('|');
+        for (var i = 0; i < rows.length; i++) {
+            if (rows[i].trim() !== '') {
+                var obj = {};
+                var pairs = rows[i].split(';');
+                for (var j = 0; j < pairs.length; j++) {
+                    if (pairs[j].indexOf(':') > -1) {
+                        var keyValue = pairs[j].split(':');
+                        if (keyValue.length >= 2) {
+                            var key = keyValue[0];
+                            var value = keyValue.slice(1).join(':'); // Handle values with colons
+                            obj[key] = value;
+                        }
+                    }
+                }
+                if (Object.keys(obj).length > 0) {
+                    result.push(obj);
+                }
             }
-            $output .= rtrim($rowData, ";") . "|";
         }
-        return rtrim($output, "|");
+        
+        // Debug: log the parsed result
+        console.log('Parsed employees data:', result);
+        
+        return result;
     }
-    return "";
-}
-
-switch($action){
-    case 'search_employees':
-        $search = isset($_POST['search']) ? $_POST['search'] : '';
-        $employees = $consulta->searchEmployees($search);
-        if($employees) {
-            echo 'SUCCESS|' . formatArrayData($employees);
-        } else {
-            echo 'SUCCESS|';
+    
+    // Reset modal when opening
+    $('#AtribuirMaterialModal').on('show.bs.modal', function() {
+        resetModal();
+    });
+    
+    // Search employees
+    $('#btn_search_employee, #employee_search').on('click keypress', function(e) {
+        if (e.type === 'click' || e.which === 13) {
+            searchEmployees();
         }
-        break;
+    });
+    
+    // Show available materials
+    $('#btn_show_available_materials').on('click', function() {
+        loadAvailableMaterials();
+    });
+    
+    // Filter available materials
+    $('#material_search').on('keyup', function() {
+        var filter = $(this).val().toLowerCase();
+        $('#available_materials .available-material-item').each(function() {
+            var text = $(this).text().toLowerCase();
+            $(this).toggle(text.indexOf(filter) > -1);
+        });
+    });
+    
+    function resetModal() {
+        selectedEmployeeCode = null;
+        $('#employee_search').val('');
+        $('#employee_results').hide();
+        $('#employee_materials_section').hide();
+        $('#available_materials_section').hide();
+        $('#employee_list').empty();
+        $('#current_materials').empty();
+        $('#available_materials').empty();
+        $('#material_search').val('');
+    }
+    
+    function searchEmployees() {
+        var search = $('#employee_search').val().trim();
         
-    case 'get_employee_materials':
-        $cod_func = isset($_POST['cod_func']) ? intval($_POST['cod_func']) : 0;
-        if($cod_func > 0){
-            $materials = $consulta->getMaterialsInUseByEmployee($cod_func);
-            $employee = $consulta->getEmployeeForAssignment($cod_func);
-            
-            $response = 'SUCCESS|MATERIALS:';
-            if($materials) {
-                $response .= formatArrayData($materials);
+        if (search.length < 2) {
+            alert('Digite pelo menos 2 caracteres para buscar');
+            return;
+        }
+        
+        $('#employee_list').html('<tr><td colspan="4" class="loading-spinner"><i class="fa fa-spinner fa-spin"></i> Buscando...</td></tr>');
+        $('#employee_results').show();
+        
+        $.ajax({
+            url: 'atribuir_material_ajax.php',
+            method: 'POST',
+            data: {
+                action: 'search_employees',
+                search: search
+            },
+            success: function(response) {
+                console.log('Raw response:', response);
+                var parts = response.split('|');
+                console.log('Split parts:', parts);
+                if (parts[0] === 'SUCCESS') {
+                    // Rejoin all parts except the first one (SUCCESS) to get all employee data
+                    var employeeDataString = parts.slice(1).join('|');
+                    console.log('Employee data string:', employeeDataString);
+                    var employeesData = parseArrayData(employeeDataString);
+                    console.log('Final employees data:', employeesData);
+                    displayEmployees(employeesData);
+                } else {
+                    $('#employee_list').html('<tr><td colspan="4">' + (parts[1] || 'Erro ao buscar funcionários') + '</td></tr>');
+                }
+            },
+            error: function() {
+                $('#employee_list').html('<tr><td colspan="4">Erro na requisição</td></tr>');
             }
-            $response .= '||EMPLOYEE:';
-            if($employee) {
-                $response .= formatArrayData($employee);
+        });
+    }
+    
+    function displayEmployees(employees) {
+        console.log('displayEmployees called with:', employees);
+        var html = '';
+        
+        if (employees.length === 0) {
+            html = '<tr><td colspan="4">Nenhum funcionário encontrado</td></tr>';
+        } else {
+            for (var i = 0; i < employees.length; i++) {
+                var employee = employees[i];
+                console.log('Processing employee:', employee);
+                html += '<tr class="employee-row" data-cod-func="' + employee.cod_func + '">' +
+                        '<td>' + employee.cod_func + '</td>' +
+                        '<td>' + employee.nome_func + '</td>' +
+                        '<td>' + (employee.SECAO || '') + '</td>' +
+                        '<td><button class="btn btn-primary btn-xs btn-select-employee" data-cod-func="' + employee.cod_func + '">Selecionar</button></td>' +
+                        '</tr>';
             }
-            echo $response;
-        } else {
-            echo 'ERROR|Código do funcionário inválido';
         }
-        break;
         
-    case 'get_available_materials':
-        $materials = $consulta->getAvailableMaterials();
-        if($materials) {
-            echo 'SUCCESS|' . formatArrayData($materials);
-        } else {
-            echo 'SUCCESS|';
-        }
-        break;
+        console.log('Generated HTML:', html);
+        $('#employee_list').html(html);
         
-    case 'assign_material':
-        $id_equip = isset($_POST['id_equip']) ? intval($_POST['id_equip']) : 0;
-        $cod_func = isset($_POST['cod_func']) ? intval($_POST['cod_func']) : 0;
+        // Add click handlers for employee selection
+        $('.btn-select-employee, .employee-row').on('click', function() {
+            var codFunc = $(this).data('cod-func') || $(this).closest('tr').data('cod-func');
+            selectEmployee(codFunc);
+        });
+    }
+    
+    function selectEmployee(codFunc) {
+        selectedEmployeeCode = codFunc;
+        loadEmployeeMaterials(codFunc);
+    }
+    
+    function loadEmployeeMaterials(codFunc) {
+        $('#current_materials').html('<div class="loading-spinner"><i class="fa fa-spinner fa-spin"></i> Carregando materiais...</div>');
+        $('#employee_materials_section').show();
         
-        if($id_equip > 0 && $cod_func > 0){
-            $result = $consulta->assignMaterialToEmployee($id_equip, $cod_func);
-            if($result){
-                echo 'SUCCESS|Material atribuído com sucesso';
-            } else {
-                echo 'ERROR|Erro ao atribuir material';
+        $.ajax({
+            url: 'atribuir_material_ajax.php',
+            method: 'POST',
+            data: {
+                action: 'get_employee_materials',
+                cod_func: codFunc
+            },
+            success: function(response) {
+                var parts = response.split('|');
+                if (parts[0] === 'SUCCESS') {
+                    // Parse the complex response: MATERIALS:data||EMPLOYEE:data
+                    var dataPart = parts.slice(1).join('|'); // Rejoin in case there were pipes in the data
+                    var sections = dataPart.split('||');
+                    
+                    var materialsData = [];
+                    var employeeData = [];
+                    
+                    for (var i = 0; i < sections.length; i++) {
+                        if (sections[i].indexOf('MATERIALS:') === 0) {
+                            var materialsString = sections[i].substring(10); // Remove 'MATERIALS:'
+                            materialsData = parseArrayData(materialsString);
+                        } else if (sections[i].indexOf('EMPLOYEE:') === 0) {
+                            var employeeString = sections[i].substring(9); // Remove 'EMPLOYEE:'
+                            employeeData = parseArrayData(employeeString);
+                        }
+                    }
+                    
+                    if (employeeData.length > 0) {
+                        $('#selected_employee_name').text('Funcionário: ' + employeeData[0].nome_func + ' (' + employeeData[0].cod_func + ')');
+                    }
+                    displayCurrentMaterials(materialsData);
+                } else {
+                    $('#current_materials').html('<div class="alert alert-danger">' + (parts[1] || 'Erro ao carregar materiais') + '</div>');
+                }
+            },
+            error: function() {
+                $('#current_materials').html('<div class="alert alert-danger">Erro na requisição</div>');
             }
+        });
+    }
+    
+    function displayCurrentMaterials(materials) {
+        var html = '';
+        
+        if (materials.length === 0) {
+            html = '<div class="alert alert-info">Nenhum material em uso</div>';
         } else {
-            echo 'ERROR|Dados inválidos';
-        }
-        break;
-        
-    case 'remove_material':
-        $id_equip = isset($_POST['id_equip']) ? intval($_POST['id_equip']) : 0;
-        $cod_func = isset($_POST['cod_func']) ? intval($_POST['cod_func']) : 0;
-        
-        if($id_equip > 0 && $cod_func > 0){
-            $result = $consulta->removeMaterialFromEmployee($id_equip, $cod_func);
-            if($result){
-                echo 'SUCCESS|Material removido com sucesso';
-            } else {
-                echo 'ERROR|Erro ao remover material';
+            for (var i = 0; i < materials.length; i++) {
+                var material = materials[i];
+                html += '<div class="material-item">' +
+                        '<strong>' + material.tipo + '</strong><br>' +
+                        '<span class="material-info">' + material.marca + ' - ' + material.modelo + '</span><br>' +
+                        '<span class="material-info">Host: ' + (material.hostname || 'N/A') + '</span><br>' +
+                        '<span class="material-info">Série: ' + (material.num_serie || 'N/A') + '</span>' +
+                        '<div class="material-actions">' +
+                        '<button class="btn btn-danger btn-xs btn-remove-material" data-id="' + material.id + '">' +
+                        '<i class="fa fa-remove"></i> Remover' +
+                        '</button>' +
+                        '</div>' +
+                        '</div>';
             }
-        } else {
-            echo 'ERROR|Dados inválidos';
         }
-        break;
         
-    default:
-        echo 'ERROR|Ação não reconhecida';
-        break;
-}
-?>
+        $('#current_materials').html(html);
+        
+        // Add click handlers for material removal
+        $('.btn-remove-material').on('click', function() {
+            var materialId = $(this).data('id');
+            removeMaterial(materialId);
+        });
+    }
+    
+    function loadAvailableMaterials() {
+        $('#available_materials').html('<div class="loading-spinner"><i class="fa fa-spinner fa-spin"></i> Carregando materiais disponíveis...</div>');
+        $('#available_materials_section').show();
+        
+        $.ajax({
+            url: 'atribuir_material_ajax.php',
+            method: 'POST',
+            data: {
+                action: 'get_available_materials'
+            },
+            success: function(response) {
+                var parts = response.split('|');
+                if (parts[0] === 'SUCCESS') {
+                    // Rejoin all parts except the first one (SUCCESS) to get all material data
+                    var materialDataString = parts.slice(1).join('|');
+                    var materialsData = parseArrayData(materialDataString);
+                    displayAvailableMaterials(materialsData);
+                } else {
+                    $('#available_materials').html('<div class="alert alert-danger">' + (parts[1] || 'Erro ao carregar materiais') + '</div>');
+                }
+            },
+            error: function() {
+                $('#available_materials').html('<div class="alert alert-danger">Erro na requisição</div>');
+            }
+        });
+    }
+    
+    function displayAvailableMaterials(materials) {
+        var html = '';
+        
+        if (materials.length === 0) {
+            html = '<div class="alert alert-info">Nenhum material disponível</div>';
+        } else {
+            for (var i = 0; i < materials.length; i++) {
+                var material = materials[i];
+                html += '<div class="available-material-item" data-id="' + material.id + '">' +
+                        '<strong>' + material.tipo + '</strong> - ' + material.marca + ' ' + material.modelo + '<br>' +
+                        '<small>Host: ' + (material.hostname || 'N/A') + ' | Série: ' + (material.num_serie || 'N/A') + '</small>' +
+                        '</div>';
+            }
+        }
+        
+        $('#available_materials').html(html);
+        
+        // Add click handlers for material assignment
+        $('.available-material-item').on('click', function() {
+            var materialId = $(this).data('id');
+            assignMaterial(materialId);
+        });
+    }
+    
+    function assignMaterial(materialId) {
+        if (!selectedEmployeeCode) {
+            alert('Nenhum funcionário selecionado');
+            return;
+        }
+        
+        if (confirm('Confirma a atribuição deste material ao funcionário?')) {
+            $.ajax({
+                url: 'atribuir_material_ajax.php',
+                method: 'POST',
+                data: {
+                    action: 'assign_material',
+                    id_equip: materialId,
+                    cod_func: selectedEmployeeCode
+                },
+                success: function(response) {
+                    var parts = response.split('|');
+                    if (parts[0] === 'SUCCESS') {
+                        alert(parts[1] || 'Material atribuído com sucesso!');
+                        // Reload the employee materials and available materials
+                        loadEmployeeMaterials(selectedEmployeeCode);
+                        loadAvailableMaterials();
+                    } else {
+                        alert('Erro: ' + (parts[1] || 'Erro desconhecido'));
+                    }
+                },
+                error: function() {
+                    alert('Erro na requisição');
+                }
+            });
+        }
+    }
+    
+    function removeMaterial(materialId) {
+        if (!selectedEmployeeCode) {
+            alert('Nenhum funcionário selecionado');
+            return;
+        }
+        
+        if (confirm('Confirma a remoção deste material do funcionário?')) {
+            $.ajax({
+                url: 'atribuir_material_ajax.php',
+                method: 'POST',
+                data: {
+                    action: 'remove_material',
+                    id_equip: materialId,
+                    cod_func: selectedEmployeeCode
+                },
+                success: function(response) {
+                    var parts = response.split('|');
+                    if (parts[0] === 'SUCCESS') {
+                        alert(parts[1] || 'Material removido com sucesso!');
+                        // Reload the employee materials and available materials
+                        loadEmployeeMaterials(selectedEmployeeCode);
+                        if ($('#available_materials_section').is(':visible')) {
+                            loadAvailableMaterials();
+                        }
+                    } else {
+                        alert('Erro: ' + (parts[1] || 'Erro desconhecido'));
+                    }
+                },
+                error: function() {
+                    alert('Erro na requisição');
+                }
+            });
+        }
+    }
+});
