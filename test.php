@@ -95,6 +95,8 @@ $(document).ready(function() {
             },
             success: function(response) {
                 console.log('Raw response:', response);
+                // Trim whitespace from response
+                response = response.trim();
                 var parts = response.split('|');
                 console.log('Split parts:', parts);
                 if (parts[0] === 'SUCCESS') {
@@ -160,6 +162,8 @@ $(document).ready(function() {
                 cod_func: codFunc
             },
             success: function(response) {
+                // Trim whitespace from response
+                response = response.trim();
                 var parts = response.split('|');
                 if (parts[0] === 'SUCCESS') {
                     // Parse the complex response: MATERIALS:data||EMPLOYEE:data
@@ -235,6 +239,8 @@ $(document).ready(function() {
                 action: 'get_available_materials'
             },
             success: function(response) {
+                // Trim whitespace from response
+                response = response.trim();
                 var parts = response.split('|');
                 if (parts[0] === 'SUCCESS') {
                     // Rejoin all parts except the first one (SUCCESS) to get all material data
@@ -291,6 +297,8 @@ $(document).ready(function() {
                     cod_func: selectedEmployeeCode
                 },
                 success: function(response) {
+                    // Trim whitespace from response
+                    response = response.trim();
                     var parts = response.split('|');
                     if (parts[0] === 'SUCCESS') {
                         alert(parts[1] || 'Material atribuído com sucesso!');
@@ -324,6 +332,8 @@ $(document).ready(function() {
                     cod_func: selectedEmployeeCode
                 },
                 success: function(response) {
+                    // Trim whitespace from response
+                    response = response.trim();
                     var parts = response.split('|');
                     if (parts[0] === 'SUCCESS') {
                         alert(parts[1] || 'Material removido com sucesso!');
@@ -343,3 +353,124 @@ $(document).ready(function() {
         }
     }
 });
+
+
+---------
+
+
+<?php
+// Create this file as: atribuir_material_ajax.php
+
+// Clean output buffer and prevent whitespace issues
+ob_clean();
+
+@session_start();
+if($_SESSION['cod_usu'] == ''){   
+    echo 'ERROR|Sessão expirada';
+    die();
+}
+
+require_once('Inventario/indexValueController.php');
+$consulta = new EnhancedInventoryModel();
+
+$action = isset($_POST['action']) ? $_POST['action'] : '';
+
+// Helper function to format array data for output
+function formatArrayData($data) {
+    $output = "";
+    if(is_array($data) && count($data) > 0) {
+        foreach($data as $row) {
+            $rowData = "";
+            foreach($row as $key => $value) {
+                // Skip numeric keys to avoid duplication (SQL Server returns both numeric and associative)
+                if(!is_numeric($key)) {
+                    $rowData .= $key . ":" . $value . ";";
+                }
+            }
+            $output .= rtrim($rowData, ";") . "|";
+        }
+        return rtrim($output, "|");
+    }
+    return "";
+}
+
+switch($action){
+    case 'search_employees':
+        $search = isset($_POST['search']) ? $_POST['search'] : '';
+        $employees = $consulta->searchEmployees($search);
+        if($employees) {
+            echo 'SUCCESS|' . formatArrayData($employees);
+        } else {
+            echo 'SUCCESS|';
+        }
+        break;
+        
+    case 'get_employee_materials':
+        $cod_func = isset($_POST['cod_func']) ? intval($_POST['cod_func']) : 0;
+        if($cod_func > 0){
+            $materials = $consulta->getMaterialsInUseByEmployee($cod_func);
+            $employee = $consulta->getEmployeeForAssignment($cod_func);
+            
+            $response = 'SUCCESS|MATERIALS:';
+            if($materials) {
+                $response .= formatArrayData($materials);
+            }
+            $response .= '||EMPLOYEE:';
+            if($employee) {
+                $response .= formatArrayData($employee);
+            }
+            echo $response;
+        } else {
+            echo 'ERROR|Código do funcionário inválido';
+        }
+        break;
+        
+    case 'get_available_materials':
+        $materials = $consulta->getAvailableMaterials();
+        if($materials) {
+            echo 'SUCCESS|' . formatArrayData($materials);
+        } else {
+            echo 'SUCCESS|';
+        }
+        break;
+        
+    case 'assign_material':
+        $id_equip = isset($_POST['id_equip']) ? intval($_POST['id_equip']) : 0;
+        $cod_func = isset($_POST['cod_func']) ? intval($_POST['cod_func']) : 0;
+        
+        if($id_equip > 0 && $cod_func > 0){
+            $result = $consulta->assignMaterialToEmployee($id_equip, $cod_func);
+            if($result){
+                echo 'SUCCESS|Material atribuído com sucesso';
+            } else {
+                echo 'ERROR|Erro ao atribuir material';
+            }
+        } else {
+            echo 'ERROR|Dados inválidos';
+        }
+        break;
+        
+    case 'remove_material':
+        $id_equip = isset($_POST['id_equip']) ? intval($_POST['id_equip']) : 0;
+        $cod_func = isset($_POST['cod_func']) ? intval($_POST['cod_func']) : 0;
+        
+        if($id_equip > 0 && $cod_func > 0){
+            $result = $consulta->removeMaterialFromEmployee($id_equip, $cod_func);
+            if($result){
+                echo 'SUCCESS|Material removido com sucesso';
+            } else {
+                echo 'ERROR|Erro ao remover material';
+            }
+        } else {
+            echo 'ERROR|Dados inválidos';
+        }
+        break;
+        
+    default:
+        echo 'ERROR|Ação não reconhecida';
+        break;
+}
+
+// Clean exit to prevent trailing whitespace
+exit();
+?>
