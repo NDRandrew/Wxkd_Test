@@ -1,20 +1,14 @@
 <?php
 @session_start();
 
-// Handle AJAX requests FIRST - before ANY output including the require
-if(isset($_POST['action']) && !empty($_POST['action'])){
-    
-    // Start output buffering and clear anything that might be there
-    if (ob_get_level()) {
-        ob_end_clean();
-    }
-    ob_start();
-    
-    // Include the database connection only when needed for AJAX
+// Simple and direct AJAX detection
+$isAjax = (isset($_POST['action']) && !empty($_POST['action']));
+
+if($isAjax){
+    // Include database only for AJAX
     require_once('\\\\mz-vv-fs-237\D4920\Secoes\D4920S012\Comum_S012\j\Server2Go\htdocs\erp\ClassRepository\geral\MSSQL\MSSQL.class.php');
     $sqlDb = new MSSQL("MESU");
     
-    // Get filtered requests
     if($_POST['action'] == 'get_pedidos'){
         $filtro = isset($_POST['filtro']) ? $_POST['filtro'] : '';
         
@@ -26,9 +20,6 @@ if(isset($_POST['action']) && !empty($_POST['action'])){
         $query = "SELECT ID, COD_FUNC, NOME, DATA_PEDIDO, SITUACAO, MOTIVO_PEDIDO, MATERIAL_PEDIDO, OBSERVACAO FROM INFRA.DBO.TB_INVENTARIO_BE_PEDIDOS $whereClause ORDER BY DATA_PEDIDO DESC";
         
         $result = $sqlDb->select($query);
-        
-        // Clear any buffered output and start fresh
-        ob_clean();
         
         if($result && count($result) > 0){
             foreach($result as $row){
@@ -81,12 +72,9 @@ if(isset($_POST['action']) && !empty($_POST['action'])){
         } else {
             echo '<tr><td colspan="8" class="text-center">Nenhum pedido encontrado</td></tr>';
         }
-        
-        ob_end_flush();
-        die();
+        exit();
     }
     
-    // Update request
     if($_POST['action'] == 'update_pedido'){
         $id = intval($_POST['id']);
         $situacao = $_POST['situacao'];
@@ -98,28 +86,22 @@ if(isset($_POST['action']) && !empty($_POST['action'])){
         
         $result = $sqlDb->update($query);
         
-        // Clear any buffered output and start fresh
-        ob_clean();
-        
         if($result){
             echo 'SUCESSO|Pedido atualizado com sucesso!';
         } else {
             echo 'ERRO|Erro ao atualizar pedido.';
         }
-        
-        ob_end_flush();
-        die();
+        exit();
     }
     
     // Unknown action
-    ob_clean();
     echo 'ERRO|Ação não reconhecida';
-    ob_end_flush();
-    die();
+    exit();
 }
 
-// Only include database connection and output HTML if NOT an AJAX request
-require_once('\\\\mz-vv-fs-237\D4920\Secoes\D4920S012\Comum_S012\j\Server2Go\htdocs\erp\ClassRepository\geral\MSSQL\MSSQL.class.php');
+// Only show HTML if not AJAX
+if(!$isAjax){
+    require_once('\\\\mz-vv-fs-237\D4920\Secoes\D4920S012\Comum_S012\j\Server2Go\htdocs\erp\ClassRepository\geral\MSSQL\MSSQL.class.php');
 ?>
 <!DOCTYPE html>
 <html>
@@ -312,41 +294,42 @@ function carregarPedidos() {
     
     xhr.onreadystatechange = function() {
         if(xhr.readyState === 4) {
-            console.log('Response status:', xhr.status);
-            console.log('Response length:', xhr.responseText.length);
-            console.log('Response first 200 chars:', xhr.responseText.substring(0, 200));
+            console.log('=== LOAD DATA RESPONSE ===');
+            console.log('Status:', xhr.status);
+            console.log('Length:', xhr.responseText.length);
+            console.log('First 100 chars:', xhr.responseText.substring(0, 100));
+            console.log('Is HTML?', xhr.responseText.indexOf('<!DOCTYPE') === 0 || xhr.responseText.indexOf('<html') === 0);
             
             if(xhr.status === 200) {
                 var response = xhr.responseText.trim();
-                // Check if response looks like HTML (starts with <!DOCTYPE or <html)
-                if(response.indexOf('<!DOCTYPE') === 0 || response.indexOf('<html') === 0) {
-                    console.log('ERROR: Received full HTML page instead of AJAX response');
-                    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Erro: Resposta inválida do servidor</td></tr>';
-                } else {
+                
+                // Simple check: if response starts with <tr, it's our table data
+                if(response.indexOf('<tr') === 0) {
                     tbody.innerHTML = response;
+                    console.log('SUCCESS: Table data loaded');
+                } else {
+                    console.log('ERROR: Response does not start with <tr');
+                    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Erro: Resposta inválida (não começa com &lt;tr&gt;)</td></tr>';
                 }
             } else {
-                tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Erro ao carregar dados</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Erro HTTP: ' + xhr.status + '</td></tr>';
             }
         }
     };
     
     var data = 'action=get_pedidos&filtro=' + encodeURIComponent(filtro);
-    console.log('Sending data:', data);
+    console.log('=== SENDING REQUEST ===');
+    console.log('Data:', data);
     xhr.send(data);
 }
 
 function editarPedido(id) {
-    // Hide normal row
     document.getElementById('row-' + id).style.display = 'none';
-    // Show edit row
     document.getElementById('edit-' + id).style.display = 'table-row';
 }
 
 function cancelarEdicao(id) {
-    // Show normal row
     document.getElementById('row-' + id).style.display = 'table-row';
-    // Hide edit row
     document.getElementById('edit-' + id).style.display = 'none';
 }
 
@@ -354,42 +337,33 @@ function salvarEdicao(id) {
     var situacao = document.getElementById('situacao-' + id).value;
     var observacao = document.getElementById('observacao-' + id).value;
     
-    // Create AJAX request
     var xhr = new XMLHttpRequest();
     xhr.open('POST', window.location.href, true);
     xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
     
     xhr.onreadystatechange = function() {
         if(xhr.readyState === 4) {
-            console.log('Update response status:', xhr.status);
-            console.log('Update response text:', xhr.responseText);
+            console.log('=== UPDATE RESPONSE ===');
+            console.log('Status:', xhr.status);
+            console.log('Response:', xhr.responseText);
             
             if(xhr.status === 200) {
                 var response = xhr.responseText.trim();
                 
-                // Check if response looks like HTML instead of our expected format
-                if(response.indexOf('<!DOCTYPE') === 0 || response.indexOf('<html') === 0) {
-                    console.log('ERROR: Received full HTML page instead of AJAX response');
-                    mostrarAlertaControle('Erro: Resposta inválida do servidor', 'danger');
-                    return;
-                }
-                
                 if(response.substring(0, 7) === 'SUCESSO') {
                     var parts = response.split('|');
-                    var message = parts.length > 1 ? parts[1] : 'Operação realizada com sucesso';
+                    var message = parts.length > 1 ? parts[1] : 'Sucesso';
                     mostrarAlertaControle(message, 'success');
-                    // Reload the table
                     carregarPedidos();
                 } else if(response.substring(0, 4) === 'ERRO') {
                     var parts = response.split('|');
-                    var message = parts.length > 1 ? parts[1] : 'Erro desconhecido';
+                    var message = parts.length > 1 ? parts[1] : 'Erro';
                     mostrarAlertaControle(message, 'danger');
                 } else {
-                    console.log('Unexpected response format:', response);
-                    mostrarAlertaControle('Resposta inesperada: ' + response.substring(0, 100), 'danger');
+                    mostrarAlertaControle('Resposta inesperada: ' + response, 'danger');
                 }
             } else {
-                mostrarAlertaControle('Erro de conexão', 'danger');
+                mostrarAlertaControle('Erro HTTP: ' + xhr.status, 'danger');
             }
         }
     };
@@ -398,7 +372,8 @@ function salvarEdicao(id) {
                '&situacao=' + encodeURIComponent(situacao) + 
                '&observacao=' + encodeURIComponent(observacao);
     
-    console.log('Sending update data:', data);
+    console.log('=== SENDING UPDATE ===');
+    console.log('Data:', data);
     xhr.send(data);
 }
 
@@ -410,7 +385,6 @@ function mostrarAlertaControle(message, type) {
                                '<strong>' + (type === 'success' ? 'Sucesso!' : 'Erro!') + '</strong> ' + 
                                message + '</div>';
     
-    // Auto-hide alerts
     setTimeout(function() {
         alertContainer.innerHTML = '';
     }, 3000);
@@ -419,3 +393,6 @@ function mostrarAlertaControle(message, type) {
 
 </body>
 </html>
+<?php
+}
+?>
