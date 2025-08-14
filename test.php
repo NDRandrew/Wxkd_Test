@@ -9,6 +9,11 @@ if(isset($_POST['action'])){
     
     $sqlDb = new MSSQL("MESU");
     
+// Handle AJAX requests
+if(isset($_POST['action'])){
+    
+    $sqlDb = new MSSQL("MESU");
+    
     // Get filtered requests
     if($_POST['action'] == 'get_pedidos'){
         $filtro = isset($_POST['filtro']) ? $_POST['filtro'] : '';
@@ -18,81 +23,64 @@ if(isset($_POST['action'])){
             $whereClause = "WHERE SITUACAO = '$filtro'";
         }
         
-        // First check if table exists and has data
-        $query = "SELECT TOP 1 * FROM INFRA.DBO.TB_INVENTARIO_BE_PEDIDOS";
-        $testResult = $sqlDb->select($query);
+        $query = "SELECT ID, COD_FUNC, NOME, DATA_PEDIDO, SITUACAO, MOTIVO_PEDIDO, MATERIAL_PEDIDO, OBSERVACAO FROM INFRA.DBO.TB_INVENTARIO_BE_PEDIDOS $whereClause ORDER BY DATA_PEDIDO DESC";
         
-        if($testResult === false){
-            echo '<tr><td colspan="8" class="text-center text-danger">Erro: Tabela não encontrada ou erro de conexão</td></tr>';
-            exit;
-        }
-        
-        $query = "SELECT 
-                    ISNULL(ID, ROW_NUMBER() OVER (ORDER BY DATA_PEDIDO DESC)) as ID,
-                    COD_FUNC, NOME, DATA_PEDIDO, SITUACAO, MOTIVO_PEDIDO, MATERIAL_PEDIDO,
-                    ISNULL(OBSERVACAO, '') as OBSERVACAO
-                  FROM INFRA.DBO.TB_INVENTARIO_BE_PEDIDOS $whereClause 
-                  ORDER BY DATA_PEDIDO DESC";
-        $result = $sqlDb->select($query);
-        
-        if(!empty($result)){
-            foreach($result as $row){
-                $dataPedido = !empty($row['DATA_PEDIDO']) ? date('d/m/Y', strtotime($row['DATA_PEDIDO'])) : 'N/A';
-                $situacaoClass = strtolower(str_replace('Ç', 'c', $row['SITUACAO']));
-                $pedidoId = $row['ID'];
-                
-                echo '<tr id="row-' . $pedidoId . '">';
-                echo '<td>' . htmlspecialchars($row['COD_FUNC']) . '</td>';
-                echo '<td>' . htmlspecialchars($row['NOME']) . '</td>';
-                echo '<td>' . $dataPedido . '</td>';
-                echo '<td><span class="label label-' . $situacaoClass . '">' . htmlspecialchars($row['SITUACAO']) . '</span></td>';
-                echo '<td>' . htmlspecialchars(substr($row['MATERIAL_PEDIDO'], 0, 30)) . (strlen($row['MATERIAL_PEDIDO']) > 30 ? '...' : '') . '</td>';
-                echo '<td>' . htmlspecialchars(substr($row['MOTIVO_PEDIDO'], 0, 40)) . (strlen($row['MOTIVO_PEDIDO']) > 40 ? '...' : '') . '</td>';
-                echo '<td>' . htmlspecialchars(substr($row['OBSERVACAO'], 0, 30)) . (strlen($row['OBSERVACAO']) > 30 ? '...' : '') . '</td>';
-                echo '<td>';
-                echo '<button class="btn btn-xs btn-primary" onclick="editarPedido(' . $pedidoId . ')">Editar</button>';
-                echo '</td>';
-                echo '</tr>';
-                
-                // Hidden edit row
-                echo '<tr id="edit-' . $pedidoId . '" style="display:none;" class="edit-row">';
-                echo '<td colspan="8">';
-                echo '<div class="edit-form">';
-                echo '<div class="row">';
-                echo '<div class="col-md-4">';
-                echo '<label>Situação:</label>';
-                echo '<select class="form-control" id="situacao-' . $pedidoId . '">';
-                echo '<option value="PENDENTE"' . ($row['SITUACAO'] == 'PENDENTE' ? ' selected' : '') . '>PENDENTE</option>';
-                echo '<option value="VERIFICACAO"' . ($row['SITUACAO'] == 'VERIFICACAO' ? ' selected' : '') . '>VERIFICAÇÃO</option>';
-                echo '<option value="CONCLUIDO"' . ($row['SITUACAO'] == 'CONCLUIDO' ? ' selected' : '') . '>CONCLUÍDO</option>';
-                echo '<option value="CANCELADO"' . ($row['SITUACAO'] == 'CANCELADO' ? ' selected' : '') . '>CANCELADO</option>';
-                echo '</select>';
-                echo '</div>';
-                echo '<div class="col-md-8">';
-                echo '<label>Observação:</label>';
-                echo '<textarea class="form-control" id="observacao-' . $pedidoId . '" rows="3">' . htmlspecialchars($row['OBSERVACAO']) . '</textarea>';
-                echo '</div>';
-                echo '</div>';
-                echo '<div class="row" style="margin-top:10px;">';
-                echo '<div class="col-md-12">';
-                echo '<button class="btn btn-success btn-sm" onclick="salvarEdicao(' . $pedidoId . ')">Salvar</button> ';
-                echo '<button class="btn btn-default btn-sm" onclick="cancelarEdicao(' . $pedidoId . ')">Cancelar</button>';
-                echo '</div>';
-                echo '</div>';
-                echo '</div>';
-                echo '</td>';
-                echo '</tr>';
-            }
-        } else {
-            // Check if table is empty or if there's an error
-            $countQuery = "SELECT COUNT(*) as total FROM INFRA.DBO.TB_INVENTARIO_BE_PEDIDOS";
-            $countResult = $sqlDb->select($countQuery);
+        try {
+            $result = $sqlDb->select($query);
             
-            if(!empty($countResult) && $countResult[0]['total'] > 0){
-                echo '<tr><td colspan="8" class="text-center text-warning">Nenhum pedido encontrado com o filtro selecionado</td></tr>';
+            if($result && count($result) > 0){
+                foreach($result as $row){
+                    $dataPedido = date('d/m/Y', strtotime($row['DATA_PEDIDO']));
+                    $situacaoClass = strtolower($row['SITUACAO']);
+                    $observacao = isset($row['OBSERVACAO']) ? $row['OBSERVACAO'] : '';
+                    
+                    echo '<tr id="row-' . $row['ID'] . '">';
+                    echo '<td>' . $row['COD_FUNC'] . '</td>';
+                    echo '<td>' . $row['NOME'] . '</td>';
+                    echo '<td>' . $dataPedido . '</td>';
+                    echo '<td><span class="label label-' . $situacaoClass . '">' . $row['SITUACAO'] . '</span></td>';
+                    echo '<td>' . substr($row['MATERIAL_PEDIDO'], 0, 30) . (strlen($row['MATERIAL_PEDIDO']) > 30 ? '...' : '') . '</td>';
+                    echo '<td>' . substr($row['MOTIVO_PEDIDO'], 0, 40) . (strlen($row['MOTIVO_PEDIDO']) > 40 ? '...' : '') . '</td>';
+                    echo '<td>' . substr($observacao, 0, 30) . (strlen($observacao) > 30 ? '...' : '') . '</td>';
+                    echo '<td>';
+                    echo '<button class="btn btn-xs btn-primary" onclick="editarPedido(' . $row['ID'] . ')">Editar</button>';
+                    echo '</td>';
+                    echo '</tr>';
+                    
+                    // Hidden edit row
+                    echo '<tr id="edit-' . $row['ID'] . '" style="display:none;" class="edit-row">';
+                    echo '<td colspan="8">';
+                    echo '<div class="edit-form">';
+                    echo '<div class="row">';
+                    echo '<div class="col-md-4">';
+                    echo '<label>Situação:</label>';
+                    echo '<select class="form-control" id="situacao-' . $row['ID'] . '">';
+                    echo '<option value="PENDENTE"' . ($row['SITUACAO'] == 'PENDENTE' ? ' selected' : '') . '>PENDENTE</option>';
+                    echo '<option value="VERIFICACAO"' . ($row['SITUACAO'] == 'VERIFICACAO' ? ' selected' : '') . '>VERIFICAÇÃO</option>';
+                    echo '<option value="CONCLUIDO"' . ($row['SITUACAO'] == 'CONCLUIDO' ? ' selected' : '') . '>CONCLUÍDO</option>';
+                    echo '<option value="CANCELADO"' . ($row['SITUACAO'] == 'CANCELADO' ? ' selected' : '') . '>CANCELADO</option>';
+                    echo '</select>';
+                    echo '</div>';
+                    echo '<div class="col-md-8">';
+                    echo '<label>Observação:</label>';
+                    echo '<textarea class="form-control" id="observacao-' . $row['ID'] . '" rows="3">' . htmlspecialchars($observacao) . '</textarea>';
+                    echo '</div>';
+                    echo '</div>';
+                    echo '<div class="row" style="margin-top:10px;">';
+                    echo '<div class="col-md-12">';
+                    echo '<button class="btn btn-success btn-sm" onclick="salvarEdicao(' . $row['ID'] . ')">Salvar</button> ';
+                    echo '<button class="btn btn-default btn-sm" onclick="cancelarEdicao(' . $row['ID'] . ')">Cancelar</button>';
+                    echo '</div>';
+                    echo '</div>';
+                    echo '</div>';
+                    echo '</td>';
+                    echo '</tr>';
+                }
             } else {
-                echo '<tr><td colspan="8" class="text-center text-info">Nenhum pedido cadastrado ainda</td></tr>';
+                echo '<tr><td colspan="8" class="text-center">Nenhum pedido encontrado</td></tr>';
             }
+        } catch (Exception $e) {
+            echo '<tr><td colspan="8" class="text-center text-danger">Erro ao carregar dados: ' . $e->getMessage() . '</td></tr>';
         }
         exit;
     }
@@ -103,22 +91,13 @@ if(isset($_POST['action'])){
         $situacao = $_POST['situacao'];
         $observacao = $_POST['observacao'];
         
-        // First check if record exists
-        $checkQuery = "SELECT COD_FUNC FROM INFRA.DBO.TB_INVENTARIO_BE_PEDIDOS WHERE ID = $id OR ROW_NUMBER() OVER (ORDER BY DATA_PEDIDO DESC) = $id";
-        $exists = $sqlDb->select($checkQuery);
-        
-        if(empty($exists)){
-            echo 'ERRO|Registro não encontrado.';
-            exit;
-        }
-        
         $query = "UPDATE INFRA.DBO.TB_INVENTARIO_BE_PEDIDOS 
                   SET SITUACAO = '$situacao', OBSERVACAO = '$observacao' 
                   WHERE ID = $id";
         
         $result = $sqlDb->update($query);
         
-        if($result !== false){
+        if($result){
             echo 'SUCESSO|Pedido atualizado com sucesso!';
         } else {
             echo 'ERRO|Erro ao atualizar pedido.';
