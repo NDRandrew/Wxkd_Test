@@ -1,15 +1,10 @@
 <?php
 @session_start();
 
-// DEBUG: Let's see what PHP is actually receiving
-$debug_output = array();
-$debug_output['GET'] = $_GET;
-$debug_output['POST'] = $_POST;
-$debug_output['REQUEST_URI'] = $_SERVER['REQUEST_URI'];
-$debug_output['QUERY_STRING'] = isset($_SERVER['QUERY_STRING']) ? $_SERVER['QUERY_STRING'] : 'not set';
+// SOLUTION: This file needs to be called DIRECTLY for AJAX, not through index.php
+// When you include this in index.php, it will only show the modal HTML
+// When you call this file directly with ?ajax, it handles the AJAX requests
 
-// BULLETPROOF APPROACH: Use URL parameters instead of POST detection
-// ?ajax=get_pedidos or ?ajax=update_pedido
 if(isset($_GET['ajax'])){
     
     require_once('\\\\mz-vv-fs-237\D4920\Secoes\D4920S012\Comum_S012\j\Server2Go\htdocs\erp\ClassRepository\geral\MSSQL\MSSQL.class.php');
@@ -103,104 +98,94 @@ if(isset($_GET['ajax'])){
     exit();
 }
 
-// If no ?ajax parameter, show the modal HTML
-require_once('\\\\mz-vv-fs-237\D4920\Secoes\D4920S012\Comum_S012\j\Server2Go\htdocs\erp\ClassRepository\geral\MSSQL\MSSQL.class.php');
-
-// Add debug info as HTML comment when not AJAX
-echo '<!-- DEBUG INFO: ' . print_r($debug_output, true) . ' -->';
+// Only show modal HTML when included in another file (no AJAX parameter)
 ?>
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <style>
-        .modal-controle .table-container {
-            max-height: 500px;
-            overflow-y: auto;
-        }
-        
-        .modal-controle .table {
-            margin-bottom: 0;
-        }
-        
-        .modal-controle .table th {
-            background-color: #f5f5f5;
-            font-weight: bold;
-            position: sticky;
-            top: 0;
-            z-index: 10;
-        }
-        
-        .modal-controle .edit-form {
-            background-color: #f9f9f9;
-            padding: 15px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-        
-        .modal-controle .form-control {
-            border-radius: 3px;
-            border: 1px solid #ccc;
-        }
-        
-        .modal-controle .btn-xs {
-            padding: 2px 8px;
-            font-size: 11px;
-        }
-        
-        .label-pendente { background-color: #f0ad4e !important; }
-        .label-verificacao { background-color: #5bc0de !important; }
-        .label-concluido { background-color: #5cb85c !important; }
-        .label-cancelado { background-color: #d9534f !important; }
-        
-        .filter-container {
-            margin-bottom: 15px;
-            padding: 10px;
-            background-color: #f5f5f5;
-            border-radius: 4px;
-        }
-        
-        .loading-table {
-            text-align: center;
-            padding: 40px;
-        }
-        
-        .spinner-table {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #3498db;
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 10px;
-        }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        .alert-controle {
-            padding: 10px;
-            margin-bottom: 15px;
-            border: 1px solid transparent;
-            border-radius: 4px;
-        }
-        
-        .alert-success {
-            color: #3c763d;
-            background-color: #dff0d8;
-            border-color: #d6e9c6;
-        }
-        
-        .alert-danger {
-            color: #a94442;
-            background-color: #f2dede;
-            border-color: #ebccd1;
-        }
-    </style>
-</head>
-<body>
+<style>
+.modal-controle .table-container {
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.modal-controle .table {
+    margin-bottom: 0;
+}
+
+.modal-controle .table th {
+    background-color: #f5f5f5;
+    font-weight: bold;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.modal-controle .edit-form {
+    background-color: #f9f9f9;
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.modal-controle .form-control {
+    border-radius: 3px;
+    border: 1px solid #ccc;
+}
+
+.modal-controle .btn-xs {
+    padding: 2px 8px;
+    font-size: 11px;
+}
+
+.label-pendente { background-color: #f0ad4e !important; }
+.label-verificacao { background-color: #5bc0de !important; }
+.label-concluido { background-color: #5cb85c !important; }
+.label-cancelado { background-color: #d9534f !important; }
+
+.filter-container {
+    margin-bottom: 15px;
+    padding: 10px;
+    background-color: #f5f5f5;
+    border-radius: 4px;
+}
+
+.loading-table {
+    text-align: center;
+    padding: 40px;
+}
+
+.spinner-table {
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #3498db;
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 10px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.alert-controle {
+    padding: 10px;
+    margin-bottom: 15px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+}
+
+.alert-success {
+    color: #3c763d;
+    background-color: #dff0d8;
+    border-color: #d6e9c6;
+}
+
+.alert-danger {
+    color: #a94442;
+    background-color: #f2dede;
+    border-color: #ebccd1;
+}
+</style>
 
 <!-- Modal for Material Request Control -->
 <div class="modal fade" id="modalPedidoControle" tabindex="-1" role="dialog" aria-labelledby="modalControleLabel">
@@ -277,21 +262,14 @@ echo '<!-- DEBUG INFO: ' . print_r($debug_output, true) . ' -->';
 </div>
 
 <script>
-// BULLETPROOF JAVASCRIPT - Uses URL parameters instead of POST detection
+// IMPORTANT: This points to the modal file directly, not index.php
+var MODAL_FILE_URL = '<?php echo basename(__FILE__); ?>'; // This will be the filename of this modal file
+
 document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('modalPedidoControle').addEventListener('show.bs.modal', function() {
         carregarPedidos();
     });
 });
-
-function getBaseUrl() {
-    var url = window.location.href;
-    // Remove any existing query parameters
-    if(url.indexOf('?') !== -1) {
-        url = url.substring(0, url.indexOf('?'));
-    }
-    return url;
-}
 
 function carregarPedidos() {
     var filtro = document.getElementById('filtro-situacao').value;
@@ -300,7 +278,8 @@ function carregarPedidos() {
     tbody.innerHTML = '<tr><td colspan="8" class="loading-table"><div class="spinner-table"></div><p>Carregando pedidos...</p></td></tr>';
     
     var xhr = new XMLHttpRequest();
-    var url = getBaseUrl() + '?ajax=get_pedidos';
+    // Call the modal file directly, not index.php
+    var url = MODAL_FILE_URL + '?ajax=get_pedidos';
     xhr.open('POST', url, true);
     xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
     
@@ -319,6 +298,7 @@ function carregarPedidos() {
                     console.log('SUCCESS: Table loaded');
                 } else {
                     console.log('ERROR: Invalid response format');
+                    console.log('First 200 chars:', response.substring(0, 200));
                     tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Erro: Formato de resposta inválido</td></tr>';
                 }
             } else {
@@ -345,7 +325,8 @@ function salvarEdicao(id) {
     var observacao = document.getElementById('observacao-' + id).value;
     
     var xhr = new XMLHttpRequest();
-    var url = getBaseUrl() + '?ajax=update_pedido';
+    // Call the modal file directly, not index.php
+    var url = MODAL_FILE_URL + '?ajax=update_pedido';
     xhr.open('POST', url, true);
     xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
     
@@ -397,6 +378,3 @@ function mostrarAlertaControle(message, type) {
     }, 3000);
 }
 </script>
-
-</body>
-</html>
