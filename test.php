@@ -1,6 +1,13 @@
 <?php
 @session_start();
 
+// DEBUG: Let's see what PHP is actually receiving
+$debug_output = array();
+$debug_output['GET'] = $_GET;
+$debug_output['POST'] = $_POST;
+$debug_output['REQUEST_URI'] = $_SERVER['REQUEST_URI'];
+$debug_output['QUERY_STRING'] = isset($_SERVER['QUERY_STRING']) ? $_SERVER['QUERY_STRING'] : 'not set';
+
 // BULLETPROOF APPROACH: Use URL parameters instead of POST detection
 // ?ajax=get_pedidos or ?ajax=update_pedido
 if(isset($_GET['ajax'])){
@@ -98,6 +105,9 @@ if(isset($_GET['ajax'])){
 
 // If no ?ajax parameter, show the modal HTML
 require_once('\\\\mz-vv-fs-237\D4920\Secoes\D4920S012\Comum_S012\j\Server2Go\htdocs\erp\ClassRepository\geral\MSSQL\MSSQL.class.php');
+
+// Add debug info as HTML comment when not AJAX
+echo '<!-- DEBUG INFO: ' . print_r($debug_output, true) . ' -->';
 ?>
 <!DOCTYPE html>
 <html>
