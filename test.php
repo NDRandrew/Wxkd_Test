@@ -4,12 +4,7 @@
 // Include the same database connection as your model
 require_once('\\\\mz-vv-fs-237\D4920\Secoes\D4920S012\Comum_S012\j\Server2Go\htdocs\erp\ClassRepository\geral\MSSQL\MSSQL.class.php');
 
-// Handle AJAX requests
-if(isset($_POST['action'])){
-    
-    $sqlDb = new MSSQL("MESU");
-    
-// Handle AJAX requests
+// Handle AJAX requests FIRST - before any HTML output
 if(isset($_POST['action'])){
     
     $sqlDb = new MSSQL("MESU");
@@ -25,64 +20,60 @@ if(isset($_POST['action'])){
         
         $query = "SELECT ID, COD_FUNC, NOME, DATA_PEDIDO, SITUACAO, MOTIVO_PEDIDO, MATERIAL_PEDIDO, OBSERVACAO FROM INFRA.DBO.TB_INVENTARIO_BE_PEDIDOS $whereClause ORDER BY DATA_PEDIDO DESC";
         
-        try {
-            $result = $sqlDb->select($query);
-            
-            if($result && count($result) > 0){
-                foreach($result as $row){
-                    $dataPedido = date('d/m/Y', strtotime($row['DATA_PEDIDO']));
-                    $situacaoClass = strtolower($row['SITUACAO']);
-                    $observacao = isset($row['OBSERVACAO']) ? $row['OBSERVACAO'] : '';
-                    
-                    echo '<tr id="row-' . $row['ID'] . '">';
-                    echo '<td>' . $row['COD_FUNC'] . '</td>';
-                    echo '<td>' . $row['NOME'] . '</td>';
-                    echo '<td>' . $dataPedido . '</td>';
-                    echo '<td><span class="label label-' . $situacaoClass . '">' . $row['SITUACAO'] . '</span></td>';
-                    echo '<td>' . substr($row['MATERIAL_PEDIDO'], 0, 30) . (strlen($row['MATERIAL_PEDIDO']) > 30 ? '...' : '') . '</td>';
-                    echo '<td>' . substr($row['MOTIVO_PEDIDO'], 0, 40) . (strlen($row['MOTIVO_PEDIDO']) > 40 ? '...' : '') . '</td>';
-                    echo '<td>' . substr($observacao, 0, 30) . (strlen($observacao) > 30 ? '...' : '') . '</td>';
-                    echo '<td>';
-                    echo '<button class="btn btn-xs btn-primary" onclick="editarPedido(' . $row['ID'] . ')">Editar</button>';
-                    echo '</td>';
-                    echo '</tr>';
-                    
-                    // Hidden edit row
-                    echo '<tr id="edit-' . $row['ID'] . '" style="display:none;" class="edit-row">';
-                    echo '<td colspan="8">';
-                    echo '<div class="edit-form">';
-                    echo '<div class="row">';
-                    echo '<div class="col-md-4">';
-                    echo '<label>Situação:</label>';
-                    echo '<select class="form-control" id="situacao-' . $row['ID'] . '">';
-                    echo '<option value="PENDENTE"' . ($row['SITUACAO'] == 'PENDENTE' ? ' selected' : '') . '>PENDENTE</option>';
-                    echo '<option value="VERIFICACAO"' . ($row['SITUACAO'] == 'VERIFICACAO' ? ' selected' : '') . '>VERIFICAÇÃO</option>';
-                    echo '<option value="CONCLUIDO"' . ($row['SITUACAO'] == 'CONCLUIDO' ? ' selected' : '') . '>CONCLUÍDO</option>';
-                    echo '<option value="CANCELADO"' . ($row['SITUACAO'] == 'CANCELADO' ? ' selected' : '') . '>CANCELADO</option>';
-                    echo '</select>';
-                    echo '</div>';
-                    echo '<div class="col-md-8">';
-                    echo '<label>Observação:</label>';
-                    echo '<textarea class="form-control" id="observacao-' . $row['ID'] . '" rows="3">' . htmlspecialchars($observacao) . '</textarea>';
-                    echo '</div>';
-                    echo '</div>';
-                    echo '<div class="row" style="margin-top:10px;">';
-                    echo '<div class="col-md-12">';
-                    echo '<button class="btn btn-success btn-sm" onclick="salvarEdicao(' . $row['ID'] . ')">Salvar</button> ';
-                    echo '<button class="btn btn-default btn-sm" onclick="cancelarEdicao(' . $row['ID'] . ')">Cancelar</button>';
-                    echo '</div>';
-                    echo '</div>';
-                    echo '</div>';
-                    echo '</td>';
-                    echo '</tr>';
-                }
-            } else {
-                echo '<tr><td colspan="8" class="text-center">Nenhum pedido encontrado</td></tr>';
+        $result = $sqlDb->select($query);
+        
+        if($result && count($result) > 0){
+            foreach($result as $row){
+                $dataPedido = date('d/m/Y', strtotime($row['DATA_PEDIDO']));
+                $situacaoClass = strtolower($row['SITUACAO']);
+                $observacao = isset($row['OBSERVACAO']) ? $row['OBSERVACAO'] : '';
+                
+                echo '<tr id="row-' . $row['ID'] . '">';
+                echo '<td>' . $row['COD_FUNC'] . '</td>';
+                echo '<td>' . $row['NOME'] . '</td>';
+                echo '<td>' . $dataPedido . '</td>';
+                echo '<td><span class="label label-' . $situacaoClass . '">' . $row['SITUACAO'] . '</span></td>';
+                echo '<td>' . substr($row['MATERIAL_PEDIDO'], 0, 30) . (strlen($row['MATERIAL_PEDIDO']) > 30 ? '...' : '') . '</td>';
+                echo '<td>' . substr($row['MOTIVO_PEDIDO'], 0, 40) . (strlen($row['MOTIVO_PEDIDO']) > 40 ? '...' : '') . '</td>';
+                echo '<td>' . substr($observacao, 0, 30) . (strlen($observacao) > 30 ? '...' : '') . '</td>';
+                echo '<td>';
+                echo '<button class="btn btn-xs btn-primary" onclick="editarPedido(' . $row['ID'] . ')">Editar</button>';
+                echo '</td>';
+                echo '</tr>';
+                
+                // Hidden edit row
+                echo '<tr id="edit-' . $row['ID'] . '" style="display:none;" class="edit-row">';
+                echo '<td colspan="8">';
+                echo '<div class="edit-form">';
+                echo '<div class="row">';
+                echo '<div class="col-md-4">';
+                echo '<label>Situação:</label>';
+                echo '<select class="form-control" id="situacao-' . $row['ID'] . '">';
+                echo '<option value="PENDENTE"' . ($row['SITUACAO'] == 'PENDENTE' ? ' selected' : '') . '>PENDENTE</option>';
+                echo '<option value="VERIFICACAO"' . ($row['SITUACAO'] == 'VERIFICACAO' ? ' selected' : '') . '>VERIFICAÇÃO</option>';
+                echo '<option value="CONCLUIDO"' . ($row['SITUACAO'] == 'CONCLUIDO' ? ' selected' : '') . '>CONCLUÍDO</option>';
+                echo '<option value="CANCELADO"' . ($row['SITUACAO'] == 'CANCELADO' ? ' selected' : '') . '>CANCELADO</option>';
+                echo '</select>';
+                echo '</div>';
+                echo '<div class="col-md-8">';
+                echo '<label>Observação:</label>';
+                echo '<textarea class="form-control" id="observacao-' . $row['ID'] . '" rows="3">' . htmlspecialchars($observacao) . '</textarea>';
+                echo '</div>';
+                echo '</div>';
+                echo '<div class="row" style="margin-top:10px;">';
+                echo '<div class="col-md-12">';
+                echo '<button class="btn btn-success btn-sm" onclick="salvarEdicao(' . $row['ID'] . ')">Salvar</button> ';
+                echo '<button class="btn btn-default btn-sm" onclick="cancelarEdicao(' . $row['ID'] . ')">Cancelar</button>';
+                echo '</div>';
+                echo '</div>';
+                echo '</div>';
+                echo '</td>';
+                echo '</tr>';
             }
-        } catch (Exception $e) {
-            echo '<tr><td colspan="8" class="text-center text-danger">Erro ao carregar dados: ' . $e->getMessage() . '</td></tr>';
+        } else {
+            echo '<tr><td colspan="8" class="text-center">Nenhum pedido encontrado</td></tr>';
         }
-        exit;
+        die(); // Use die() instead of exit() to be extra sure
     }
     
     // Update request
@@ -102,11 +93,12 @@ if(isset($_POST['action'])){
         } else {
             echo 'ERRO|Erro ao atualizar pedido.';
         }
-        exit;
+        die(); // Use die() instead of exit() to be extra sure
     }
 }
-?>
 
+// Only output HTML if NOT an AJAX request
+?>
 <!DOCTYPE html>
 <html>
 <head>
@@ -330,16 +322,20 @@ function salvarEdicao(id) {
     
     xhr.onreadystatechange = function() {
         if(xhr.readyState === 4 && xhr.status === 200) {
-            var response = xhr.responseText.split('|');
-            var status = response[0];
-            var message = response[1];
+            var response = xhr.responseText;
             
-            if(status === 'SUCESSO') {
+            if(response.indexOf('SUCESSO') === 0) {
+                var parts = response.split('|');
+                var message = parts[1];
                 mostrarAlertaControle(message, 'success');
                 // Reload the table
                 carregarPedidos();
-            } else {
+            } else if(response.indexOf('ERRO') === 0) {
+                var parts = response.split('|');
+                var message = parts[1];
                 mostrarAlertaControle(message, 'danger');
+            } else {
+                mostrarAlertaControle('Resposta inesperada do servidor', 'danger');
             }
         }
     };
