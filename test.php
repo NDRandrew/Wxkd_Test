@@ -5,12 +5,14 @@
 require_once('\\\\mz-vv-fs-237\D4920\Secoes\D4920S012\Comum_S012\j\Server2Go\htdocs\erp\ClassRepository\geral\MSSQL\MSSQL.class.php');
 
 // Handle AJAX requests FIRST - before any HTML output
-if(isset($_POST['action'])){
+if(isset($_POST['action']) && !empty($_POST['action'])){
     
     $sqlDb = new MSSQL("MESU");
     
     // Get filtered requests
     if($_POST['action'] == 'get_pedidos'){
+        ob_clean(); // Clear any previous output
+        
         $filtro = isset($_POST['filtro']) ? $_POST['filtro'] : '';
         
         $whereClause = "";
@@ -73,11 +75,13 @@ if(isset($_POST['action'])){
         } else {
             echo '<tr><td colspan="8" class="text-center">Nenhum pedido encontrado</td></tr>';
         }
-        die(); // Use die() instead of exit() to be extra sure
+        die(); // Stop execution here
     }
     
     // Update request
     if($_POST['action'] == 'update_pedido'){
+        ob_clean(); // Clear any previous output
+        
         $id = intval($_POST['id']);
         $situacao = $_POST['situacao'];
         $observacao = $_POST['observacao'];
@@ -93,8 +97,12 @@ if(isset($_POST['action'])){
         } else {
             echo 'ERRO|Erro ao atualizar pedido.';
         }
-        die(); // Use die() instead of exit() to be extra sure
+        die(); // Stop execution here
     }
+    
+    // If we reach here, it's an unknown action
+    echo 'ERRO|Ação não reconhecida';
+    die();
 }
 
 // Only output HTML if NOT an AJAX request
@@ -289,12 +297,21 @@ function carregarPedidos() {
     xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
     
     xhr.onreadystatechange = function() {
-        if(xhr.readyState === 4 && xhr.status === 200) {
-            tbody.innerHTML = xhr.responseText;
+        if(xhr.readyState === 4) {
+            console.log('Response status:', xhr.status);
+            console.log('Response text:', xhr.responseText);
+            
+            if(xhr.status === 200) {
+                tbody.innerHTML = xhr.responseText;
+            } else {
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Erro ao carregar dados</td></tr>';
+            }
         }
     };
     
-    xhr.send('action=get_pedidos&filtro=' + encodeURIComponent(filtro));
+    var data = 'action=get_pedidos&filtro=' + encodeURIComponent(filtro);
+    console.log('Sending data:', data);
+    xhr.send(data);
 }
 
 function editarPedido(id) {
@@ -321,21 +338,29 @@ function salvarEdicao(id) {
     xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
     
     xhr.onreadystatechange = function() {
-        if(xhr.readyState === 4 && xhr.status === 200) {
-            var response = xhr.responseText;
+        if(xhr.readyState === 4) {
+            console.log('Update response status:', xhr.status);
+            console.log('Update response text:', xhr.responseText);
             
-            if(response.indexOf('SUCESSO') === 0) {
-                var parts = response.split('|');
-                var message = parts[1];
-                mostrarAlertaControle(message, 'success');
-                // Reload the table
-                carregarPedidos();
-            } else if(response.indexOf('ERRO') === 0) {
-                var parts = response.split('|');
-                var message = parts[1];
-                mostrarAlertaControle(message, 'danger');
+            if(xhr.status === 200) {
+                var response = xhr.responseText.trim();
+                
+                if(response.substring(0, 7) === 'SUCESSO') {
+                    var parts = response.split('|');
+                    var message = parts.length > 1 ? parts[1] : 'Operação realizada com sucesso';
+                    mostrarAlertaControle(message, 'success');
+                    // Reload the table
+                    carregarPedidos();
+                } else if(response.substring(0, 4) === 'ERRO') {
+                    var parts = response.split('|');
+                    var message = parts.length > 1 ? parts[1] : 'Erro desconhecido';
+                    mostrarAlertaControle(message, 'danger');
+                } else {
+                    console.log('Unexpected response format:', response);
+                    mostrarAlertaControle('Resposta inesperada do servidor: ' + response.substring(0, 100), 'danger');
+                }
             } else {
-                mostrarAlertaControle('Resposta inesperada do servidor', 'danger');
+                mostrarAlertaControle('Erro de conexão', 'danger');
             }
         }
     };
@@ -344,6 +369,7 @@ function salvarEdicao(id) {
                '&situacao=' + encodeURIComponent(situacao) + 
                '&observacao=' + encodeURIComponent(observacao);
     
+    console.log('Sending update data:', data);
     xhr.send(data);
 }
 
