@@ -11,67 +11,71 @@ if(isset($_GET['ajax'])){
     $sqlDb = new MSSQL("MESU");
     
     if($_GET['ajax'] == 'get_pedidos'){
-        $filtro = isset($_POST['filtro']) ? $_POST['filtro'] : (isset($_GET['filtro']) ? $_GET['filtro'] : '');
+        $filtro = isset($_POST['filtro']) ? $_POST['filtro'] : (isset($_GET['filtro']) ? $_GET['filtro'] : 'TODOS');
         
         $whereClause = "";
-        if(!empty($filtro) && $filtro != 'TODOS'){
+        if(!empty($filtro) && $filtro != 'TODOS' && $filtro != ''){
             $whereClause = "WHERE SITUACAO = '$filtro'";
         }
         
-        $query = "SELECT ID, COD_FUNC, NOME, DATA_PEDIDO, SITUACAO, MOTIVO_PEDIDO, MATERIAL_PEDIDO, OBSERVACAO FROM INFRA.DBO.TB_INVENTARIO_BE_PEDIDOS $whereClause ORDER BY DATA_PEDIDO DESC";
+        $query = "SELECT TOP 100 ID, COD_FUNC, NOME, DATA_PEDIDO, SITUACAO, MOTIVO_PEDIDO, MATERIAL_PEDIDO, OBSERVACAO FROM INFRA.DBO.TB_INVENTARIO_BE_PEDIDOS $whereClause ORDER BY DATA_PEDIDO DESC";
         
-        $result = $sqlDb->select($query);
-        
-        if($result && count($result) > 0){
-            foreach($result as $row){
-                $dataPedido = date('d/m/Y', strtotime($row['DATA_PEDIDO']));
-                $situacaoClass = strtolower($row['SITUACAO']);
-                $observacao = isset($row['OBSERVACAO']) ? $row['OBSERVACAO'] : '';
-                
-                echo '<tr id="row-' . $row['ID'] . '">';
-                echo '<td>' . $row['COD_FUNC'] . '</td>';
-                echo '<td>' . $row['NOME'] . '</td>';
-                echo '<td>' . $dataPedido . '</td>';
-                echo '<td><span class="label label-' . $situacaoClass . '">' . $row['SITUACAO'] . '</span></td>';
-                echo '<td>' . substr($row['MATERIAL_PEDIDO'], 0, 30) . (strlen($row['MATERIAL_PEDIDO']) > 30 ? '...' : '') . '</td>';
-                echo '<td>' . substr($row['MOTIVO_PEDIDO'], 0, 40) . (strlen($row['MOTIVO_PEDIDO']) > 40 ? '...' : '') . '</td>';
-                echo '<td>' . substr($observacao, 0, 30) . (strlen($observacao) > 30 ? '...' : '') . '</td>';
-                echo '<td>';
-                echo '<button class="btn btn-xs btn-primary" onclick="editarPedido(' . $row['ID'] . ')">Editar</button>';
-                echo '</td>';
-                echo '</tr>';
-                
-                // Hidden edit row
-                echo '<tr id="edit-' . $row['ID'] . '" style="display:none;" class="edit-row">';
-                echo '<td colspan="8">';
-                echo '<div class="edit-form">';
-                echo '<div class="row">';
-                echo '<div class="col-md-4">';
-                echo '<label>Situação:</label>';
-                echo '<select class="form-control" id="situacao-' . $row['ID'] . '">';
-                echo '<option value="PENDENTE"' . ($row['SITUACAO'] == 'PENDENTE' ? ' selected' : '') . '>PENDENTE</option>';
-                echo '<option value="VERIFICACAO"' . ($row['SITUACAO'] == 'VERIFICACAO' ? ' selected' : '') . '>VERIFICAÇÃO</option>';
-                echo '<option value="CONCLUIDO"' . ($row['SITUACAO'] == 'CONCLUIDO' ? ' selected' : '') . '>CONCLUÍDO</option>';
-                echo '<option value="CANCELADO"' . ($row['SITUACAO'] == 'CANCELADO' ? ' selected' : '') . '>CANCELADO</option>';
-                echo '</select>';
-                echo '</div>';
-                echo '<div class="col-md-8">';
-                echo '<label>Observação:</label>';
-                echo '<textarea class="form-control" id="observacao-' . $row['ID'] . '" rows="3">' . htmlspecialchars($observacao) . '</textarea>';
-                echo '</div>';
-                echo '</div>';
-                echo '<div class="row" style="margin-top:10px;">';
-                echo '<div class="col-md-12">';
-                echo '<button class="btn btn-success btn-sm" onclick="salvarEdicao(' . $row['ID'] . ')">Salvar</button> ';
-                echo '<button class="btn btn-default btn-sm" onclick="cancelarEdicao(' . $row['ID'] . ')">Cancelar</button>';
-                echo '</div>';
-                echo '</div>';
-                echo '</div>';
-                echo '</td>';
-                echo '</tr>';
+        try {
+            $result = $sqlDb->select($query);
+            
+            if($result && count($result) > 0){
+                foreach($result as $row){
+                    $dataPedido = date('d/m/Y', strtotime($row['DATA_PEDIDO']));
+                    $situacaoClass = strtolower($row['SITUACAO']);
+                    $observacao = isset($row['OBSERVACAO']) ? $row['OBSERVACAO'] : '';
+                    
+                    echo '<tr id="row-' . $row['ID'] . '">';
+                    echo '<td>' . $row['COD_FUNC'] . '</td>';
+                    echo '<td>' . $row['NOME'] . '</td>';
+                    echo '<td>' . $dataPedido . '</td>';
+                    echo '<td><span class="label label-' . $situacaoClass . '">' . $row['SITUACAO'] . '</span></td>';
+                    echo '<td>' . substr($row['MATERIAL_PEDIDO'], 0, 30) . (strlen($row['MATERIAL_PEDIDO']) > 30 ? '...' : '') . '</td>';
+                    echo '<td>' . substr($row['MOTIVO_PEDIDO'], 0, 40) . (strlen($row['MOTIVO_PEDIDO']) > 40 ? '...' : '') . '</td>';
+                    echo '<td>' . substr($observacao, 0, 30) . (strlen($observacao) > 30 ? '...' : '') . '</td>';
+                    echo '<td>';
+                    echo '<button class="btn btn-xs btn-primary" onclick="editarPedido(' . $row['ID'] . ')">Editar</button>';
+                    echo '</td>';
+                    echo '</tr>';
+                    
+                    // Hidden edit row
+                    echo '<tr id="edit-' . $row['ID'] . '" style="display:none;" class="edit-row">';
+                    echo '<td colspan="8">';
+                    echo '<div class="edit-form">';
+                    echo '<div class="row">';
+                    echo '<div class="col-md-4">';
+                    echo '<label>Situação:</label>';
+                    echo '<select class="form-control" id="situacao-' . $row['ID'] . '">';
+                    echo '<option value="PENDENTE"' . ($row['SITUACAO'] == 'PENDENTE' ? ' selected' : '') . '>PENDENTE</option>';
+                    echo '<option value="VERIFICACAO"' . ($row['SITUACAO'] == 'VERIFICACAO' ? ' selected' : '') . '>VERIFICAÇÃO</option>';
+                    echo '<option value="CONCLUIDO"' . ($row['SITUACAO'] == 'CONCLUIDO' ? ' selected' : '') . '>CONCLUÍDO</option>';
+                    echo '<option value="CANCELADO"' . ($row['SITUACAO'] == 'CANCELADO' ? ' selected' : '') . '>CANCELADO</option>';
+                    echo '</select>';
+                    echo '</div>';
+                    echo '<div class="col-md-8">';
+                    echo '<label>Observação:</label>';
+                    echo '<textarea class="form-control" id="observacao-' . $row['ID'] . '" rows="3">' . htmlspecialchars($observacao) . '</textarea>';
+                    echo '</div>';
+                    echo '</div>';
+                    echo '<div class="row" style="margin-top:10px;">';
+                    echo '<div class="col-md-12">';
+                    echo '<button class="btn btn-success btn-sm" onclick="salvarEdicao(' . $row['ID'] . ')">Salvar</button> ';
+                    echo '<button class="btn btn-default btn-sm" onclick="cancelarEdicao(' . $row['ID'] . ')">Cancelar</button>';
+                    echo '</div>';
+                    echo '</div>';
+                    echo '</div>';
+                    echo '</td>';
+                    echo '</tr>';
+                }
+            } else {
+                echo '<tr><td colspan="8" class="text-center">Nenhum pedido encontrado</td></tr>';
             }
-        } else {
-            echo '<tr><td colspan="8" class="text-center">Nenhum pedido encontrado</td></tr>';
+        } catch (Exception $e) {
+            echo '<tr><td colspan="8" class="text-center text-danger">Erro: ' . $e->getMessage() . '</td></tr>';
         }
         exit();
     }
@@ -209,7 +213,7 @@ if(isset($_GET['ajax'])){
                         <div class="col-md-6">
                             <label for="filtro-situacao"><strong>Filtrar por Situação:</strong></label>
                             <select class="form-control" id="filtro-situacao" onchange="carregarPedidos()">
-                                <option value="TODOS">TODOS</option>
+                                <option value="TODOS" selected>TODOS</option>
                                 <option value="PENDENTE">PENDENTE</option>
                                 <option value="VERIFICACAO">VERIFICAÇÃO</option>
                                 <option value="CONCLUIDO">CONCLUÍDO</option>
@@ -266,14 +270,21 @@ if(isset($_GET['ajax'])){
 var MODAL_FILE_URL = '<?php echo basename(__FILE__); ?>'; // This will be the filename of this modal file
 
 document.addEventListener('DOMContentLoaded', function() {
+    // Test if we can access the modal file
+    console.log('Modal file URL:', MODAL_FILE_URL);
+    
     document.getElementById('modalPedidoControle').addEventListener('show.bs.modal', function() {
+        console.log('Modal opening, loading data...');
         carregarPedidos();
     });
 });
 
 function carregarPedidos() {
-    var filtro = document.getElementById('filtro-situacao').value;
+    var filtro = document.getElementById('filtro-situacao').value || 'TODOS';
     var tbody = document.getElementById('tabela-pedidos');
+    
+    console.log('=== STARTING LOAD ===');
+    console.log('Filtro:', filtro);
     
     tbody.innerHTML = '<tr><td colspan="8" class="loading-table"><div class="spinner-table"></div><p>Carregando pedidos...</p></td></tr>';
     
@@ -282,6 +293,9 @@ function carregarPedidos() {
     var url = MODAL_FILE_URL + '?ajax=get_pedidos';
     xhr.open('POST', url, true);
     xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+    
+    // Add timeout to prevent infinite loading
+    xhr.timeout = 30000; // 30 seconds
     
     xhr.onreadystatechange = function() {
         if(xhr.readyState === 4) {
@@ -299,7 +313,7 @@ function carregarPedidos() {
                 } else {
                     console.log('ERROR: Invalid response format');
                     console.log('First 200 chars:', response.substring(0, 200));
-                    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Erro: Formato de resposta inválido</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Erro: Formato de resposta inválido<br><small>' + response.substring(0, 100) + '</small></td></tr>';
                 }
             } else {
                 tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Erro HTTP: ' + xhr.status + '</td></tr>';
@@ -307,6 +321,17 @@ function carregarPedidos() {
         }
     };
     
+    xhr.ontimeout = function() {
+        console.log('Request timeout');
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Erro: Timeout na requisição</td></tr>';
+    };
+    
+    xhr.onerror = function() {
+        console.log('Request error');
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Erro: Falha na conexão</td></tr>';
+    };
+    
+    console.log('Sending filtro:', filtro);
     xhr.send('filtro=' + encodeURIComponent(filtro));
 }
 
