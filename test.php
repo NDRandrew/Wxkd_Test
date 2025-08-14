@@ -1,16 +1,15 @@
 <?php
 @session_start();
 
-// Simple and direct AJAX detection
-$isAjax = (isset($_POST['action']) && !empty($_POST['action']));
-
-if($isAjax){
-    // Include database only for AJAX
+// BULLETPROOF APPROACH: Use URL parameters instead of POST detection
+// ?ajax=get_pedidos or ?ajax=update_pedido
+if(isset($_GET['ajax'])){
+    
     require_once('\\\\mz-vv-fs-237\D4920\Secoes\D4920S012\Comum_S012\j\Server2Go\htdocs\erp\ClassRepository\geral\MSSQL\MSSQL.class.php');
     $sqlDb = new MSSQL("MESU");
     
-    if($_POST['action'] == 'get_pedidos'){
-        $filtro = isset($_POST['filtro']) ? $_POST['filtro'] : '';
+    if($_GET['ajax'] == 'get_pedidos'){
+        $filtro = isset($_POST['filtro']) ? $_POST['filtro'] : (isset($_GET['filtro']) ? $_GET['filtro'] : '');
         
         $whereClause = "";
         if(!empty($filtro) && $filtro != 'TODOS'){
@@ -75,7 +74,7 @@ if($isAjax){
         exit();
     }
     
-    if($_POST['action'] == 'update_pedido'){
+    if($_GET['ajax'] == 'update_pedido'){
         $id = intval($_POST['id']);
         $situacao = $_POST['situacao'];
         $observacao = $_POST['observacao'];
@@ -94,14 +93,11 @@ if($isAjax){
         exit();
     }
     
-    // Unknown action
-    echo 'ERRO|Ação não reconhecida';
     exit();
 }
 
-// Only show HTML if not AJAX
-if(!$isAjax){
-    require_once('\\\\mz-vv-fs-237\D4920\Secoes\D4920S012\Comum_S012\j\Server2Go\htdocs\erp\ClassRepository\geral\MSSQL\MSSQL.class.php');
+// If no ?ajax parameter, show the modal HTML
+require_once('\\\\mz-vv-fs-237\D4920\Secoes\D4920S012\Comum_S012\j\Server2Go\htdocs\erp\ClassRepository\geral\MSSQL\MSSQL.class.php');
 ?>
 <!DOCTYPE html>
 <html>
@@ -271,45 +267,49 @@ if(!$isAjax){
 </div>
 
 <script>
+// BULLETPROOF JAVASCRIPT - Uses URL parameters instead of POST detection
 document.addEventListener('DOMContentLoaded', function() {
-    
-    // Load requests when modal opens
     document.getElementById('modalPedidoControle').addEventListener('show.bs.modal', function() {
         carregarPedidos();
     });
-    
 });
+
+function getBaseUrl() {
+    var url = window.location.href;
+    // Remove any existing query parameters
+    if(url.indexOf('?') !== -1) {
+        url = url.substring(0, url.indexOf('?'));
+    }
+    return url;
+}
 
 function carregarPedidos() {
     var filtro = document.getElementById('filtro-situacao').value;
     var tbody = document.getElementById('tabela-pedidos');
     
-    // Show loading
     tbody.innerHTML = '<tr><td colspan="8" class="loading-table"><div class="spinner-table"></div><p>Carregando pedidos...</p></td></tr>';
     
-    // Create AJAX request
     var xhr = new XMLHttpRequest();
-    xhr.open('POST', window.location.href, true);
+    var url = getBaseUrl() + '?ajax=get_pedidos';
+    xhr.open('POST', url, true);
     xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
     
     xhr.onreadystatechange = function() {
         if(xhr.readyState === 4) {
-            console.log('=== LOAD DATA RESPONSE ===');
+            console.log('=== LOAD RESPONSE ===');
+            console.log('URL:', url);
             console.log('Status:', xhr.status);
             console.log('Length:', xhr.responseText.length);
-            console.log('First 100 chars:', xhr.responseText.substring(0, 100));
-            console.log('Is HTML?', xhr.responseText.indexOf('<!DOCTYPE') === 0 || xhr.responseText.indexOf('<html') === 0);
+            console.log('Starts with <tr?', xhr.responseText.trim().indexOf('<tr') === 0);
             
             if(xhr.status === 200) {
                 var response = xhr.responseText.trim();
-                
-                // Simple check: if response starts with <tr, it's our table data
                 if(response.indexOf('<tr') === 0) {
                     tbody.innerHTML = response;
-                    console.log('SUCCESS: Table data loaded');
+                    console.log('SUCCESS: Table loaded');
                 } else {
-                    console.log('ERROR: Response does not start with <tr');
-                    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Erro: Resposta inválida (não começa com &lt;tr&gt;)</td></tr>';
+                    console.log('ERROR: Invalid response format');
+                    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Erro: Formato de resposta inválido</td></tr>';
                 }
             } else {
                 tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Erro HTTP: ' + xhr.status + '</td></tr>';
@@ -317,10 +317,7 @@ function carregarPedidos() {
         }
     };
     
-    var data = 'action=get_pedidos&filtro=' + encodeURIComponent(filtro);
-    console.log('=== SENDING REQUEST ===');
-    console.log('Data:', data);
-    xhr.send(data);
+    xhr.send('filtro=' + encodeURIComponent(filtro));
 }
 
 function editarPedido(id) {
@@ -338,12 +335,14 @@ function salvarEdicao(id) {
     var observacao = document.getElementById('observacao-' + id).value;
     
     var xhr = new XMLHttpRequest();
-    xhr.open('POST', window.location.href, true);
+    var url = getBaseUrl() + '?ajax=update_pedido';
+    xhr.open('POST', url, true);
     xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
     
     xhr.onreadystatechange = function() {
         if(xhr.readyState === 4) {
             console.log('=== UPDATE RESPONSE ===');
+            console.log('URL:', url);
             console.log('Status:', xhr.status);
             console.log('Response:', xhr.responseText);
             
@@ -368,12 +367,10 @@ function salvarEdicao(id) {
         }
     };
     
-    var data = 'action=update_pedido&id=' + id + 
+    var data = 'id=' + id + 
                '&situacao=' + encodeURIComponent(situacao) + 
                '&observacao=' + encodeURIComponent(observacao);
     
-    console.log('=== SENDING UPDATE ===');
-    console.log('Data:', data);
     xhr.send(data);
 }
 
@@ -393,6 +390,3 @@ function mostrarAlertaControle(message, type) {
 
 </body>
 </html>
-<?php
-}
-?>
