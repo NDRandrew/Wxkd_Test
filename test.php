@@ -1,288 +1,275 @@
-The user wants to add a button that will update the database to set `Wxkd_Flag=1` for the selected checkbox items. Looking at the code:
+<?php
+// Add this method to the Wxkd_DashboardModel class
 
-1. They're using PHP 5.3, so no `json_encode` and can't make header changes
-2. The system already has checkbox functionality and export functionality
-3. The database updating logic already exists in the `updateWxkdFlag` method in the model
-4. They use XML for AJAX responses instead of JSON
-
-Looking at the current code structure:
-
-1. **TestH (Main)**: Contains the HTML/PHP interface with checkboxes
-2. **TestJ (JS)**: Contains JavaScript for handling checkboxes and exports
-3. **TestM (Model)**: Contains database operations including `updateWxkdFlag`
-4. **TestC (Controller)**: Contains the controller logic including export methods
-5. **TestCon (Config)**: Contains configuration constants
-
-The system already has:
-- Checkbox selection functionality (`CheckboxModule` and `HistoricoCheckboxModule`)
-- Database update functionality in the model (`updateWxkdFlag` method)
-- AJAX handling in the controller
-- XML response handling
-
-What I need to add:
-1. A new button in the HTML (TestH)
-2. A new JavaScript function to handle the button click (TestJ)
-3. A new controller method to handle the AJAX request (TestC)
-4. Possibly modify the model if needed (TestM)
-
-Let me analyze the existing `updateWxkdFlag` method in the model to understand how it works:
-
-```php
-public function updateWxkdFlag($records, $fullData = array(), $chaveLote = 0, $filtro = 'cadastramento') {
-    // ... implementation that updates WXKD_FLAG or WXKD_FLAG_DES based on filter
-}
-```
-
-This method already handles updating the WXKD_FLAG. I can reuse this for the new functionality.
-
-
-I'll implement the new feature across different components, focusing on XML-based communication and leveraging existing methods. The controller will need a new switch case to handle the specific AJAX request for updating the Wxkd flag. I'll create a method that takes selected records, calls the model's update function, and generates an XML response. The JavaScript will mirror existing export functions, creating an AJAX call with selected checkbox items. In the HTML, I'll add a button styled similarly to other export buttons, positioned strategically near existing controls. The implementation will maintain the system's current architectural approach of separating concerns between HTML, JavaScript, controller, and model layers.
-
-I'll help you add a button to update the `Wxkd_Flag=1` for selected items. Here's what needs to be modified:
-
-## 1. Add Button to HTML (TestH.php)
-
-Add this button near the other export buttons around line 160:
-
-```php
-<!-- Add this button after the other export buttons -->
-<button style="margin-bottom:10px;position:relative; left:20px;" type="button" class="btn btn-warning btn-sm" onclick="updateSelectedFlags()" id="updateFlagsBtn" disabled>
-    Marcar como Processado (<span id="selectedCountFlags">0</span>)
-</button>
-```
-
-## 2. Add JavaScript Function (TestJ.php)
-
-Add this function to the JavaScript file around line 1950:
-
-```javascript
-// Add this new function for updating flags
-function updateSelectedFlags() {
-    $('.validation-alert').remove();
-    const currentFilter = getCurrentFilter();
-
-    const selectedIds = (currentFilter === 'historico')
-        ? HistoricoCheckboxModule.getSelectedIds()
-        : CheckboxModule.getSelectedIds();
-
-    if (selectedIds.length === 0) {
-        alert('Selecione pelo menos um registro');
-        return;
-    }
-
-    if (confirm('Deseja marcar os ' + selectedIds.length + ' registros selecionados como processados?')) {
-        updateFlagsData(selectedIds.join(','), currentFilter);
-    }
-}
-
-function updateFlagsData(selectedIds, filter) {
-    showLoading();
-    
-    const url = `wxkd.php?action=updateFlags&filter=${filter}&ids=${encodeURIComponent(selectedIds)}`;
-    
-    fetch(url)
-        .then(response => response.text())
-        .then(responseText => {
-            hideLoading();
-            
-            try {
-                const xmlContent = extractXMLFromMixedResponse(responseText);
-                if (!xmlContent) {
-                    alert('Erro: Nenhum XML válido encontrado na resposta');
-                    return;
-                }
-                
-                const parser = new DOMParser();
-                const xmlDoc = parser.parseFromString(xmlContent, 'text/xml');
-                
-                const success = xmlDoc.getElementsByTagName('success')[0];
-                if (!success || success.textContent !== 'true') {
-                    const errorMsg = xmlDoc.getElementsByTagName('e')[0]?.textContent || 'Erro desconhecido';
-                    alert('Erro do servidor: ' + errorMsg);
-                    return;
-                }
-                
-                const recordsUpdated = xmlDoc.getElementsByTagName('recordsUpdated')[0]?.textContent || '0';
-                
-                showSuccessMessage(`${recordsUpdated} registro(s) marcado(s) como processado(s) com sucesso!`);
-                
-                // Clear selections and reload data
-                setTimeout(() => {
-                    CheckboxModule.clearSelections();
-                    const currentFilter = FilterModule.currentFilter;
-                    FilterModule.loadTableData(currentFilter);
-                }, 1000);
-                
-            } catch (e) {
-                console.error('Processing error:', e);
-                alert('Erro ao processar resposta: ' + e.message);
-            }
-        })
-        .catch(error => {
-            hideLoading();
-            console.error('Fetch error:', error);
-            alert('Erro na requisição: ' + error.message);
-        });
-}
-```
-
-## 3. Update CheckboxModule (TestJ.php)
-
-Modify the `updateExportButton` function around line 1850 to also update the new button:
-
-```javascript
-updateExportButton: function() {
-    const checkedCount = $('.row-checkbox:checked').length;
-    $('#selectedCount').text(checkedCount);
-    $('#selectedCountFlags').text(checkedCount); // Add this line
-    
-    const isDisabled = checkedCount === 0;
-    $('#exportTxtBtn').prop('disabled', isDisabled);
-    $('#updateFlagsBtn').prop('disabled', isDisabled); // Add this line
-    
-    let buttonText = 'Exportar TXT';
-    if (FilterModule.currentFilter === 'cadastramento' || FilterModule.currentFilter === 'descadastramento') {
-        buttonText = 'Converter para TXT';
-    }
-    
-    const btnContent = $('#exportTxtBtn').html();
-    if (btnContent) {
-        const newContent = btnContent.replace(/^[^(]+/, buttonText + ' ');
-        $('#exportTxtBtn').html(newContent);
-    }
-},
-```
-
-## 4. Update HistoricoCheckboxModule (TestJ.php)
-
-Modify the `updateExportButton` function around line 2100:
-
-```javascript
-updateExportButton: function() {
-    const checkedCount = $('.historico-detail-checkbox:checked').length + $('.historico-lote-checkbox:checked').length;
-    $('#selectedCount').text(checkedCount);
-    $('#selectedCountFlags').text(checkedCount); // Add this line
-    
-    const isDisabled = checkedCount === 0;
-    $('#exportTxtBtn').prop('disabled', isDisabled);
-    $('#updateFlagsBtn').prop('disabled', isDisabled); // Add this line
-}
-```
-
-## 5. Add Controller Method (TestC.php)
-
-Add this new case to the switch statement around line 18:
-
-```php
-case 'updateFlags':
-    $controller->updateFlags();
-    break;
-```
-
-Add this new method to the controller class around line 800:
-
-```php
-public function updateFlags() {
+public function getTableDataByFilter($filter = 'all') {
     try {
-        $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
-        $selectedIds = isset($_GET['ids']) ? $_GET['ids'] : '';
+        $query = "";
         
-        if (empty($selectedIds)) {
-            $xml = '<response>';
-            $xml .= '<success>false</success>';
-            $xml .= '<e>Nenhum registro selecionado</e>';
-            $xml .= '</response>';
-            echo $xml;
-            exit;
+        switch($filter) {
+            case 'cadastramento':
+                $query = "SELECT " . $this->baseSelectFields . $this->baseJoins . 
+                        " WHERE (B.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR C.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR D.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR E.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "') 
+                        AND H.WXKD_FLAG = 0";
+                break;
+                
+            case 'descadastramento':
+                // ... existing descadastramento query ...
+                break;
+                
+            case 'historico':
+                // MODIFIED: Only show records with CONFIRMADO_FLAG = 0
+                $query = "SELECT 
+                            CHAVE_LOTE,
+                            DATA_LOG,
+                            COUNT(*) as TOTAL_REGISTROS,
+                            FILTRO
+                        FROM PGTOCORSP.dbo.TB_WXKD_LOG 
+                        WHERE CONFIRMADO_FLAG = 0
+                        GROUP BY CHAVE_LOTE, DATA_LOG, FILTRO 
+                        ORDER BY DATA_LOG DESC";
+                break;
+                
+            default: 
+                $query = "SELECT " . $this->baseSelectFields . $this->baseJoins . 
+                        " WHERE (B.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR C.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR D.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR E.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "') 
+                        AND H.WXKD_FLAG IN (0,1)";
+                break;
         }
         
-        // Get the data for the selected IDs
-        if ($filter === 'historico') {
-            $data = $this->getHistoricoFilteredData($selectedIds);
+        if (empty($query)) {
+            return array();
+        }
+        
+        $result = $this->sql->select($query);
+        return $result;
+        
+    } catch (Exception $e) {
+        error_log("getTableDataByFilter - Exception: " . $e->getMessage());
+        return array();
+    }
+}
+
+// NEW METHOD: Restore confirmed records
+public function restoreConfirmedRecords() {
+    try {
+        // Step 1: Find the minimum CHAVE_LOTE among confirmed records
+        $minLoteQuery = "SELECT MIN(CHAVE_LOTE) as MIN_LOTE 
+                        FROM PGTOCORSP.dbo.TB_WXKD_LOG 
+                        WHERE CONFIRMADO_FLAG = 1";
+        
+        $minLoteResult = $this->sql->select($minLoteQuery);
+        
+        if (empty($minLoteResult) || !isset($minLoteResult[0]['MIN_LOTE'])) {
+            return false; // No confirmed records found
+        }
+        
+        $minLote = (int)$minLoteResult[0]['MIN_LOTE'];
+        
+        if ($minLote <= 0) {
+            return false; // Invalid minimum lote
+        }
+        
+        // Step 2: Update all confirmed records
+        $updateQuery = "UPDATE PGTOCORSP.dbo.TB_WXKD_LOG 
+                       SET CONFIRMADO_FLAG = 0, CHAVE_LOTE = $minLote 
+                       WHERE CONFIRMADO_FLAG = 1";
+        
+        $result = $this->sql->update($updateQuery);
+        
+        if ($result) {
+            error_log("restoreConfirmedRecords - Successfully restored records to LOTE $minLote");
+            return $minLote;
         } else {
-            $data = $this->getFilteredData($filter, $selectedIds);
+            error_log("restoreConfirmedRecords - Failed to update records");
+            return false;
         }
         
-        if (empty($data)) {
+    } catch (Exception $e) {
+        error_log("restoreConfirmedRecords - Exception: " . $e->getMessage());
+        return false;
+    }
+}
+
+// NEW METHOD: Get count of confirmed records
+public function getConfirmedRecordsCount() {
+    try {
+        $query = "SELECT COUNT(*) as TOTAL 
+                 FROM PGTOCORSP.dbo.TB_WXKD_LOG 
+                 WHERE CONFIRMADO_FLAG = 1";
+        
+        $result = $this->sql->select($query);
+        
+        if (!empty($result) && isset($result[0]['TOTAL'])) {
+            return (int)$result[0]['TOTAL'];
+        }
+        
+        return 0;
+        
+    } catch (Exception $e) {
+        error_log("getConfirmedRecordsCount - Exception: " . $e->getMessage());
+        return 0;
+    }
+}
+
+// MODIFIED: Update the cardData method to only count non-confirmed records
+public function getCardData() {
+    try {
+        $cardData = array();
+        
+        $cardData['cadastramento'] = $this->sql->qtdRows("
+            SELECT A.Chave_Loja
+            " . $this->baseJoins . "
+            WHERE (B.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR C.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR D.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR E.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "') 
+            AND H.WXKD_FLAG = 0");
+        
+        $cardData['descadastramento'] = $this->sql->qtdRows("
+            -- existing descadastramento query --
+        ");
+        
+        // MODIFIED: Only count non-confirmed historico records
+        $cardData['historico'] = $this->sql->qtdRows("
+            SELECT CHAVE_LOTE FROM PGTOCORSP.dbo.TB_WXKD_LOG WHERE CONFIRMADO_FLAG = 0");
+        
+        return $cardData;
+        
+    } catch (Exception $e) {
+        throw new Exception("Erro ao buscar dados dos cards: " . $e->getMessage());
+    }
+}
+
+// MODIFIED: Update the getHistoricoDetails method to filter by CONFIRMADO_FLAG
+public function getHistoricoDetails($chaveLote) {
+    try {
+        $query = "SELECT * FROM PGTOCORSP.dbo.TB_WXKD_LOG 
+                 WHERE CHAVE_LOTE = " . (int)$chaveLote . " 
+                 AND CONFIRMADO_FLAG = 0 
+                 ORDER BY CHAVE_LOJA";
+        
+        $result = $this->sql->select($query);
+        return $result;
+        
+    } catch (Exception $e) {
+        error_log("getHistoricoDetails - Exception: " . $e->getMessage());
+        return array();
+    }
+}
+?>
+
+-----------
+
+
+<?php
+// Add this method to the Wxkd_DashboardController class
+
+public function ajaxRestoreConfirmedRecords() {
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    ob_start();
+    
+    try {
+        // Get count of confirmed records before restoring
+        $confirmedCount = $this->model->getConfirmedRecordsCount();
+        
+        if ($confirmedCount === 0) {
             $xml = '<response>';
             $xml .= '<success>false</success>';
-            $xml .= '<e>Nenhum dado encontrado para os registros selecionados</e>';
+            $xml .= '<message>Nenhum registro confirmado encontrado para restaurar</message>';
             $xml .= '</response>';
             echo $xml;
+            ob_end_flush();
             exit;
         }
         
-        // Prepare records for update
-        $recordsToUpdate = array();
-        foreach ($data as $record) {
-            $codEmpresa = (int) (isset($record['Cod_Empresa']) ? $record['Cod_Empresa'] : (isset($record['COD_EMPRESA']) ? $record['COD_EMPRESA'] : 0));
-            $codLoja = (int) (isset($record['Cod_Loja']) ? $record['Cod_Loja'] : (isset($record['COD_LOJA']) ? $record['COD_LOJA'] : 0));
-            
-            if ($codEmpresa > 0 && $codLoja > 0) {
-                $recordsToUpdate[] = array(
-                    'COD_EMPRESA' => $codEmpresa,
-                    'COD_LOJA' => $codLoja
-                );
-            }
-        }
+        // Restore confirmed records
+        $restoredLote = $this->model->restoreConfirmedRecords();
         
-        if (empty($recordsToUpdate)) {
+        if ($restoredLote !== false) {
             $xml = '<response>';
-            $xml .= '<success>false</success>';
-            $xml .= '<e>Nenhum registro válido encontrado para atualização</e>';
+            $xml .= '<success>true</success>';
+            $xml .= '<restoredCount>' . $confirmedCount . '</restoredCount>';
+            $xml .= '<restoredLote>' . $restoredLote . '</restoredLote>';
+            $xml .= '<message>Restauracao realizada com sucesso! ' . $confirmedCount . ' registro(s) restaurado(s) para o Lote ' . $restoredLote . '</message>';
             $xml .= '</response>';
-            echo $xml;
-            exit;
-        }
-        
-        // Update the flags - use a simpler update without logging for this operation
-        $updateResult = $this->model->updateWxkdFlagOnly($recordsToUpdate, $filter);
-        
-        $xml = '<response>';
-        $xml .= '<success>' . ($updateResult ? 'true' : 'false') . '</success>';
-        if ($updateResult) {
-            $xml .= '<recordsUpdated>' . count($recordsToUpdate) . '</recordsUpdated>';
-            $xml .= '<message>Registros marcados como processados com sucesso</message>';
         } else {
-            $xml .= '<e>Erro ao atualizar registros no banco de dados</e>';
+            $xml = '<response>';
+            $xml .= '<success>false</success>';
+            $xml .= '<message>Erro ao restaurar registros confirmados</message>';
+            $xml .= '</response>';
         }
-        $xml .= '</response>';
         
         echo $xml;
-        exit;
         
     } catch (Exception $e) {
         $xml = '<response>';
         $xml .= '<success>false</success>';
-        $xml .= '<e>' . addcslashes($e->getMessage(), '"<>&') . '</e>';
+        $xml .= '<message>Erro interno: ' . addcslashes($e->getMessage(), '"<>&') . '</message>';
         $xml .= '</response>';
         echo $xml;
-        exit;
     }
+    
+    ob_end_flush();
+    exit;
 }
-```
 
-## 6. Add Model Method (TestM.php)
-
-Add this new method to the model class around line 700:
-
-```php
-public function updateWxkdFlagOnly($records, $filtro = 'cadastramento') {
+// Add this method to get confirmed records count for UI
+public function ajaxGetConfirmedCount() {
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    ob_start();
+    
     try {
+        $count = $this->model->getConfirmedRecordsCount();
+        
+        $xml = '<response>';
+        $xml .= '<success>true</success>';
+        $xml .= '<count>' . $count . '</count>';
+        $xml .= '</response>';
+        
+        echo $xml;
+        
+    } catch (Exception $e) {
+        $xml = '<response>';
+        $xml .= '<success>false</success>';
+        $xml .= '<message>Erro ao buscar contagem: ' . addcslashes($e->getMessage(), '"<>&') . '</message>';
+        $xml .= '</response>';
+        echo $xml;
+    }
+    
+    ob_end_flush();
+    exit;
+}
+
+// MODIFIED: Update the updateWxkdFlag method to set CONFIRMADO_FLAG = 1 when updating flags
+public function updateWxkdFlag($records, $fullData = array(), $chaveLote = 0, $filtro = 'cadastramento') {
+    $logs = array();
+    
+    try {
+        $logs[] = "updateWxkdFlag START - Records count: " . count($records) . ", ChaveLote: $chaveLote, Filtro: $filtro";
+        
         if (empty($records)) {
+            $logs[] = "updateWxkdFlag - No records provided";
+            $this->debugLogs = $logs;
             return false;
         }
         
         $updateCount = 0;
+        $logInsertCount = 0;
+        $currentDateTime = date('Y-m-d H:i:s');
         
         // Determine which flag to update based on filter
         $flagToUpdate = ($filtro === 'descadastramento') ? 'WXKD_FLAG_DES' : 'WXKD_FLAG';
+        $logs[] = "updateWxkdFlag - Will update flag: $flagToUpdate for filter: $filtro";
         
-        foreach ($records as $record) {
+        foreach ($records as $index => $record) {
             $codEmpresa = (int) $record['COD_EMPRESA'];
             $codLoja = (int) $record['COD_LOJA'];
             
+            $logs[] = "updateWxkdFlag - Processing record #$index: CodEmpresa=$codEmpresa, CodLoja=$codLoja";
+            
             if ($codEmpresa <= 0 || $codLoja <= 0) {
+                $logs[] = "updateWxkdFlag - Invalid empresa/loja codes for record #$index";
                 continue;
             }
             
@@ -302,64 +289,593 @@ public function updateWxkdFlagOnly($records, $filtro = 'cadastramento') {
             
             try {
                 $result = $this->sql->update($mergeSql);
+                
                 if ($result) {
                     $updateCount++;
+                    $logs[] = "updateWxkdFlag - Successfully processed $flagToUpdate for record #$index (MERGE)";
+                } else {
+                    $logs[] = "updateWxkdFlag - Failed to process $flagToUpdate for record #$index (MERGE)";
                 }
             } catch (Exception $mergeEx) {
-                // Fallback to the old method if MERGE fails
-                $checkSql = "SELECT COUNT(*) as total FROM PGTOCORSP.dbo.tb_wxkd_flag 
-                            WHERE COD_EMPRESA = $codEmpresa AND COD_LOJA = $codLoja";
+                $logs[] = "updateWxkdFlag - MERGE exception for record #$index: " . $mergeEx->getMessage();
+                // ... fallback logic as before ...
+            }
+        }
+        
+        // MODIFIED: Log insertion logic with CONFIRMADO_FLAG = 1
+        if (!empty($fullData) && $chaveLote > 0) {
+            $logs[] = "updateWxkdFlag - Starting log insertion with " . count($fullData) . " records for filter: $filtro";
+            
+            foreach ($fullData as $index => $record) {
+                // ... existing field extraction logic ...
                 
-                $checkResult = $this->sql->select($checkSql);
+                $logSql = "INSERT INTO PGTOCORSP.dbo.TB_WXKD_LOG 
+                        (CHAVE_LOTE, DATA_LOG, CHAVE_LOJA, NOME_LOJA, COD_EMPRESA, COD_LOJA, 
+                        TIPO_CORRESPONDENTE, DATA_CONCLUSAO, DATA_SOLICITACAO, DEP_DINHEIRO, DEP_CHEQUE, REC_RETIRADA, SAQUE_CHEQUE, 
+                        SEGUNDA_VIA_CARTAO, HOLERITE_INSS, CONS_INSS, PROVA_DE_VIDA, DATA_CONTRATO, TIPO_CONTRATO, FILTRO, CONFIRMADO_FLAG) 
+                        VALUES 
+                        ($chaveLote, 
+                        '$currentDateTime', 
+                        $chaveLoja, 
+                        '$nomeLoja', 
+                        $codEmpresa, 
+                        $codLoja, 
+                        '$tipoCorrespondente',
+                        $dataConclusao,
+                        $dataSolicitacao,
+                        $depDinheiro, $depCheque, $recRetirada, $saqueCheque, 
+                        '$segundaVia', '$holeriteInss', '$consultaInss', '$provaVida', 
+                        $dataContrato, 
+                        '$tipoContrato', 
+                        '$filtro', 
+                        1)"; // CONFIRMADO_FLAG = 1 for new exports
                 
-                if (empty($checkResult) || !isset($checkResult[0]['total']) || $checkResult[0]['total'] == 0) {
-                    $insertSql = "INSERT INTO PGTOCORSP.dbo.tb_wxkd_flag (COD_EMPRESA, COD_LOJA, WXKD_FLAG, WXKD_FLAG_DES) 
-                                VALUES ($codEmpresa, $codLoja, 
-                                    " . ($flagToUpdate === 'WXKD_FLAG' ? '1' : '0') . ", 
-                                    " . ($flagToUpdate === 'WXKD_FLAG_DES' ? '1' : '0') . ")";
+                try {
+                    $logResult = $this->sql->insert($logSql);
                     
-                    $insertResult = $this->sql->insert($insertSql);
-                    if ($insertResult) {
-                        $updateCount++;
+                    if ($logResult) {
+                        $logInsertCount++;
+                        $logs[] = "updateWxkdFlag - Log insert SUCCESS for record #$index";
+                    } else {
+                        $logs[] = "updateWxkdFlag - Log insert FAILED for record #$index";
                     }
-                } else {
-                    $updateSql = "UPDATE PGTOCORSP.dbo.tb_wxkd_flag 
-                                SET $flagToUpdate = 1 
-                                WHERE COD_EMPRESA = $codEmpresa AND COD_LOJA = $codLoja";
-                    
-                    $updateResult = $this->sql->update($updateSql);
-                    if ($updateResult) {
-                        $updateCount++;
-                    }
+                } catch (Exception $logEx) {
+                    $logs[] = "updateWxkdFlag - Log insert exception for record #$index: " . $logEx->getMessage();
                 }
             }
         }
         
+        $logs[] = "updateWxkdFlag END - Flag ($flagToUpdate) updates: $updateCount, Log inserts: $logInsertCount";
+        $this->debugLogs = $logs;
+        
         return $updateCount > 0;
         
     } catch (Exception $e) {
-        error_log("updateWxkdFlagOnly - Exception: " . $e->getMessage());
+        $logs[] = "updateWxkdFlag - MAIN Exception: " . $e->getMessage();
+        $this->debugLogs = $logs;
         return false;
     }
 }
-```
+?>
 
-## Summary
+----------
 
-This implementation adds:
+<?php
+// MODIFIED: Update the switch case to handle new actions
+switch($action) {
+    case 'exportCSV':
+        $controller->exportCSV();
+        break;
+    case 'exportTXT':
+        $controller->exportTXT();
+        break;
+    case 'exportAccess':  
+        $controller->exportAccess();
+        break;
+    case 'ajaxGetTableData':
+        $controller->ajaxGetTableData();
+        break;
+    case 'ajaxGetHistoricoDetails':  
+        $controller->ajaxGetHistoricoDetails();
+        break;
+    case 'ajaxRestoreConfirmedRecords':  // NEW ACTION
+        $controller->ajaxRestoreConfirmedRecords();
+        break;
+    case 'ajaxGetConfirmedCount':  // NEW ACTION
+        $controller->ajaxGetConfirmedCount();
+        break;
+    default:
+        $data = $controller->index();
+        $cardData = $data['cardData'];
+        $tableData = $data['tableData'];
+        $activeFilter = $data['activeFilter'];
+        $contractChavesLookup = $data['contractChavesLookup'];
+        break;
+}
 
-1. **A new button** that shows the count of selected items
-2. **JavaScript functions** to handle the button click and AJAX request
-3. **A new controller method** to process the flag updates
-4. **A new model method** that updates only the flags without logging (simpler than the existing method)
-5. **Integration with existing checkbox modules** to enable/disable the button
+// ... existing HTML structure until the dropdown section ...
 
-The button will:
-- Only be enabled when items are selected
-- Show a confirmation dialog before updating
-- Update the appropriate flag (`WXKD_FLAG` or `WXKD_FLAG_DES`) based on the current filter
-- Show a success message with the number of updated records
-- Refresh the data to reflect the changes
-- Work with both regular tables and historic accordion data
+?>
 
-The system maintains the existing XML response format and PHP 5.3 compatibility.
+<!-- MODIFIED: Add the restore button below the dropdown -->
+<div class="col-md-4" style="position:relative; left:25%;" >
+    <div class="d-flex justify-content-end align-items-center"  >
+        <label for="itemsPerPage" class="me-2 text-sm" ></label>
+        <select class="form-select form-select-sm" id="itemsPerPage" style="width: auto; cursor:pointer;">
+            <option value="15">15</option>
+            <option value="30">30</option>
+            <option value="50">50</option>
+        </select>
+        <span class="ms-2 text-sm"></span>
+        
+        <!-- NEW: Restore Confirmed Records Button -->
+        <div style="margin-left: 15px;" id="restoreButtonContainer">
+            <button type="button" class="btn btn-warning btn-sm" id="restoreConfirmedBtn" 
+                    onclick="restoreConfirmedRecords()" style="display: none;">
+                <i class="fa fa-undo"></i> Restaurar (<span id="confirmedCount">0</span>)
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Add this JavaScript section before closing body tag -->
+<script type="text/javascript">
+// Check and update confirmed count on page load and filter changes
+function updateConfirmedCount() {
+    if (FilterModule.currentFilter === 'historico') {
+        $.get('wxkd.php?action=ajaxGetConfirmedCount')
+            .done(function(xmlData) {
+                try {
+                    var $xml = $(xmlData);
+                    var success = $xml.find('success').text() === 'true';
+                    
+                    if (success) {
+                        var count = parseInt($xml.find('count').text()) || 0;
+                        $('#confirmedCount').text(count);
+                        
+                        if (count > 0) {
+                            $('#restoreConfirmedBtn').show();
+                        } else {
+                            $('#restoreConfirmedBtn').hide();
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error updating confirmed count:', e);
+                }
+            })
+            .fail(function() {
+                console.error('Failed to get confirmed count');
+            });
+    } else {
+        $('#restoreConfirmedBtn').hide();
+    }
+}
+
+// Restore confirmed records function
+function restoreConfirmedRecords() {
+    if (!confirm('Tem certeza que deseja restaurar todos os registros confirmados? Esta acao nao pode ser desfeita.')) {
+        return;
+    }
+    
+    showLoading();
+    $('#restoreConfirmedBtn').prop('disabled', true);
+    
+    $.get('wxkd.php?action=ajaxRestoreConfirmedRecords')
+        .done(function(xmlData) {
+            hideLoading();
+            $('#restoreConfirmedBtn').prop('disabled', false);
+            
+            try {
+                var $xml = $(xmlData);
+                var success = $xml.find('success').text() === 'true';
+                var message = $xml.find('message').text();
+                
+                if (success) {
+                    var restoredCount = $xml.find('restoredCount').text();
+                    var restoredLote = $xml.find('restoredLote').text();
+                    
+                    alert('Sucesso! ' + restoredCount + ' registro(s) restaurado(s) para o Lote ' + restoredLote);
+                    
+                    // Reload the historico data
+                    FilterModule.loadTableData('historico');
+                    
+                    // Update confirmed count
+                    setTimeout(function() {
+                        updateConfirmedCount();
+                    }, 1000);
+                    
+                } else {
+                    alert('Erro: ' + message);
+                }
+                
+            } catch (e) {
+                console.error('Error processing restore response:', e);
+                alert('Erro ao processar resposta do servidor');
+            }
+        })
+        .fail(function() {
+            hideLoading();
+            $('#restoreConfirmedBtn').prop('disabled', false);
+            alert('Erro na comunicacao com o servidor');
+        });
+}
+
+// Update confirmed count when filter changes
+$(document).ready(function() {
+    // Initial check
+    setTimeout(function() {
+        updateConfirmedCount();
+    }, 1000);
+    
+    // Monitor filter changes
+    var originalApplyFilter = FilterModule.applyFilter;
+    FilterModule.applyFilter = function(filter) {
+        originalApplyFilter.call(this, filter);
+        setTimeout(function() {
+            updateConfirmedCount();
+        }, 1500);
+    };
+    
+    var originalLoadTableData = FilterModule.loadTableData;
+    FilterModule.loadTableData = function(filter) {
+        originalLoadTableData.call(this, filter);
+        if (filter === 'historico') {
+            setTimeout(function() {
+                updateConfirmedCount();
+            }, 1500);
+        }
+    };
+});
+</script>
+
+<?php
+// ... rest of existing HTML structure ...
+?>
+
+
+------------
+
+
+// ADD this new module for handling confirmed records
+const ConfirmedRecordsModule = {
+    init: function() {
+        this.updateConfirmedCount();
+        this.bindEvents();
+    },
+    
+    bindEvents: function() {
+        // Update count when filter changes
+        const originalApplyFilter = FilterModule.applyFilter;
+        FilterModule.applyFilter = function(filter) {
+            originalApplyFilter.call(this, filter);
+            setTimeout(() => {
+                ConfirmedRecordsModule.updateConfirmedCount();
+            }, 1500);
+        };
+        
+        const originalLoadTableData = FilterModule.loadTableData;
+        FilterModule.loadTableData = function(filter) {
+            originalLoadTableData.call(this, filter);
+            if (filter === 'historico') {
+                setTimeout(() => {
+                    ConfirmedRecordsModule.updateConfirmedCount();
+                }, 1500);
+            }
+        };
+    },
+    
+    updateConfirmedCount: function() {
+        if (FilterModule.currentFilter === 'historico') {
+            $.get('wxkd.php?action=ajaxGetConfirmedCount')
+                .done((xmlData) => {
+                    try {
+                        const $xml = $(xmlData);
+                        const success = $xml.find('success').text() === 'true';
+                        
+                        if (success) {
+                            const count = parseInt($xml.find('count').text()) || 0;
+                            $('#confirmedCount').text(count);
+                            
+                            if (count > 0) {
+                                $('#restoreConfirmedBtn').show();
+                            } else {
+                                $('#restoreConfirmedBtn').hide();
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Error updating confirmed count:', e);
+                    }
+                })
+                .fail(() => {
+                    console.error('Failed to get confirmed count');
+                });
+        } else {
+            $('#restoreConfirmedBtn').hide();
+        }
+    },
+    
+    restoreConfirmedRecords: function() {
+        if (!confirm('Tem certeza que deseja restaurar todos os registros confirmados? Esta acao nao pode ser desfeita.')) {
+            return;
+        }
+        
+        showLoading();
+        $('#restoreConfirmedBtn').prop('disabled', true);
+        
+        $.get('wxkd.php?action=ajaxRestoreConfirmedRecords')
+            .done((xmlData) => {
+                hideLoading();
+                $('#restoreConfirmedBtn').prop('disabled', false);
+                
+                try {
+                    const $xml = $(xmlData);
+                    const success = $xml.find('success').text() === 'true';
+                    const message = $xml.find('message').text();
+                    
+                    if (success) {
+                        const restoredCount = $xml.find('restoredCount').text();
+                        const restoredLote = $xml.find('restoredLote').text();
+                        
+                        alert(`Sucesso! ${restoredCount} registro(s) restaurado(s) para o Lote ${restoredLote}`);
+                        
+                        // Reload the historico data
+                        FilterModule.loadTableData('historico');
+                        
+                        // Update confirmed count
+                        setTimeout(() => {
+                            this.updateConfirmedCount();
+                        }, 1000);
+                        
+                    } else {
+                        alert('Erro: ' + message);
+                    }
+                    
+                } catch (e) {
+                    console.error('Error processing restore response:', e);
+                    alert('Erro ao processar resposta do servidor');
+                }
+            })
+            .fail(() => {
+                hideLoading();
+                $('#restoreConfirmedBtn').prop('disabled', false);
+                alert('Erro na comunicacao com o servidor');
+            });
+    }
+};
+
+// MODIFIED: Update the FilterModule to handle confirmed count updates
+const FilterModule = {
+    currentFilter: 'all',
+    
+    init: function() {
+        this.currentFilter = window.currentFilter || 'all';
+        this.updateFilterUI();
+        
+        $('.card-filter').on('click', this.handleCardClick.bind(this));
+        
+        if (this.currentFilter !== 'all') {
+            this.setActiveCard(this.currentFilter);
+            console.log('FilterModule.init - Loading data for initial filter:', this.currentFilter);
+            this.loadTableData(this.currentFilter);
+        }
+    },
+    
+    handleCardClick: function(e) {
+        const filter = $(e.currentTarget).data('filter');
+        this.applyFilter(filter);
+    },
+    
+    applyFilter: function(filter) {
+        if (this.currentFilter === filter && filter !== 'all') {
+            this.clearFilter();
+            return;
+        }
+        
+        this.currentFilter = filter;
+        this.setActiveCard(filter);
+        this.updateFilterUI();
+        this.loadTableData(filter);
+        
+        const newUrl = new URL(window.location);
+        newUrl.searchParams.set('filter', filter);
+        window.history.pushState({filter: filter}, '', newUrl);
+    },
+
+    clearFilter: function() {
+        this.currentFilter = 'all';
+        $('.card-filter').removeClass('active');
+        $('#filterIndicator').fadeOut();
+        
+        $('.table-scrollable').show();
+        $('#historicoAccordion').hide();
+        $('.row.mt-3').show(); 
+        
+        this.loadTableData('all');
+        
+        const newUrl = new URL(window.location);
+        newUrl.searchParams.delete('filter');
+        window.history.pushState({filter: 'all'}, '', newUrl);
+    },
+    
+    setActiveCard: function(filter) {
+        $('.card-filter').removeClass('active');
+        $(`#card-${filter}`).addClass('active');
+    },
+    
+    updateFilterUI: function() {
+        if (this.currentFilter === 'all') {
+            $('#filterIndicator').hide();
+        } else {
+            const filterNames = {
+                'cadastramento': 'Cadastramento',
+                'descadastramento': 'Descadastramento',
+                'historico': 'Histórico'
+            };
+            
+            const filterDescriptions = {
+                'cadastramento': 'Mostrando apenas lojas para cadastramento',
+                'descadastramento': 'Mostrando apenas lojas para descadastramento',
+                'historico': 'Mostrando histórico de processos realizados (apenas não confirmados)'
+            };
+            
+            $('#activeFilterName').text(filterNames[this.currentFilter]);
+            $('#filterDescription').text(filterDescriptions[this.currentFilter]);
+            $('#filterIndicator').fadeIn();
+        }
+    },
+    
+    loadTableData: function(filter) {
+        showLoading();
+        
+        if (filter === 'historico') {
+            $('.table-scrollable').hide();
+            $('#historicoAccordion').show();
+            $('.row.mt-3').hide(); 
+            $('#dataTableAndre tbody').html('<tr><td colspan="12" class="text-center">Carregando...</td></tr>');
+        } else {
+            $('#historicoAccordion').hide();
+            $('.table-scrollable').show();
+            $('.row.mt-3').show(); 
+            $('#dataTableAndre tbody').html('<tr><td colspan="12" class="text-center">Carregando...</td></tr>');
+        }
+
+        $.get('wxkd.php?action=ajaxGetTableData&filter=' + filter)
+            .done((xmlData) => {
+                try {
+                    const $xml = $(xmlData);
+                    const success = $xml.find('success').text() === 'true';
+                    
+                    if (success) {
+                        const cardData = {
+                            cadastramento: $xml.find('cardData cadastramento').text(),
+                            descadastramento: $xml.find('cardData descadastramento').text(),
+                            historico: $xml.find('cardData historico').text()
+                        };
+                        
+                        this.updateCardCounts(cardData);
+                        
+                        const newContractChaves = [];
+                        $xml.find('contractChaves chave').each(function() {
+                            const chave = $(this).text();
+                            if (chave) {
+                                newContractChaves.push(chave);
+                            }
+                        });
+                        
+                        if (typeof window.contractChaves !== 'undefined') {
+                            window.contractChaves = newContractChaves;
+                        } else {
+                            window.contractChaves = newContractChaves;
+                        }
+                        
+                        console.log('Updated contractChaves for filter ' + filter + ':', window.contractChaves);
+                        
+                        if (filter === 'historico') {
+                            this.buildHistoricoAccordion($xml);
+                            setTimeout(() => {
+                                HistoricoCheckboxModule.init();
+                                hideLoading();
+                                // ADDED: Update confirmed count after loading historico
+                                ConfirmedRecordsModule.updateConfirmedCount();
+                            }, 100);
+                        } else {
+                            const tableData = [];
+                            $xml.find('tableData row').each(function() {
+                                const row = {};
+                                $(this).children().each(function() {
+                                    row[this.tagName] = $(this).text();
+                                });
+                                tableData.push(row);
+                            });
+
+                            PaginationModule.replaceTableDataEnhanced(tableData);
+                            PaginationModule.currentPage = 1;
+                            PaginationModule.updateTable();
+                            
+                            CheckboxModule.clearSelections();
+                            
+                            setTimeout(() => {
+                                CheckboxModule.init();
+                                CheckboxModule.updateSelectAllState();
+                                CheckboxModule.updateExportButton();
+                            }, 200);
+                            
+                            setTimeout(() => {
+                                StatusFilterModule.reapplyAfterDataLoad();
+                                hideLoading();
+                            }, 400);
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error parsing XML: ', e);
+                    if (filter !== 'historico') {
+                        $('#dataTableAndre tbody').html('<tr><td colspan="12" class="text-center text-danger">Erro ao processar dados</td></tr>');
+                    }
+                    hideLoading();
+                }
+            })
+            .fail((jqXHR, textStatus, errorThrown) => {
+                console.error('AJAX failed:', textStatus, errorThrown);
+                if (filter !== 'historico') {
+                    $('#dataTableAndre tbody').html('<tr><td colspan="12" class="text-center text-danger">Erro ao carregar dados</td></tr>');
+                }
+                hideLoading();
+            });
+    },
+    
+    // ... rest of the existing FilterModule methods remain the same ...
+    
+    updateCardCounts: function(cardData) {
+        $('#card-cadastramento .databox-number').text(cardData.cadastramento);
+        $('#card-descadastramento .databox-number').text(cardData.descadastramento);
+        $('#card-historico .databox-number').text(cardData.historico);
+    },
+    
+    buildHistoricoAccordion: function($xml) {
+        // ... existing buildHistoricoAccordion implementation ...
+        // No changes needed here as the PHP query already filters by CONFIRMADO_FLAG = 0
+    }
+};
+
+// Add the global function for the button onclick
+function restoreConfirmedRecords() {
+    ConfirmedRecordsModule.restoreConfirmedRecords();
+}
+
+// MODIFIED: Update the document ready function
+$(document).ready(() => {
+    if (typeof contractChaves !== 'undefined') {
+        window.contractChaves = contractChaves;
+    } else {
+        window.contractChaves = [];
+    }
+    
+    console.log('Initial contractChaves:', window.contractChaves);
+    
+    SearchModule.init();
+    SortModule.init();
+    PaginationModule.init();
+    CheckboxModule.init(); 
+    FilterModule.init();
+    StatusFilterModule.init();
+    HistoricoModule.init();
+    HistoricoCheckboxModule.init();
+    ConfirmedRecordsModule.init(); // ADDED: Initialize confirmed records module
+    
+    $('.card-filter').on('click', function() {
+        const newFilter = $(this).data('filter');
+        if (newFilter !== FilterModule.currentFilter) {
+            $('#searchInput').val('');
+            SearchModule.hideNoResultsMessage();
+        }
+    });
+    
+    $(document).on('hidden.bs.collapse', '.panel-collapse', function() {
+        const $panel = $(this).closest('.panel');
+        $panel.find('.search-highlight').each(function() {
+            const $this = $(this);
+            $this.replaceWith($this.text());
+        });
+        $panel.find('.search-highlight-row').removeClass('search-highlight-row');
+    });
+});
