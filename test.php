@@ -1,405 +1,365 @@
-<?php
-@session_start();
+The user wants to add a button that will update the database to set `Wxkd_Flag=1` for the selected checkbox items. Looking at the code:
 
-// SOLUTION: This file needs to be called DIRECTLY for AJAX, not through index.php
-// When you include this in index.php, it will only show the modal HTML
-// When you call this file directly with ?ajax, it handles the AJAX requests
+1. They're using PHP 5.3, so no `json_encode` and can't make header changes
+2. The system already has checkbox functionality and export functionality
+3. The database updating logic already exists in the `updateWxkdFlag` method in the model
+4. They use XML for AJAX responses instead of JSON
 
-if(isset($_GET['ajax'])){
+Looking at the current code structure:
+
+1. **TestH (Main)**: Contains the HTML/PHP interface with checkboxes
+2. **TestJ (JS)**: Contains JavaScript for handling checkboxes and exports
+3. **TestM (Model)**: Contains database operations including `updateWxkdFlag`
+4. **TestC (Controller)**: Contains the controller logic including export methods
+5. **TestCon (Config)**: Contains configuration constants
+
+The system already has:
+- Checkbox selection functionality (`CheckboxModule` and `HistoricoCheckboxModule`)
+- Database update functionality in the model (`updateWxkdFlag` method)
+- AJAX handling in the controller
+- XML response handling
+
+What I need to add:
+1. A new button in the HTML (TestH)
+2. A new JavaScript function to handle the button click (TestJ)
+3. A new controller method to handle the AJAX request (TestC)
+4. Possibly modify the model if needed (TestM)
+
+Let me analyze the existing `updateWxkdFlag` method in the model to understand how it works:
+
+```php
+public function updateWxkdFlag($records, $fullData = array(), $chaveLote = 0, $filtro = 'cadastramento') {
+    // ... implementation that updates WXKD_FLAG or WXKD_FLAG_DES based on filter
+}
+```
+
+This method already handles updating the WXKD_FLAG. I can reuse this for the new functionality.
+
+
+I'll implement the new feature across different components, focusing on XML-based communication and leveraging existing methods. The controller will need a new switch case to handle the specific AJAX request for updating the Wxkd flag. I'll create a method that takes selected records, calls the model's update function, and generates an XML response. The JavaScript will mirror existing export functions, creating an AJAX call with selected checkbox items. In the HTML, I'll add a button styled similarly to other export buttons, positioned strategically near existing controls. The implementation will maintain the system's current architectural approach of separating concerns between HTML, JavaScript, controller, and model layers.
+
+I'll help you add a button to update the `Wxkd_Flag=1` for selected items. Here's what needs to be modified:
+
+## 1. Add Button to HTML (TestH.php)
+
+Add this button near the other export buttons around line 160:
+
+```php
+<!-- Add this button after the other export buttons -->
+<button style="margin-bottom:10px;position:relative; left:20px;" type="button" class="btn btn-warning btn-sm" onclick="updateSelectedFlags()" id="updateFlagsBtn" disabled>
+    Marcar como Processado (<span id="selectedCountFlags">0</span>)
+</button>
+```
+
+## 2. Add JavaScript Function (TestJ.php)
+
+Add this function to the JavaScript file around line 1950:
+
+```javascript
+// Add this new function for updating flags
+function updateSelectedFlags() {
+    $('.validation-alert').remove();
+    const currentFilter = getCurrentFilter();
+
+    const selectedIds = (currentFilter === 'historico')
+        ? HistoricoCheckboxModule.getSelectedIds()
+        : CheckboxModule.getSelectedIds();
+
+    if (selectedIds.length === 0) {
+        alert('Selecione pelo menos um registro');
+        return;
+    }
+
+    if (confirm('Deseja marcar os ' + selectedIds.length + ' registros selecionados como processados?')) {
+        updateFlagsData(selectedIds.join(','), currentFilter);
+    }
+}
+
+function updateFlagsData(selectedIds, filter) {
+    showLoading();
     
-    require_once('\\\\mz-vv-fs-237\D4920\Secoes\D4920S012\Comum_S012\j\Server2Go\htdocs\erp\ClassRepository\geral\MSSQL\MSSQL.class.php');
-    $sqlDb = new MSSQL("MESU");
+    const url = `wxkd.php?action=updateFlags&filter=${filter}&ids=${encodeURIComponent(selectedIds)}`;
     
-    if($_GET['ajax'] == 'get_pedidos'){
-        $filtro = isset($_POST['filtro']) ? $_POST['filtro'] : (isset($_GET['filtro']) ? $_GET['filtro'] : 'TODOS');
-        
-        $whereClause = "";
-        if(!empty($filtro) && $filtro != 'TODOS' && $filtro != ''){
-            $whereClause = "WHERE SITUACAO = '$filtro'";
-        }
-        
-        $query = "SELECT TOP 100 ID, COD_FUNC, NOME, DATA_PEDIDO, SITUACAO, MOTIVO_PEDIDO, MATERIAL_PEDIDO, OBSERVACAO FROM INFRA.DBO.TB_INVENTARIO_BE_PEDIDOS $whereClause ORDER BY DATA_PEDIDO DESC";
-        
-        try {
-            $result = $sqlDb->select($query);
+    fetch(url)
+        .then(response => response.text())
+        .then(responseText => {
+            hideLoading();
             
-            if($result && count($result) > 0){
-                foreach($result as $row){
-                    $dataPedido = date('d/m/Y', strtotime($row['DATA_PEDIDO']));
-                    $situacaoClass = strtolower($row['SITUACAO']);
-                    $observacao = isset($row['OBSERVACAO']) ? $row['OBSERVACAO'] : '';
-                    
-                    echo '<tr id="row-' . $row['ID'] . '">';
-                    echo '<td>' . $row['COD_FUNC'] . '</td>';
-                    echo '<td>' . $row['NOME'] . '</td>';
-                    echo '<td>' . $dataPedido . '</td>';
-                    echo '<td><span class="label label-' . $situacaoClass . '">' . $row['SITUACAO'] . '</span></td>';
-                    echo '<td>' . substr($row['MATERIAL_PEDIDO'], 0, 30) . (strlen($row['MATERIAL_PEDIDO']) > 30 ? '...' : '') . '</td>';
-                    echo '<td>' . substr($row['MOTIVO_PEDIDO'], 0, 40) . (strlen($row['MOTIVO_PEDIDO']) > 40 ? '...' : '') . '</td>';
-                    echo '<td>' . substr($observacao, 0, 30) . (strlen($observacao) > 30 ? '...' : '') . '</td>';
-                    echo '<td>';
-                    echo '<button class="btn btn-xs btn-primary" onclick="editarPedido(' . $row['ID'] . ')">Editar</button>';
-                    echo '</td>';
-                    echo '</tr>';
-                    
-                    // Hidden edit row
-                    echo '<tr id="edit-' . $row['ID'] . '" style="display:none;" class="edit-row">';
-                    echo '<td colspan="8">';
-                    echo '<div class="edit-form">';
-                    echo '<div class="row">';
-                    echo '<div class="col-md-4">';
-                    echo '<label>Situação:</label>';
-                    echo '<select class="form-control" id="situacao-' . $row['ID'] . '">';
-                    echo '<option value="PENDENTE"' . ($row['SITUACAO'] == 'PENDENTE' ? ' selected' : '') . '>PENDENTE</option>';
-                    echo '<option value="VERIFICACAO"' . ($row['SITUACAO'] == 'VERIFICACAO' ? ' selected' : '') . '>VERIFICAÇÃO</option>';
-                    echo '<option value="CONCLUIDO"' . ($row['SITUACAO'] == 'CONCLUIDO' ? ' selected' : '') . '>CONCLUÍDO</option>';
-                    echo '<option value="CANCELADO"' . ($row['SITUACAO'] == 'CANCELADO' ? ' selected' : '') . '>CANCELADO</option>';
-                    echo '</select>';
-                    echo '</div>';
-                    echo '<div class="col-md-8">';
-                    echo '<label>Observação:</label>';
-                    echo '<textarea class="form-control" id="observacao-' . $row['ID'] . '" rows="3">' . htmlspecialchars($observacao) . '</textarea>';
-                    echo '</div>';
-                    echo '</div>';
-                    echo '<div class="row" style="margin-top:10px;">';
-                    echo '<div class="col-md-12">';
-                    echo '<button class="btn btn-success btn-sm" onclick="salvarEdicao(' . $row['ID'] . ')">Salvar</button> ';
-                    echo '<button class="btn btn-default btn-sm" onclick="cancelarEdicao(' . $row['ID'] . ')">Cancelar</button>';
-                    echo '</div>';
-                    echo '</div>';
-                    echo '</div>';
-                    echo '</td>';
-                    echo '</tr>';
+            try {
+                const xmlContent = extractXMLFromMixedResponse(responseText);
+                if (!xmlContent) {
+                    alert('Erro: Nenhum XML válido encontrado na resposta');
+                    return;
                 }
-            } else {
-                echo '<tr><td colspan="8" class="text-center">Nenhum pedido encontrado</td></tr>';
+                
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(xmlContent, 'text/xml');
+                
+                const success = xmlDoc.getElementsByTagName('success')[0];
+                if (!success || success.textContent !== 'true') {
+                    const errorMsg = xmlDoc.getElementsByTagName('e')[0]?.textContent || 'Erro desconhecido';
+                    alert('Erro do servidor: ' + errorMsg);
+                    return;
+                }
+                
+                const recordsUpdated = xmlDoc.getElementsByTagName('recordsUpdated')[0]?.textContent || '0';
+                
+                showSuccessMessage(`${recordsUpdated} registro(s) marcado(s) como processado(s) com sucesso!`);
+                
+                // Clear selections and reload data
+                setTimeout(() => {
+                    CheckboxModule.clearSelections();
+                    const currentFilter = FilterModule.currentFilter;
+                    FilterModule.loadTableData(currentFilter);
+                }, 1000);
+                
+            } catch (e) {
+                console.error('Processing error:', e);
+                alert('Erro ao processar resposta: ' + e.message);
             }
-        } catch (Exception $e) {
-            echo '<tr><td colspan="8" class="text-center text-danger">Erro: ' . $e->getMessage() . '</td></tr>';
-        }
-        exit();
+        })
+        .catch(error => {
+            hideLoading();
+            console.error('Fetch error:', error);
+            alert('Erro na requisição: ' + error.message);
+        });
+}
+```
+
+## 3. Update CheckboxModule (TestJ.php)
+
+Modify the `updateExportButton` function around line 1850 to also update the new button:
+
+```javascript
+updateExportButton: function() {
+    const checkedCount = $('.row-checkbox:checked').length;
+    $('#selectedCount').text(checkedCount);
+    $('#selectedCountFlags').text(checkedCount); // Add this line
+    
+    const isDisabled = checkedCount === 0;
+    $('#exportTxtBtn').prop('disabled', isDisabled);
+    $('#updateFlagsBtn').prop('disabled', isDisabled); // Add this line
+    
+    let buttonText = 'Exportar TXT';
+    if (FilterModule.currentFilter === 'cadastramento' || FilterModule.currentFilter === 'descadastramento') {
+        buttonText = 'Converter para TXT';
     }
     
-    if($_GET['ajax'] == 'update_pedido'){
-        $id = intval($_POST['id']);
-        $situacao = $_POST['situacao'];
-        $observacao = $_POST['observacao'];
+    const btnContent = $('#exportTxtBtn').html();
+    if (btnContent) {
+        const newContent = btnContent.replace(/^[^(]+/, buttonText + ' ');
+        $('#exportTxtBtn').html(newContent);
+    }
+},
+```
+
+## 4. Update HistoricoCheckboxModule (TestJ.php)
+
+Modify the `updateExportButton` function around line 2100:
+
+```javascript
+updateExportButton: function() {
+    const checkedCount = $('.historico-detail-checkbox:checked').length + $('.historico-lote-checkbox:checked').length;
+    $('#selectedCount').text(checkedCount);
+    $('#selectedCountFlags').text(checkedCount); // Add this line
+    
+    const isDisabled = checkedCount === 0;
+    $('#exportTxtBtn').prop('disabled', isDisabled);
+    $('#updateFlagsBtn').prop('disabled', isDisabled); // Add this line
+}
+```
+
+## 5. Add Controller Method (TestC.php)
+
+Add this new case to the switch statement around line 18:
+
+```php
+case 'updateFlags':
+    $controller->updateFlags();
+    break;
+```
+
+Add this new method to the controller class around line 800:
+
+```php
+public function updateFlags() {
+    try {
+        $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
+        $selectedIds = isset($_GET['ids']) ? $_GET['ids'] : '';
         
-        $query = "UPDATE INFRA.DBO.TB_INVENTARIO_BE_PEDIDOS 
-                  SET SITUACAO = '$situacao', OBSERVACAO = '$observacao' 
-                  WHERE ID = $id";
+        if (empty($selectedIds)) {
+            $xml = '<response>';
+            $xml .= '<success>false</success>';
+            $xml .= '<e>Nenhum registro selecionado</e>';
+            $xml .= '</response>';
+            echo $xml;
+            exit;
+        }
         
-        $result = $sqlDb->update($query);
-        
-        if($result){
-            echo 'SUCESSO|Pedido atualizado com sucesso!';
+        // Get the data for the selected IDs
+        if ($filter === 'historico') {
+            $data = $this->getHistoricoFilteredData($selectedIds);
         } else {
-            echo 'ERRO|Erro ao atualizar pedido.';
+            $data = $this->getFilteredData($filter, $selectedIds);
         }
-        exit();
+        
+        if (empty($data)) {
+            $xml = '<response>';
+            $xml .= '<success>false</success>';
+            $xml .= '<e>Nenhum dado encontrado para os registros selecionados</e>';
+            $xml .= '</response>';
+            echo $xml;
+            exit;
+        }
+        
+        // Prepare records for update
+        $recordsToUpdate = array();
+        foreach ($data as $record) {
+            $codEmpresa = (int) (isset($record['Cod_Empresa']) ? $record['Cod_Empresa'] : (isset($record['COD_EMPRESA']) ? $record['COD_EMPRESA'] : 0));
+            $codLoja = (int) (isset($record['Cod_Loja']) ? $record['Cod_Loja'] : (isset($record['COD_LOJA']) ? $record['COD_LOJA'] : 0));
+            
+            if ($codEmpresa > 0 && $codLoja > 0) {
+                $recordsToUpdate[] = array(
+                    'COD_EMPRESA' => $codEmpresa,
+                    'COD_LOJA' => $codLoja
+                );
+            }
+        }
+        
+        if (empty($recordsToUpdate)) {
+            $xml = '<response>';
+            $xml .= '<success>false</success>';
+            $xml .= '<e>Nenhum registro válido encontrado para atualização</e>';
+            $xml .= '</response>';
+            echo $xml;
+            exit;
+        }
+        
+        // Update the flags - use a simpler update without logging for this operation
+        $updateResult = $this->model->updateWxkdFlagOnly($recordsToUpdate, $filter);
+        
+        $xml = '<response>';
+        $xml .= '<success>' . ($updateResult ? 'true' : 'false') . '</success>';
+        if ($updateResult) {
+            $xml .= '<recordsUpdated>' . count($recordsToUpdate) . '</recordsUpdated>';
+            $xml .= '<message>Registros marcados como processados com sucesso</message>';
+        } else {
+            $xml .= '<e>Erro ao atualizar registros no banco de dados</e>';
+        }
+        $xml .= '</response>';
+        
+        echo $xml;
+        exit;
+        
+    } catch (Exception $e) {
+        $xml = '<response>';
+        $xml .= '<success>false</success>';
+        $xml .= '<e>' . addcslashes($e->getMessage(), '"<>&') . '</e>';
+        $xml .= '</response>';
+        echo $xml;
+        exit;
     }
-    
-    exit();
 }
+```
 
-// Only show modal HTML when included in another file (no AJAX parameter)
-?>
-<style>
-.modal-controle .table-container {
-    max-height: 500px;
-    overflow-y: auto;
-}
+## 6. Add Model Method (TestM.php)
 
-.modal-controle .table {
-    margin-bottom: 0;
-}
+Add this new method to the model class around line 700:
 
-.modal-controle .table th {
-    background-color: #f5f5f5;
-    font-weight: bold;
-    position: sticky;
-    top: 0;
-    z-index: 10;
-}
-
-.modal-controle .edit-form {
-    background-color: #f9f9f9;
-    padding: 15px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-}
-
-.modal-controle .form-control {
-    border-radius: 3px;
-    border: 1px solid #ccc;
-}
-
-.modal-controle .btn-xs {
-    padding: 2px 8px;
-    font-size: 11px;
-}
-
-.label-pendente { background-color: #f0ad4e !important; }
-.label-verificacao { background-color: #5bc0de !important; }
-.label-concluido { background-color: #5cb85c !important; }
-.label-cancelado { background-color: #d9534f !important; }
-
-.filter-container {
-    margin-bottom: 15px;
-    padding: 10px;
-    background-color: #f5f5f5;
-    border-radius: 4px;
-}
-
-.loading-table {
-    text-align: center;
-    padding: 40px;
-}
-
-.spinner-table {
-    border: 3px solid #f3f3f3;
-    border-top: 3px solid #3498db;
-    border-radius: 50%;
-    width: 30px;
-    height: 30px;
-    animation: spin 1s linear infinite;
-    margin: 0 auto 10px;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-.alert-controle {
-    padding: 10px;
-    margin-bottom: 15px;
-    border: 1px solid transparent;
-    border-radius: 4px;
-}
-
-.alert-success {
-    color: #3c763d;
-    background-color: #dff0d8;
-    border-color: #d6e9c6;
-}
-
-.alert-danger {
-    color: #a94442;
-    background-color: #f2dede;
-    border-color: #ebccd1;
-}
-</style>
-
-<!-- Modal for Material Request Control -->
-<div class="modal fade" id="modalPedidoControle" tabindex="-1" role="dialog" aria-labelledby="modalControleLabel">
-    <div class="modal-dialog modal-lg" role="document">
-        <div class="modal-content modal-controle">
-            <div class="modal-header">
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-                <h4 class="modal-title" id="modalControleLabel">
-                    <i class="fa fa-cogs"></i> Controle de Pedidos de Material
-                </h4>
-            </div>
+```php
+public function updateWxkdFlagOnly($records, $filtro = 'cadastramento') {
+    try {
+        if (empty($records)) {
+            return false;
+        }
+        
+        $updateCount = 0;
+        
+        // Determine which flag to update based on filter
+        $flagToUpdate = ($filtro === 'descadastramento') ? 'WXKD_FLAG_DES' : 'WXKD_FLAG';
+        
+        foreach ($records as $record) {
+            $codEmpresa = (int) $record['COD_EMPRESA'];
+            $codLoja = (int) $record['COD_LOJA'];
             
-            <div class="modal-body">
-                <div id="alert-container-controle"></div>
-                
-                <!-- Filter Section -->
-                <div class="filter-container">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <label for="filtro-situacao"><strong>Filtrar por Situação:</strong></label>
-                            <select class="form-control" id="filtro-situacao" onchange="carregarPedidos()">
-                                <option value="TODOS" selected>TODOS</option>
-                                <option value="PENDENTE">PENDENTE</option>
-                                <option value="VERIFICACAO">VERIFICAÇÃO</option>
-                                <option value="CONCLUIDO">CONCLUÍDO</option>
-                                <option value="CANCELADO">CANCELADO</option>
-                            </select>
-                        </div>
-                        <div class="col-md-6">
-                            <label>&nbsp;</label><br>
-                            <button class="btn btn-info" onclick="carregarPedidos()">
-                                <i class="fa fa-refresh"></i> Atualizar
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Table Section -->
-                <div class="table-container">
-                    <table class="table table-striped table-bordered table-condensed">
-                        <thead>
-                            <tr>
-                                <th>Código</th>
-                                <th>Nome</th>
-                                <th>Data</th>
-                                <th>Situação</th>
-                                <th>Material</th>
-                                <th>Motivo</th>
-                                <th>Observação</th>
-                                <th>Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tabela-pedidos">
-                            <tr>
-                                <td colspan="8" class="loading-table">
-                                    <div class="spinner-table"></div>
-                                    <p>Carregando pedidos...</p>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+            if ($codEmpresa <= 0 || $codLoja <= 0) {
+                continue;
+            }
             
-            <div class="modal-footer">
-                <button type="button" class="btn btn-default" data-dismiss="modal">
-                    <i class="fa fa-times"></i> Fechar
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script>
-// IMPORTANT: This points to the modal file directly, not index.php
-var MODAL_FILE_URL = '<?php echo basename(__FILE__); ?>'; // This will be the filename of this modal file
-
-document.addEventListener('DOMContentLoaded', function() {
-    // Test if we can access the modal file
-    console.log('Modal file URL:', MODAL_FILE_URL);
-    
-    document.getElementById('modalPedidoControle').addEventListener('show.bs.modal', function() {
-        console.log('Modal opening, loading data...');
-        carregarPedidos();
-    });
-});
-
-function carregarPedidos() {
-    var filtro = document.getElementById('filtro-situacao').value || 'TODOS';
-    var tbody = document.getElementById('tabela-pedidos');
-    
-    console.log('=== STARTING LOAD ===');
-    console.log('Filtro:', filtro);
-    
-    tbody.innerHTML = '<tr><td colspan="8" class="loading-table"><div class="spinner-table"></div><p>Carregando pedidos...</p></td></tr>';
-    
-    var xhr = new XMLHttpRequest();
-    // Call the modal file directly, not index.php
-    var url = MODAL_FILE_URL + '?ajax=get_pedidos';
-    xhr.open('POST', url, true);
-    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-    
-    // Add timeout to prevent infinite loading
-    xhr.timeout = 30000; // 30 seconds
-    
-    xhr.onreadystatechange = function() {
-        if(xhr.readyState === 4) {
-            console.log('=== LOAD RESPONSE ===');
-            console.log('URL:', url);
-            console.log('Status:', xhr.status);
-            console.log('Length:', xhr.responseText.length);
-            console.log('Starts with <tr?', xhr.responseText.trim().indexOf('<tr') === 0);
+            // Use MERGE statement to avoid race conditions and duplicates
+            $mergeSql = "
+                MERGE PGTOCORSP.dbo.tb_wxkd_flag AS target
+                USING (SELECT $codEmpresa AS COD_EMPRESA, $codLoja AS COD_LOJA) AS source
+                ON (target.COD_EMPRESA = source.COD_EMPRESA AND target.COD_LOJA = source.COD_LOJA)
+                WHEN MATCHED THEN
+                    UPDATE SET $flagToUpdate = 1
+                WHEN NOT MATCHED THEN
+                    INSERT (COD_EMPRESA, COD_LOJA, WXKD_FLAG, WXKD_FLAG_DES)
+                    VALUES (source.COD_EMPRESA, source.COD_LOJA, 
+                        " . ($flagToUpdate === 'WXKD_FLAG' ? '1' : '0') . ", 
+                        " . ($flagToUpdate === 'WXKD_FLAG_DES' ? '1' : '0') . ");
+            ";
             
-            if(xhr.status === 200) {
-                var response = xhr.responseText.trim();
-                if(response.indexOf('<tr') === 0) {
-                    tbody.innerHTML = response;
-                    console.log('SUCCESS: Table loaded');
-                } else {
-                    console.log('ERROR: Invalid response format');
-                    console.log('First 200 chars:', response.substring(0, 200));
-                    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Erro: Formato de resposta inválido<br><small>' + response.substring(0, 100) + '</small></td></tr>';
+            try {
+                $result = $this->sql->update($mergeSql);
+                if ($result) {
+                    $updateCount++;
                 }
-            } else {
-                tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Erro HTTP: ' + xhr.status + '</td></tr>';
+            } catch (Exception $mergeEx) {
+                // Fallback to the old method if MERGE fails
+                $checkSql = "SELECT COUNT(*) as total FROM PGTOCORSP.dbo.tb_wxkd_flag 
+                            WHERE COD_EMPRESA = $codEmpresa AND COD_LOJA = $codLoja";
+                
+                $checkResult = $this->sql->select($checkSql);
+                
+                if (empty($checkResult) || !isset($checkResult[0]['total']) || $checkResult[0]['total'] == 0) {
+                    $insertSql = "INSERT INTO PGTOCORSP.dbo.tb_wxkd_flag (COD_EMPRESA, COD_LOJA, WXKD_FLAG, WXKD_FLAG_DES) 
+                                VALUES ($codEmpresa, $codLoja, 
+                                    " . ($flagToUpdate === 'WXKD_FLAG' ? '1' : '0') . ", 
+                                    " . ($flagToUpdate === 'WXKD_FLAG_DES' ? '1' : '0') . ")";
+                    
+                    $insertResult = $this->sql->insert($insertSql);
+                    if ($insertResult) {
+                        $updateCount++;
+                    }
+                } else {
+                    $updateSql = "UPDATE PGTOCORSP.dbo.tb_wxkd_flag 
+                                SET $flagToUpdate = 1 
+                                WHERE COD_EMPRESA = $codEmpresa AND COD_LOJA = $codLoja";
+                    
+                    $updateResult = $this->sql->update($updateSql);
+                    if ($updateResult) {
+                        $updateCount++;
+                    }
+                }
             }
         }
-    };
-    
-    xhr.ontimeout = function() {
-        console.log('Request timeout');
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Erro: Timeout na requisição</td></tr>';
-    };
-    
-    xhr.onerror = function() {
-        console.log('Request error');
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Erro: Falha na conexão</td></tr>';
-    };
-    
-    console.log('Sending filtro:', filtro);
-    xhr.send('filtro=' + encodeURIComponent(filtro));
+        
+        return $updateCount > 0;
+        
+    } catch (Exception $e) {
+        error_log("updateWxkdFlagOnly - Exception: " . $e->getMessage());
+        return false;
+    }
 }
+```
 
-function editarPedido(id) {
-    document.getElementById('row-' + id).style.display = 'none';
-    document.getElementById('edit-' + id).style.display = 'table-row';
-}
+## Summary
 
-function cancelarEdicao(id) {
-    document.getElementById('row-' + id).style.display = 'table-row';
-    document.getElementById('edit-' + id).style.display = 'none';
-}
+This implementation adds:
 
-function salvarEdicao(id) {
-    var situacao = document.getElementById('situacao-' + id).value;
-    var observacao = document.getElementById('observacao-' + id).value;
-    
-    var xhr = new XMLHttpRequest();
-    // Call the modal file directly, not index.php
-    var url = MODAL_FILE_URL + '?ajax=update_pedido';
-    xhr.open('POST', url, true);
-    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-    
-    xhr.onreadystatechange = function() {
-        if(xhr.readyState === 4) {
-            console.log('=== UPDATE RESPONSE ===');
-            console.log('URL:', url);
-            console.log('Status:', xhr.status);
-            console.log('Response:', xhr.responseText);
-            
-            if(xhr.status === 200) {
-                var response = xhr.responseText.trim();
-                
-                if(response.substring(0, 7) === 'SUCESSO') {
-                    var parts = response.split('|');
-                    var message = parts.length > 1 ? parts[1] : 'Sucesso';
-                    mostrarAlertaControle(message, 'success');
-                    carregarPedidos();
-                } else if(response.substring(0, 4) === 'ERRO') {
-                    var parts = response.split('|');
-                    var message = parts.length > 1 ? parts[1] : 'Erro';
-                    mostrarAlertaControle(message, 'danger');
-                } else {
-                    mostrarAlertaControle('Resposta inesperada: ' + response, 'danger');
-                }
-            } else {
-                mostrarAlertaControle('Erro HTTP: ' + xhr.status, 'danger');
-            }
-        }
-    };
-    
-    var data = 'id=' + id + 
-               '&situacao=' + encodeURIComponent(situacao) + 
-               '&observacao=' + encodeURIComponent(observacao);
-    
-    xhr.send(data);
-}
+1. **A new button** that shows the count of selected items
+2. **JavaScript functions** to handle the button click and AJAX request
+3. **A new controller method** to process the flag updates
+4. **A new model method** that updates only the flags without logging (simpler than the existing method)
+5. **Integration with existing checkbox modules** to enable/disable the button
 
-function mostrarAlertaControle(message, type) {
-    var alertContainer = document.getElementById('alert-container-controle');
-    var alertClass = type === 'success' ? 'alert-success' : 'alert-danger';
-    
-    alertContainer.innerHTML = '<div class="alert-controle ' + alertClass + '">' +
-                               '<strong>' + (type === 'success' ? 'Sucesso!' : 'Erro!') + '</strong> ' + 
-                               message + '</div>';
-    
-    setTimeout(function() {
-        alertContainer.innerHTML = '';
-    }, 3000);
-}
-</script>
+The button will:
+- Only be enabled when items are selected
+- Show a confirmation dialog before updating
+- Update the appropriate flag (`WXKD_FLAG` or `WXKD_FLAG_DES`) based on the current filter
+- Show a success message with the number of updated records
+- Refresh the data to reflect the changes
+- Work with both regular tables and historic accordion data
+
+The system maintains the existing XML response format and PHP 5.3 compatibility.
