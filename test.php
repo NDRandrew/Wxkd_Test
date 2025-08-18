@@ -55,7 +55,7 @@ const ConfirmedRecordsModule = {
     
     restoreConfirmedRecords: function() {
         // Works from any filter but affects historico data
-        if (!confirm('Tem certeza que deseja restaurar todos os registros confirmados? Esta acao nao pode ser desfeita.')) {
+        if (!confirm('Tem certeza que deseja restaurar todos os registros confirmados?\n\nIsso atualizara o LOTE para o menor numero e a DATA_LOG para a data mais antiga.\n\nEsta acao nao pode ser desfeita.')) {
             return;
         }
         
@@ -75,8 +75,9 @@ const ConfirmedRecordsModule = {
                     if (success) {
                         const restoredCount = $xml.find('restoredCount').text();
                         const restoredLote = $xml.find('restoredLote').text();
+                        const restoredDataLogFormatted = $xml.find('restoredDataLogFormatted').text();
                         
-                        alert(`Sucesso! ${restoredCount} registro(s) restaurado(s) para o Lote ${restoredLote}`);
+                        alert(`Sucesso! ${restoredCount} registro(s) restaurado(s) para o Lote ${restoredLote} com data ${restoredDataLogFormatted}`);
                         
                         // Reload current filter data to reflect changes
                         const currentFilter = FilterModule.currentFilter || 'all';
@@ -344,7 +345,7 @@ $(document).ready(() => {
 });
 
 
------------------
+------------
 
 
 <?php
@@ -400,7 +401,7 @@ switch($action) {
             <button type="button" class="btn btn-warning btn-sm" id="restoreConfirmedBtn" 
                     onclick="restoreConfirmedRecords()" 
                     style="display: none; white-space: nowrap;"
-                    title="Restaurar registros confirmados do histórico">
+                    title="Restaurar registros confirmados usando o menor LOTE e a data mais antiga">
                 <i class="fa fa-undo"></i> Restaurar (<span id="confirmedCount">0</span>)
             </button>
         </div>
@@ -441,7 +442,7 @@ function updateConfirmedCount() {
 // Restore confirmed records function
 // Works from any filter but affects historico data
 function restoreConfirmedRecords() {
-    if (!confirm('Tem certeza que deseja restaurar todos os registros confirmados? Esta acao nao pode ser desfeita.')) {
+    if (!confirm('Tem certeza que deseja restaurar todos os registros confirmados?\n\nIsso atualizara o LOTE para o menor numero e a DATA_LOG para a data mais antiga.\n\nEsta acao nao pode ser desfeita.')) {
         return;
     }
     
@@ -461,11 +462,13 @@ function restoreConfirmedRecords() {
                 if (success) {
                     var restoredCount = $xml.find('restoredCount').text();
                     var restoredLote = $xml.find('restoredLote').text();
+                    var restoredDataLogFormatted = $xml.find('restoredDataLogFormatted').text();
                     
-                    alert('Sucesso! ' + restoredCount + ' registro(s) restaurado(s) para o Lote ' + restoredLote);
+                    alert('Sucesso! ' + restoredCount + ' registro(s) restaurado(s) para o Lote ' + restoredLote + ' com data ' + restoredDataLogFormatted);
                     
-                    // Reload the historico data
-                    FilterModule.loadTableData('historico');
+                    // Reload the current filter data
+                    var currentFilter = FilterModule.currentFilter || 'all';
+                    FilterModule.loadTableData(currentFilter);
                     
                     // Update confirmed count
                     setTimeout(function() {
@@ -517,4 +520,384 @@ $(document).ready(function() {
 
 <?php
 // ... rest of existing HTML structure ...
+?>
+
+
+---------------
+
+
+<?php
+// Add this method to the Wxkd_DashboardController class
+
+public function ajaxRestoreConfirmedRecords() {
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    ob_start();
+    
+    try {
+        // Get count of confirmed records before restoring
+        $confirmedCount = $this->model->getConfirmedRecordsCount();
+        
+        if ($confirmedCount === 0) {
+            $xml = '<response>';
+            $xml .= '<success>false</success>';
+            $xml .= '<message>Nenhum registro confirmado encontrado para restaurar</message>';
+            $xml .= '</response>';
+            echo $xml;
+            ob_end_flush();
+            exit;
+        }
+        
+        // Restore confirmed records (now returns array with lote and data_log)
+        $restoredData = $this->model->restoreConfirmedRecords();
+        
+        if ($restoredData !== false && is_array($restoredData)) {
+            $restoredLote = $restoredData['lote'];
+            $restoredDataLog = $restoredData['data_log'];
+            
+            // Format the date for display
+            $formattedDate = date('d/m/Y H:i:s', strtotime($restoredDataLog));
+            
+            $xml = '<response>';
+            $xml .= '<success>true</success>';
+            $xml .= '<restoredCount>' . $confirmedCount . '</restoredCount>';
+            $xml .= '<restoredLote>' . $restoredLote . '</restoredLote>';
+            $xml .= '<restoredDataLog>' . addcslashes($restoredDataLog, '"<>&') . '</restoredDataLog>';
+            $xml .= '<restoredDataLogFormatted>' . addcslashes($formattedDate, '"<>&') . '</restoredDataLogFormatted>';
+            $xml .= '<message>Restauracao realizada com sucesso! ' . $confirmedCount . ' registro(s) restaurado(s) para o Lote ' . $restoredLote . ' com data ' . $formattedDate . '</message>';
+            $xml .= '</response>';
+        } else {
+            $xml = '<response>';
+            $xml .= '<success>false</success>';
+            $xml .= '<message>Erro ao restaurar registros confirmados</message>';
+            $xml .= '</response>';
+        }
+        
+        echo $xml;
+        
+    } catch (Exception $e) {
+        $xml = '<response>';
+        $xml .= '<success>false</success>';
+        $xml .= '<message>Erro interno: ' . addcslashes($e->getMessage(), '"<>&') . '</message>';
+        $xml .= '</response>';
+        echo $xml;
+    }
+    
+    ob_end_flush();
+    exit;
+}
+
+// Add this method to get confirmed records count for UI
+public function ajaxGetConfirmedCount() {
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    ob_start();
+    
+    try {
+        $count = $this->model->getConfirmedRecordsCount();
+        
+        $xml = '<response>';
+        $xml .= '<success>true</success>';
+        $xml .= '<count>' . $count . '</count>';
+        $xml .= '</response>';
+        
+        echo $xml;
+        
+    } catch (Exception $e) {
+        $xml = '<response>';
+        $xml .= '<success>false</success>';
+        $xml .= '<message>Erro ao buscar contagem: ' . addcslashes($e->getMessage(), '"<>&') . '</message>';
+        $xml .= '</response>';
+        echo $xml;
+    }
+    
+    ob_end_flush();
+    exit;
+}
+
+// MODIFIED: Update the updateWxkdFlag method to set CONFIRMADO_FLAG = 1 when updating flags
+public function updateWxkdFlag($records, $fullData = array(), $chaveLote = 0, $filtro = 'cadastramento') {
+    $logs = array();
+    
+    try {
+        $logs[] = "updateWxkdFlag START - Records count: " . count($records) . ", ChaveLote: $chaveLote, Filtro: $filtro";
+        
+        if (empty($records)) {
+            $logs[] = "updateWxkdFlag - No records provided";
+            $this->debugLogs = $logs;
+            return false;
+        }
+        
+        $updateCount = 0;
+        $logInsertCount = 0;
+        $currentDateTime = date('Y-m-d H:i:s');
+        
+        // Determine which flag to update based on filter
+        $flagToUpdate = ($filtro === 'descadastramento') ? 'WXKD_FLAG_DES' : 'WXKD_FLAG';
+        $logs[] = "updateWxkdFlag - Will update flag: $flagToUpdate for filter: $filtro";
+        
+        foreach ($records as $index => $record) {
+            $codEmpresa = (int) $record['COD_EMPRESA'];
+            $codLoja = (int) $record['COD_LOJA'];
+            
+            $logs[] = "updateWxkdFlag - Processing record #$index: CodEmpresa=$codEmpresa, CodLoja=$codLoja";
+            
+            if ($codEmpresa <= 0 || $codLoja <= 0) {
+                $logs[] = "updateWxkdFlag - Invalid empresa/loja codes for record #$index";
+                continue;
+            }
+            
+            // Use MERGE statement to avoid race conditions and duplicates
+            $mergeSql = "
+                MERGE PGTOCORSP.dbo.tb_wxkd_flag AS target
+                USING (SELECT $codEmpresa AS COD_EMPRESA, $codLoja AS COD_LOJA) AS source
+                ON (target.COD_EMPRESA = source.COD_EMPRESA AND target.COD_LOJA = source.COD_LOJA)
+                WHEN MATCHED THEN
+                    UPDATE SET $flagToUpdate = 1
+                WHEN NOT MATCHED THEN
+                    INSERT (COD_EMPRESA, COD_LOJA, WXKD_FLAG, WXKD_FLAG_DES)
+                    VALUES (source.COD_EMPRESA, source.COD_LOJA, 
+                        " . ($flagToUpdate === 'WXKD_FLAG' ? '1' : '0') . ", 
+                        " . ($flagToUpdate === 'WXKD_FLAG_DES' ? '1' : '0') . ");
+            ";
+            
+            try {
+                $result = $this->sql->update($mergeSql);
+                
+                if ($result) {
+                    $updateCount++;
+                    $logs[] = "updateWxkdFlag - Successfully processed $flagToUpdate for record #$index (MERGE)";
+                } else {
+                    $logs[] = "updateWxkdFlag - Failed to process $flagToUpdate for record #$index (MERGE)";
+                }
+            } catch (Exception $mergeEx) {
+                $logs[] = "updateWxkdFlag - MERGE exception for record #$index: " . $mergeEx->getMessage();
+                // ... fallback logic as before ...
+            }
+        }
+        
+        // MODIFIED: Log insertion logic with CONFIRMADO_FLAG = 1
+        if (!empty($fullData) && $chaveLote > 0) {
+            $logs[] = "updateWxkdFlag - Starting log insertion with " . count($fullData) . " records for filter: $filtro";
+            
+            foreach ($fullData as $index => $record) {
+                // ... existing field extraction logic ...
+                
+                $logSql = "INSERT INTO PGTOCORSP.dbo.TB_WXKD_LOG 
+                        (CHAVE_LOTE, DATA_LOG, CHAVE_LOJA, NOME_LOJA, COD_EMPRESA, COD_LOJA, 
+                        TIPO_CORRESPONDENTE, DATA_CONCLUSAO, DATA_SOLICITACAO, DEP_DINHEIRO, DEP_CHEQUE, REC_RETIRADA, SAQUE_CHEQUE, 
+                        SEGUNDA_VIA_CARTAO, HOLERITE_INSS, CONS_INSS, PROVA_DE_VIDA, DATA_CONTRATO, TIPO_CONTRATO, FILTRO, CONFIRMADO_FLAG) 
+                        VALUES 
+                        ($chaveLote, 
+                        '$currentDateTime', 
+                        $chaveLoja, 
+                        '$nomeLoja', 
+                        $codEmpresa, 
+                        $codLoja, 
+                        '$tipoCorrespondente',
+                        $dataConclusao,
+                        $dataSolicitacao,
+                        $depDinheiro, $depCheque, $recRetirada, $saqueCheque, 
+                        '$segundaVia', '$holeriteInss', '$consultaInss', '$provaVida', 
+                        $dataContrato, 
+                        '$tipoContrato', 
+                        '$filtro', 
+                        1)"; // CONFIRMADO_FLAG = 1 for new exports
+                
+                try {
+                    $logResult = $this->sql->insert($logSql);
+                    
+                    if ($logResult) {
+                        $logInsertCount++;
+                        $logs[] = "updateWxkdFlag - Log insert SUCCESS for record #$index";
+                    } else {
+                        $logs[] = "updateWxkdFlag - Log insert FAILED for record #$index";
+                    }
+                } catch (Exception $logEx) {
+                    $logs[] = "updateWxkdFlag - Log insert exception for record #$index: " . $logEx->getMessage();
+                }
+            }
+        }
+        
+        $logs[] = "updateWxkdFlag END - Flag ($flagToUpdate) updates: $updateCount, Log inserts: $logInsertCount";
+        $this->debugLogs = $logs;
+        
+        return $updateCount > 0;
+        
+    } catch (Exception $e) {
+        $logs[] = "updateWxkdFlag - MAIN Exception: " . $e->getMessage();
+        $this->debugLogs = $logs;
+        return false;
+    }
+}
+?>
+
+
+---------------
+
+
+<?php
+// Add this method to the Wxkd_DashboardModel class
+
+public function getTableDataByFilter($filter = 'all') {
+    try {
+        $query = "";
+        
+        switch($filter) {
+            case 'cadastramento':
+                $query = "SELECT " . $this->baseSelectFields . $this->baseJoins . 
+                        " WHERE (B.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR C.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR D.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR E.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "') 
+                        AND H.WXKD_FLAG = 0";
+                break;
+                
+            case 'descadastramento':
+                // ... existing descadastramento query ...
+                break;
+                
+            case 'historico':
+                // MODIFIED: Only show records with CONFIRMADO_FLAG = 0
+                $query = "SELECT 
+                            CHAVE_LOTE,
+                            DATA_LOG,
+                            COUNT(*) as TOTAL_REGISTROS,
+                            FILTRO
+                        FROM PGTOCORSP.dbo.TB_WXKD_LOG 
+                        WHERE CONFIRMADO_FLAG = 0
+                        GROUP BY CHAVE_LOTE, DATA_LOG, FILTRO 
+                        ORDER BY DATA_LOG DESC";
+                break;
+                
+            default: 
+                $query = "SELECT " . $this->baseSelectFields . $this->baseJoins . 
+                        " WHERE (B.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR C.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR D.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR E.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "') 
+                        AND H.WXKD_FLAG IN (0,1)";
+                break;
+        }
+        
+        if (empty($query)) {
+            return array();
+        }
+        
+        $result = $this->sql->select($query);
+        return $result;
+        
+    } catch (Exception $e) {
+        error_log("getTableDataByFilter - Exception: " . $e->getMessage());
+        return array();
+    }
+}
+
+// NEW METHOD: Restore confirmed records
+// Updates both CHAVE_LOTE to minimum value and DATA_LOG to earliest datetime
+public function restoreConfirmedRecords() {
+    try {
+        // Step 1: Find the minimum CHAVE_LOTE and minimum DATA_LOG among confirmed records
+        $minValuesQuery = "SELECT MIN(CHAVE_LOTE) as MIN_LOTE, MIN(DATA_LOG) as MIN_DATA_LOG 
+                          FROM PGTOCORSP.dbo.TB_WXKD_LOG 
+                          WHERE CONFIRMADO_FLAG = 1";
+        
+        $minValuesResult = $this->sql->select($minValuesQuery);
+        
+        if (empty($minValuesResult) || !isset($minValuesResult[0]['MIN_LOTE']) || !isset($minValuesResult[0]['MIN_DATA_LOG'])) {
+            return false; // No confirmed records found
+        }
+        
+        $minLote = (int)$minValuesResult[0]['MIN_LOTE'];
+        $minDataLog = $minValuesResult[0]['MIN_DATA_LOG'];
+        
+        if ($minLote <= 0 || empty($minDataLog)) {
+            return false; // Invalid minimum values
+        }
+        
+        // Step 2: Update all confirmed records with both minimum LOTE and minimum DATA_LOG
+        $updateQuery = "UPDATE PGTOCORSP.dbo.TB_WXKD_LOG 
+                       SET CONFIRMADO_FLAG = 0, 
+                           CHAVE_LOTE = $minLote,
+                           DATA_LOG = '$minDataLog'
+                       WHERE CONFIRMADO_FLAG = 1";
+        
+        $result = $this->sql->update($updateQuery);
+        
+        if ($result) {
+            error_log("restoreConfirmedRecords - Successfully restored records to LOTE $minLote and DATA_LOG $minDataLog");
+            return array(
+                'lote' => $minLote,
+                'data_log' => $minDataLog
+            );
+        } else {
+            error_log("restoreConfirmedRecords - Failed to update records");
+            return false;
+        }
+        
+    } catch (Exception $e) {
+        error_log("restoreConfirmedRecords - Exception: " . $e->getMessage());
+        return false;
+    }
+}
+
+// NEW METHOD: Get count of confirmed records
+public function getConfirmedRecordsCount() {
+    try {
+        $query = "SELECT COUNT(*) as TOTAL 
+                 FROM PGTOCORSP.dbo.TB_WXKD_LOG 
+                 WHERE CONFIRMADO_FLAG = 1";
+        
+        $result = $this->sql->select($query);
+        
+        if (!empty($result) && isset($result[0]['TOTAL'])) {
+            return (int)$result[0]['TOTAL'];
+        }
+        
+        return 0;
+        
+    } catch (Exception $e) {
+        error_log("getConfirmedRecordsCount - Exception: " . $e->getMessage());
+        return 0;
+    }
+}
+
+// MODIFIED: Update the cardData method to only count non-confirmed records
+public function getCardData() {
+    try {
+        $cardData = array();
+        
+        $cardData['cadastramento'] = $this->sql->qtdRows("
+            SELECT A.Chave_Loja
+            " . $this->baseJoins . "
+            WHERE (B.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR C.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR D.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR E.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "') 
+            AND H.WXKD_FLAG = 0");
+        
+        $cardData['descadastramento'] = $this->sql->qtdRows("
+            -- existing descadastramento query --
+        ");
+        
+        // MODIFIED: Only count non-confirmed historico records
+        $cardData['historico'] = $this->sql->qtdRows("
+            SELECT CHAVE_LOTE FROM PGTOCORSP.dbo.TB_WXKD_LOG WHERE CONFIRMADO_FLAG = 0");
+        
+        return $cardData;
+        
+    } catch (Exception $e) {
+        throw new Exception("Erro ao buscar dados dos cards: " . $e->getMessage());
+    }
+}
+
+// MODIFIED: Update the getHistoricoDetails method to filter by CONFIRMADO_FLAG
+public function getHistoricoDetails($chaveLote) {
+    try {
+        $query = "SELECT * FROM PGTOCORSP.dbo.TB_WXKD_LOG 
+                 WHERE CHAVE_LOTE = " . (int)$chaveLote . " 
+                 AND CONFIRMADO_FLAG = 0 
+                 ORDER BY CHAVE_LOJA";
+        
+        $result = $this->sql->select($query);
+        return $result;
+        
+    } catch (Exception $e) {
+        error_log("getHistoricoDetails - Exception: " . $e->getMessage());
+        return array();
+    }
+}
 ?>
