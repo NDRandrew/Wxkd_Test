@@ -17,7 +17,7 @@ async function openNotepadAndTest() {
     
     // Step 1: Open Run dialog using Win+R
     console.log("📂 Opening Run dialog...");
-    await keyboard.pressKey(Key.LeftCmd, Key.R); // Win+R on Windows
+    await keyboard.pressKey(Key.LeftSuper, Key.R); // Win+R on Windows (LeftSuper = Windows key)
     await sleep(1000); // Wait for dialog to open
     
     // Step 2: Type "notepad" in the Run dialog
