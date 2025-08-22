@@ -1,183 +1,194 @@
-<!-- Import do JavaScript -->
-            <script src="../view/assets/js/Wxkd_script.js"></script>
+<?php
+// In TestC (Controller), replace the validateRecordsForTXTExport method with this:
 
-            <!-- Current filter data -->
-            <script>
-                window.currentFilter = '<?php echo isset($activeFilter) ? $activeFilter : "all"; ?>';
-            </script>
-
-            <!-- Contract chaves data -->
-            <script type="text/javascript">
-                var contractChaves = [<?php
-                    $first = true;
-                    foreach (array_keys($contractChavesLookup) as $chave) {
-                        if (!$first) echo ', ';
-                        echo "'" . addslashes($chave) . "'";
-                        $first = false;
-                    }
-                ?>];
-                window.contractChaves = contractChaves;
-                console.log('Contract chaves loaded:', contractChaves);
-            </script>
-            
-            <!-- ACC_FLAG data -->
-            <script type="text/javascript">
-                var accFlagData = {<?php
-                    if (is_array($tableData) && !empty($tableData)) {
-                        $first = true;
-                        foreach ($tableData as $index => $row) {
-                            if (!$first) echo ',';
-                            $chaveLoja = isset($row['Chave_Loja']) ? $row['Chave_Loja'] : '';
-                            $accFlag = isset($row['ACC_FLAG']) ? $row['ACC_FLAG'] : '0';
-                            echo "'" . addslashes($chaveLoja) . "':'" . addslashes($accFlag) . "'";
-                            $first = false;
-                        }
-                    }
-                ?>};
-                window.accFlagData = accFlagData;
-                console.log('ACC_FLAG data loaded:', accFlagData);
-            </script>
-
-            <!-- Status toggle function -->
-            <script>
-                function toggleStatus(button) {
-                    const span = button.querySelector('.status-indicator');
-                    const isGreen = span.style.backgroundColor === 'rgb(33, 136, 56)' || span.style.backgroundColor === '#218838';
-                    span.style.backgroundColor = isGreen ? 'gray' : '#218838';
+private function validateRecordsForTXTExport($data, $filter = 'cadastramento') {
+    $invalidRecords = array();
+    $cutoff = Wxkd_Config::getCutoffTimestamp();
+    
+    foreach ($data as $row) {
+        // CHECK ACC_FLAG FIRST - if it's 1, skip all validation
+        if (isset($row['ACC_FLAG']) && $row['ACC_FLAG'] == '1') {
+            continue; // Skip validation for this record - it's already approved by Access export
+        }
+        
+        $activeTypes = $this->getActiveTypes($row, $cutoff);
+        $codEmpresa = $this->getEmpresaCode($row);
+        
+        if (empty($codEmpresa) || empty($activeTypes)) {
+            continue;
+        }
+        
+        $isValid = true;
+        $errorMessage = '';
+        
+        foreach ($activeTypes as $type) {
+            if ($type === 'AV' || $type === 'PR' || $type === 'UN') {
+                $basicValidation = $this->checkBasicValidations($row);
+                if ($basicValidation !== true) {
+                    $isValid = false;
+                    $errorMessage = 'Tipo ' . $type . ' - ' . $basicValidation;
+                    break;
                 }
-            </script>
-
-            <!-- Confirmed records management -->
-            <script type="text/javascript">
-                function updateConfirmedCount() {
-                    $.get('wxkd.php?action=ajaxGetConfirmedCount')
-                        .done(function(xmlData) {
-                            try {
-                                var $xml = $(xmlData);
-                                var success = $xml.find('success').text() === 'true';
-                                
-                                if (success) {
-                                    var count = parseInt($xml.find('count').text()) || 0;
-                                    $('#confirmedCount').text(count);
-                                    
-                                    if (count > 0) {
-                                        $('#restoreConfirmedBtn').show();
-                                    } else {
-                                        $('#restoreConfirmedBtn').hide();
-                                    }
-                                }
-                            } catch (e) {
-                                console.error('Error updating confirmed count:', e);
-                            }
-                        })
-                        .fail(function() {
-                            console.error('Failed to get confirmed count');
-                        });
+            } elseif ($type === 'OP') {
+                $opValidation = $this->checkOPValidations($row);
+                if ($opValidation !== true) {
+                    $isValid = false;
+                    $errorMessage = $opValidation;
+                    break;
                 }
+            }
+        }
+        
+        // For descadastramento, add additional validation if needed
+        if ($filter === 'descadastramento' && $isValid) {
+            // Add any descadastramento-specific validation here
+            // For now, keep same validation rules
+        }
+        
+        if (!$isValid) {
+            $invalidRecords[] = array(
+                'cod_empresa' => $codEmpresa,
+                'error' => $errorMessage
+            );
+        }
+    }
+    
+    return $invalidRecords;
+}
 
-                function restoreConfirmedRecords() {
-                    if (!confirm('Confirmar?')) {
-                        return;
-                    }
-                    
-                    showLoading();
-                    $('#restoreConfirmedBtn').prop('disabled', true);
-                    
-                    $.get('wxkd.php?action=ajaxRestoreConfirmedRecords')
-                        .done(function(xmlData) {
-                            hideLoading();
-                            $('#restoreConfirmedBtn').prop('disabled', false);
-                            
-                            try {
-                                var $xml = $(xmlData);
-                                var success = $xml.find('success').text() === 'true';
-                                var message = $xml.find('message').text();
-                                
-                                if (success) {
-                                    setTimeout(function() {
-                                        if (typeof CheckboxModule !== 'undefined') {
-                                            CheckboxModule.clearSelections();
-                                        }
-                                        if (typeof FilterModule !== 'undefined') {
-                                            var currentFilter = FilterModule.currentFilter;
-                                            FilterModule.loadTableData(currentFilter);
-                                        }
-                                    }, 1000);
+// Also update the checkBasicValidations method to check ACC_FLAG:
+private function checkBasicValidations($row) {
+    // CHECK ACC_FLAG FIRST
+    if (isset($row['ACC_FLAG']) && $row['ACC_FLAG'] == '1') {
+        return true; // Bypass validation if ACC_FLAG is set
+    }
+    
+    $requiredFields = Wxkd_Config::getValidationFields('basic');
+    
+    $missingFields = array();
+    foreach ($requiredFields as $field => $name) {
+        if (!isset($row[$field]) || $row[$field] != '1') {
+            $missingFields[] = $name;
+        }
+    }
+    
+    if (!empty($missingFields)) {
+        return 'Validações pendentes: ' . implode(', ', $missingFields);
+    }
+    
+    return true;
+}
 
-                                    setTimeout(function() {
-                                        updateConfirmedCount();
-                                    }, 1500);
-                                    
-                                } else {
-                                    alert('Erro: ' + message);
-                                    if (typeof FilterModule !== 'undefined') {
-                                        FilterModule.loadTableData(FilterModule.currentFilter);
-                                    }
-                                }
-                                
-                            } catch (e) {
-                                console.error('Error processing restore response:', e);
-                                if (typeof FilterModule !== 'undefined') {
-                                    FilterModule.loadTableData(FilterModule.currentFilter);
-                                }
-                            }
-                        })
-                        .fail(function() {
-                            hideLoading();
-                            $('#restoreConfirmedBtn').prop('disabled', false);
-                            alert('Erro na comunicacao com o servidor');
-                        });
-                }
+// And update the checkOPValidations method to check ACC_FLAG:
+private function checkOPValidations($row) {
+    // CHECK ACC_FLAG FIRST
+    if (isset($row['ACC_FLAG']) && $row['ACC_FLAG'] == '1') {
+        return true; // Bypass validation if ACC_FLAG is set
+    }
+    
+    $tipoContrato = isset($row['TIPO_CONTRATO']) ? $row['TIPO_CONTRATO'] : '';
+    $version = $this->extractVersionFromContract($tipoContrato);
+    
+    if ($version === null) {
+        return 'Tipo de contrato não pode ser exportado: ' . $tipoContrato;
+    }
+    
+    $requiredFields = Wxkd_Config::getValidationFields('op');
+    
+    if (Wxkd_Config::requiresSegundaViaValidation($version)) {
+        $requiredFields['SEGUNDA_VIA_CARTAO_VALID'] = 'Segunda Via Cartão';
+    }
+    
+    $missingFields = array();
+    foreach ($requiredFields as $field => $name) {
+        if (!isset($row[$field]) || $row[$field] != '1') {
+            $missingFields[] = $name;
+        }
+    }
+    
+    if (!empty($missingFields)) {
+        return 'Validações OP pendentes (v' . $version . '): ' . implode(', ', $missingFields);
+    }
+    
+    return true;
+}
+?>
 
-                $(document).ready(function() {
-                    // Wait for modules to load before calling functions
-                    setTimeout(function() {
-                        updateConfirmedCount();
-                    }, 1000);
-                    
-                    // Monitor filter changes if FilterModule is available
-                    setTimeout(function() {
-                        if (typeof FilterModule !== 'undefined') {
-                            var originalApplyFilter = FilterModule.applyFilter;
-                            FilterModule.applyFilter = function(filter) {
-                                originalApplyFilter.call(this, filter);
-                                setTimeout(function() {
-                                    updateConfirmedCount();
-                                }, 1500);
-                            };
-                            
-                            var originalLoadTableData = FilterModule.loadTableData;
-                            FilterModule.loadTableData = function(filter) {
-                                originalLoadTableData.call(this, filter);
-                                setTimeout(function() {
-                                    updateConfirmedCount();
-                                }, 1500);
-                            };
-                        }
-                    }, 2000);
-                });
-            </script>
 
-            <!-- Debug function -->
-            <script type="text/javascript">
-                window.debugAccFlag = function() {
-                    console.log('=== ACC_FLAG DEBUG ===');
-                    console.log('FilterModule available:', typeof FilterModule !== 'undefined');
-                    console.log('ACC_FLAG Data:', window.accFlagData);
-                    
-                    $('#dataTableAndre tbody tr:visible').slice(0, 3).each(function(index) {
-                        const $row = $(this);
-                        const chaveLoja = $row.find('td:eq(1)').text();
-                        const hasLock = $row.find('.fa-lock').length > 0;
-                        const hasCheck = $row.find('.fa-check-circle').length > 0;
-                        const accFlag = window.accFlagData ? window.accFlagData[chaveLoja] : 'unknown';
-                        
-                        console.log(`Row ${index}: ChaveLoja=${chaveLoja}, ACC_FLAG=${accFlag}, HasLock=${hasLock}, HasCheck=${hasCheck}`);
-                    });
-                    console.log('=== END ACC_FLAG DEBUG ===');
-                };
-            </script>
+----------
 
-        </body>
-    </div>
-</div>
+
+<?php
+// In TestM (Model), update the getTableDataByFilter method
+// Make sure the 'all' and 'cadastramento' cases include ACC_FLAG:
+
+case 'cadastramento':
+    $query = "SELECT " . $this->baseSelectFields . $this->baseJoins . 
+            " WHERE (B.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR C.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR D.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR E.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "') 
+            AND H.WXKD_FLAG = 0";
+    break;
+
+// And for the 'all' case:
+default: 
+    $query = "SELECT " . $this->baseSelectFields . $this->baseJoins . 
+            " WHERE (B.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR C.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR D.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "' OR E.DT_CADASTRO>='" . Wxkd_Config::CUTOFF_DATE . "') 
+            AND H.WXKD_FLAG IN (0,1)";
+    break;
+
+// For historico case, make sure ACC_FLAG is included in the log table query as well:
+case 'historico':
+    $query = "SELECT 
+                CHAVE_LOTE,
+                DATA_LOG,
+                COUNT(*) as TOTAL_REGISTROS,
+                FILTRO
+            FROM PGTOCORSP.dbo.TB_WXKD_LOG
+            WHERE CONFIRMADO_FLAG = 0 
+            GROUP BY CHAVE_LOTE, DATA_LOG, FILTRO 
+            ORDER BY DATA_LOG DESC";
+    break;
+?>
+
+
+---------
+
+
+<?php
+// In TestC (Controller), update the getHistoricoFilteredData method:
+
+private function getHistoricoFilteredData($selectedIds) {
+    if (!empty($selectedIds)) {
+        $idsArray = explode(',', $selectedIds);
+        $cleanIds = array();
+        
+        foreach ($idsArray as $id) {
+            $cleanId = trim($id);
+            if (!empty($cleanId) && is_numeric($cleanId)) {
+                $cleanIds[] = intval($cleanId);
+            }
+        }
+        
+        if (!empty($cleanIds)) {
+            $idsStr = implode(',', $cleanIds);
+            $query = "SELECT LOG.*, 
+                             ISNULL(FLAG.ACC_FLAG, 0) AS ACC_FLAG
+                      FROM PGTOCORSP.dbo.TB_WXKD_LOG LOG
+                      LEFT JOIN PGTOCORSP.dbo.tb_wxkd_flag FLAG 
+                        ON LOG.COD_EMPRESA = FLAG.COD_EMPRESA 
+                        AND LOG.COD_LOJA = FLAG.COD_LOJA
+                      WHERE LOG.CHAVE_LOTE IN ($idsStr) 
+                      ORDER BY LOG.CHAVE_LOTE, LOG.CHAVE_LOJA";
+            return $this->model->sql->select($query);
+        }
+    }
+    
+    $query = "SELECT LOG.*, 
+                     ISNULL(FLAG.ACC_FLAG, 0) AS ACC_FLAG
+              FROM PGTOCORSP.dbo.TB_WXKD_LOG LOG
+              LEFT JOIN PGTOCORSP.dbo.tb_wxkd_flag FLAG 
+                ON LOG.COD_EMPRESA = FLAG.COD_EMPRESA 
+                AND LOG.COD_LOJA = FLAG.COD_LOJA
+              ORDER BY LOG.DATA_LOG DESC, LOG.CHAVE_LOJA";
+    return $this->model->sql->select($query);
+}
+?>
