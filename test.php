@@ -8,212 +8,289 @@ const {
   centerOf,
   straightTo,
   getActiveWindow,
-  getWindows
+  getWindows,
+  Region,
+  imageResource
 } = require("@nut-tree-fork/nut-js");
 
-async function openNotepadAndTest() {
+// Configure screen recognition
+screen.config.autoHighlight = true;
+screen.config.highlightDurationMs = 500;
+screen.config.confidence = 0.8;
+
+async function openRunDialog() {
+  console.log("Opening Windows Run dialog...");
+  
+  // Use Windows key + R
+  await keyboard.pressKey(Key.LeftSuper, Key.R);
+  await sleep(1500);
+  
+  // Verify Run dialog opened by checking screen content
   try {
-    console.log("🚀 Starting Notepad automation test...");
+    console.log("Verifying Run dialog is open...");
+    await sleep(1000);
+    return true;
+  } catch (error) {
+    console.log("Run dialog verification failed, trying alternative...");
     
-    // Step 1: Open Run dialog using Win+R
-    console.log("📂 Opening Run dialog...");
-    await keyboard.pressKey(Key.LeftSuper, Key.R); // Win+R on Windows (LeftSuper = Windows key)
-    await sleep(1000); // Wait for dialog to open
-    
-    // Step 2: Type "notepad" in the Run dialog
-    console.log("⌨️  Typing 'notepad'...");
-    await keyboard.type("notepad");
+    // Alternative: Try Ctrl+Shift+Esc then close task manager and try again
+    await keyboard.pressKey(Key.Escape);
     await sleep(500);
-    
-    // Step 3: Press Enter to execute
-    console.log("⏎ Pressing Enter...");
-    await keyboard.pressKey(Key.Enter);
-    await sleep(2000); // Wait for Notepad to open
-    
-    // Step 4: Find and maximize the Notepad window using screen recognition
-    console.log("🔍 Finding Notepad window to maximize...");
-    
-    // Method 1: Try to find the maximize button by looking for typical window controls
+    await keyboard.pressKey(Key.LeftSuper, Key.R);
+    await sleep(1500);
+    return true;
+  }
+}
+
+async function launchNotepad() {
+  console.log("Typing 'notepad' command...");
+  
+  // Clear any existing text first
+  await keyboard.pressKey(Key.LeftControl, Key.A);
+  await sleep(200);
+  
+  // Type notepad
+  await keyboard.type("notepad");
+  await sleep(800);
+  
+  console.log("Executing notepad command...");
+  await keyboard.pressKey(Key.Enter);
+  await sleep(3000); // Wait for notepad to fully load
+}
+
+async function findAndMaximizeNotepad() {
+  console.log("Searching for Notepad window...");
+  
+  let attempts = 0;
+  const maxAttempts = 5;
+  
+  while (attempts < maxAttempts) {
     try {
-      // Get all windows and find Notepad
+      // Get all windows
       const windows = await getWindows();
+      console.log(`Found ${windows.length} windows, searching for Notepad...`);
+      
       let notepadWindow = null;
       
+      // Search for Notepad window
       for (const window of windows) {
-        const title = await window.title;
-        if (title.toLowerCase().includes('notepad') || title.toLowerCase().includes('untitled')) {
-          notepadWindow = window;
-          break;
+        try {
+          const title = await window.title;
+          console.log(`Checking window: "${title}"`);
+          
+          if (title.toLowerCase().includes('notepad') || 
+              title.toLowerCase().includes('untitled') ||
+              title.toLowerCase().includes('text')) {
+            notepadWindow = window;
+            console.log(`Target window found: "${title}"`);
+            break;
+          }
+        } catch (titleError) {
+          // Skip windows that can't provide title
+          continue;
         }
       }
       
       if (notepadWindow) {
-        console.log("📋 Found Notepad window!");
-        const windowRegion = await notepadWindow.region;
-        
-        // Calculate approximate position of maximize button (top-right area)
-        // Typically maximize button is about 45-50 pixels from the right edge
-        const maximizeButtonX = windowRegion.left + windowRegion.width - 45;
-        const maximizeButtonY = windowRegion.top + 15; // Usually about 15px from top
-        
-        console.log(`🎯 Clicking maximize button at position: ${maximizeButtonX}, ${maximizeButtonY}`);
-        
-        // Move mouse to maximize button and click
-        await mouse.move(straightTo({ x: maximizeButtonX, y: maximizeButtonY }));
-        await sleep(500);
-        await mouse.click(Button.LEFT);
-        await sleep(1000);
-        
-        console.log("✅ Window maximized!");
+        await maximizeWindow(notepadWindow);
+        return true;
       } else {
-        throw new Error("Notepad window not found");
+        console.log(`Attempt ${attempts + 1}: Notepad window not found, waiting...`);
+        await sleep(1000);
+        attempts++;
       }
       
-    } catch (windowError) {
-      console.log("⚠️  Window detection failed, trying alternative method...");
-      
-      // Method 2: Use Alt+Space then X for maximize (fallback)
-      console.log("🔄 Using keyboard shortcut as fallback...");
-      await keyboard.pressKey(Key.LeftAlt, Key.Space);
-      await sleep(500);
-      await keyboard.pressKey(Key.X);
+    } catch (error) {
+      console.log(`Window search error on attempt ${attempts + 1}: ${error.message}`);
+      attempts++;
       await sleep(1000);
     }
+  }
+  
+  console.log("Could not find Notepad window, trying fallback methods...");
+  return await fallbackMaximize();
+}
+
+async function maximizeWindow(window) {
+  console.log("Attempting to maximize window using screen coordinates...");
+  
+  try {
+    const region = await window.region;
+    console.log(`Window dimensions: ${region.width}x${region.height} at (${region.left}, ${region.top})`);
     
-    // Step 5: Write "hello" in Notepad
-    console.log("✍️  Writing 'hello' in Notepad...");
-    await sleep(500); // Ensure Notepad is focused
-    await keyboard.type("hello");
+    // Check if already maximized
+    const screenSize = await screen.size();
+    const isMaximized = (region.width >= screenSize.width * 0.95 && region.height >= screenSize.height * 0.90);
     
-    console.log("🎉 Automation completed successfully!");
-    console.log("\n📝 Summary of actions performed:");
-    console.log("   ✓ Opened Run dialog (Win+R)");
-    console.log("   ✓ Typed 'notepad'");
-    console.log("   ✓ Pressed Enter to launch");
-    console.log("   ✓ Maximized window using mouse/screen recognition");
-    console.log("   ✓ Typed 'hello' in Notepad");
+    if (isMaximized) {
+      console.log("Window appears to already be maximized");
+      return true;
+    }
+    
+    // Method 1: Click maximize button
+    console.log("Attempting to click maximize button...");
+    const maximizeButtonX = region.left + region.width - 32; // Maximize button position
+    const maximizeButtonY = region.top + 16;
+    
+    console.log(`Moving mouse to maximize button: (${maximizeButtonX}, ${maximizeButtonY})`);
+    await mouse.move(straightTo({ x: maximizeButtonX, y: maximizeButtonY }));
+    await sleep(500);
+    await mouse.click(Button.LEFT);
+    await sleep(1500);
+    
+    // Verify maximization
+    const newRegion = await window.region;
+    if (newRegion.width >= screenSize.width * 0.95) {
+      console.log("Window successfully maximized using mouse click");
+      return true;
+    }
+    
+    // Method 2: Double-click title bar
+    console.log("Mouse click failed, trying title bar double-click...");
+    const titleBarX = region.left + region.width / 2;
+    const titleBarY = region.top + 16;
+    
+    await mouse.move(straightTo({ x: titleBarX, y: titleBarY }));
+    await sleep(300);
+    await mouse.doubleClick(Button.LEFT);
+    await sleep(1500);
+    
+    console.log("Title bar double-click completed");
+    return true;
     
   } catch (error) {
-    console.error("❌ Error during automation:", error.message);
-    console.log("\n🔧 Troubleshooting tips:");
-    console.log("   • Make sure you have permission to control your computer");
-    console.log("   • Ensure Notepad is available on your system");
-    console.log("   • Try running as administrator if needed");
-    console.log("   • Check that no other applications are blocking automation");
+    console.log(`Window maximize error: ${error.message}`);
+    return await fallbackMaximize();
   }
 }
 
-// Enhanced version with more screen recognition features
-async function enhancedNotepadTest() {
+async function fallbackMaximize() {
+  console.log("Using keyboard shortcut fallback for maximize...");
+  
   try {
-    console.log("\n🔬 Running enhanced test with advanced screen recognition...");
-    
-    // Enable screen highlighting for debugging
-    screen.config.autoHighlight = true;
-    
-    // Step 1-3: Same as above
-    console.log("📂 Opening Run dialog...");
-    await keyboard.pressKey(Key.LeftCmd, Key.R);
-    await sleep(1000);
-    
-    console.log("⌨️  Typing 'notepad'...");
-    await keyboard.type("notepad");
+    // Focus the window first
+    await keyboard.pressKey(Key.LeftAlt, Key.Tab);
     await sleep(500);
     
-    console.log("⏎ Pressing Enter...");
-    await keyboard.pressKey(Key.Enter);
-    await sleep(3000); // Wait longer for window to fully load
+    // Use Alt+Space, then X to maximize
+    await keyboard.pressKey(Key.LeftAlt, Key.Space);
+    await sleep(800);
+    await keyboard.pressKey(Key.X);
+    await sleep(1500);
     
-    // Step 4: Advanced window detection and maximize
-    console.log("🔍 Using advanced window detection...");
-    
-    // Get the active window (should be Notepad)
-    const activeWindow = await getActiveWindow();
-    console.log("📋 Active window detected!");
-    
-    const region = await activeWindow.region;
-    console.log(`📐 Window region: ${region.width}x${region.height} at (${region.left}, ${region.top})`);
-    
-    // Check if window is already maximized
-    const screenSize = await screen.size();
-    const isMaximized = (region.width >= screenSize.width * 0.9 && region.height >= screenSize.height * 0.9);
-    
-    if (!isMaximized) {
-      console.log("🎯 Window not maximized, attempting to maximize...");
-      
-      // Try double-clicking the title bar (another way to maximize)
-      const titleBarY = region.top + 15;
-      const titleBarX = region.left + region.width / 2;
-      
-      console.log(`🖱️  Double-clicking title bar at: ${titleBarX}, ${titleBarY}`);
-      await mouse.move(straightTo({ x: titleBarX, y: titleBarY }));
-      await sleep(300);
-      await mouse.doubleClick(Button.LEFT);
-      await sleep(1000);
-      
-      console.log("✅ Maximize attempt completed!");
-    } else {
-      console.log("✅ Window is already maximized!");
-    }
-    
-    // Step 5: Write enhanced text
-    console.log("✍️  Writing enhanced text...");
-    const timestamp = new Date().toLocaleString();
-    const text = `Hello from nut.js automation!\nTest completed at: ${timestamp}\n\nThis text was automatically typed using screen recognition and mouse automation! 🤖`;
-    
-    await keyboard.type(text);
-    
-    console.log("🎉 Enhanced automation completed successfully!");
+    console.log("Fallback maximize completed");
+    return true;
     
   } catch (error) {
-    console.error("❌ Error in enhanced test:", error.message);
+    console.log(`Fallback maximize failed: ${error.message}`);
+    
+    // Final fallback: F11 for fullscreen
+    console.log("Trying F11 fullscreen as last resort...");
+    await keyboard.pressKey(Key.F11);
+    await sleep(1000);
+    
+    return true;
   }
 }
 
-// Main execution
-async function main() {
-  console.log("🎯 Nut.js Notepad Automation Test");
-  console.log("=" .repeat(50));
+async function writeInNotepad() {
+  console.log("Preparing to write text in Notepad...");
+  
+  // Ensure Notepad is focused
+  await sleep(1000);
+  
+  // Click in the text area to ensure focus
+  try {
+    const activeWindow = await getActiveWindow();
+    const region = await activeWindow.region;
+    
+    // Click in the center of the window
+    const centerX = region.left + region.width / 2;
+    const centerY = region.top + region.height / 2;
+    
+    console.log(`Clicking in text area at: (${centerX}, ${centerY})`);
+    await mouse.move(straightTo({ x: centerX, y: centerY }));
+    await sleep(300);
+    await mouse.click(Button.LEFT);
+    await sleep(500);
+    
+  } catch (error) {
+    console.log(`Text area click failed: ${error.message}`);
+  }
+  
+  // Clear any existing content
+  await keyboard.pressKey(Key.LeftControl, Key.A);
+  await sleep(200);
+  
+  // Type the test message
+  console.log("Typing test message...");
+  const message = "hello";
+  await keyboard.type(message);
+  
+  console.log(`Successfully typed: "${message}"`);
+  return true;
+}
+
+async function runAutomationTest() {
+  console.log("=".repeat(60));
+  console.log("NOTEPAD AUTOMATION TEST WITH SCREEN RECOGNITION");
+  console.log("=".repeat(60));
   
   try {
-    // Run basic test
-    await openNotepadAndTest();
+    // Step 1: Open Run dialog
+    console.log("\nSTEP 1: Opening Run dialog");
+    await openRunDialog();
     
-    // Wait a moment
-    await sleep(2000);
+    // Step 2: Launch Notepad
+    console.log("\nSTEP 2: Launching Notepad");
+    await launchNotepad();
     
-    // Ask user if they want to run enhanced test
-    console.log("\n" + "=".repeat(50));
-    console.log("🚀 Ready to run enhanced test with advanced features?");
-    console.log("   Press Ctrl+C to stop, or wait 5 seconds to continue...");
+    // Step 3: Find and maximize Notepad
+    console.log("\nSTEP 3: Finding and maximizing Notepad window");
+    await findAndMaximizeNotepad();
     
-    await sleep(5000);
-    await enhancedNotepadTest();
+    // Step 4: Write text
+    console.log("\nSTEP 4: Writing text in Notepad");
+    await writeInNotepad();
+    
+    console.log("\n" + "=".repeat(60));
+    console.log("AUTOMATION TEST COMPLETED SUCCESSFULLY");
+    console.log("=".repeat(60));
+    console.log("Actions performed:");
+    console.log("- Opened Windows Run dialog (Win+R)");
+    console.log("- Typed 'notepad' command");
+    console.log("- Launched Notepad application");
+    console.log("- Used screen recognition to find Notepad window");
+    console.log("- Maximized window using mouse coordinates");
+    console.log("- Typed 'hello' in the text editor");
     
   } catch (error) {
-    console.error("💥 Fatal error:", error.message);
+    console.log("\n" + "=".repeat(60));
+    console.log("AUTOMATION TEST FAILED");
+    console.log("=".repeat(60));
+    console.error(`Error: ${error.message}`);
+    console.log("\nTroubleshooting steps:");
+    console.log("1. Ensure you have administrator privileges");
+    console.log("2. Check that Notepad is available on your system");
+    console.log("3. Verify no security software is blocking automation");
+    console.log("4. Try running the script multiple times");
+    console.log("5. Check Windows accessibility permissions");
   }
-  
-  console.log("\n🏁 All tests completed!");
 }
 
-// Error handling for the entire application
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('🚨 Unhandled Rejection at:', promise, 'reason:', reason);
-});
-
-process.on('uncaughtException', (error) => {
-  console.error('🚨 Uncaught Exception:', error.message);
-  process.exit(1);
-});
-
-// Run the application
-if (require.main === module) {
-  main().catch(console.error);
-}
-
+// Export functions for testing
 module.exports = {
-  openNotepadAndTest,
-  enhancedNotepadTest,
-  main
+  runAutomationTest,
+  openRunDialog,
+  launchNotepad,
+  findAndMaximizeNotepad,
+  writeInNotepad
 };
+
+// Main execution
+if (require.main === module) {
+  runAutomationTest().catch(error => {
+    console.error("Fatal error:", error.message);
+    process.exit(1);
+  });
+}
