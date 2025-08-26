@@ -1,6 +1,11 @@
 const { exec } = require('child_process');
 const { screen, mouse, keyboard, Key, Button } = require('@nut-tree-fork/nut-js');
 const path = require('path');
+const fs = require('fs');
+
+// Configure screen matching with lower confidence for more flexible matching
+screen.config.confidence = 0.8; // Lower confidence threshold (default is 0.99)
+screen.config.resourceDirectory = path.join(__dirname, 'images');
 
 async function automateNotepad() {
   try {
@@ -14,23 +19,51 @@ async function automateNotepad() {
     
     console.log('Looking for maximize button...');
     
-    // Load the maximize button image and find it on screen
+    // Check if image file exists
     const maximizeButtonPath = path.join(__dirname, 'images', 'maximize_button.png');
+    console.log('Image path:', maximizeButtonPath);
+    
+    if (!fs.existsSync(maximizeButtonPath)) {
+      console.log('ERROR: maximize_button.png not found in images folder!');
+      console.log('Please add the image and try again.');
+      return;
+    }
+    
+    console.log('Image file exists, attempting to find on screen...');
+    console.log('Current confidence threshold:', screen.config.confidence);
     
     try {
-      // Find the maximize button using image recognition
-      const maximizeButton = await screen.find(maximizeButtonPath);
-      console.log('Maximize button found at:', maximizeButton);
-      
-      // Click on the maximize button
-      await mouse.setPosition(maximizeButton);
-      await mouse.pressButton(Button.LEFT);
-      await mouse.releaseButton(Button.LEFT);
-      console.log('Window maximized');
+      // Try with different confidence levels
+      for (let confidence = 0.8; confidence >= 0.6; confidence -= 0.1) {
+        try {
+          screen.config.confidence = confidence;
+          console.log(`Trying with confidence: ${confidence}`);
+          
+          const maximizeButton = await screen.find(maximizeButtonPath);
+          console.log('Maximize button found at:', maximizeButton);
+          console.log(`Success with confidence: ${confidence}`);
+          
+          // Click on the maximize button
+          await mouse.setPosition(maximizeButton);
+          await mouse.pressButton(Button.LEFT);
+          await mouse.releaseButton(Button.LEFT);
+          console.log('Window maximized');
+          break;
+          
+        } catch (innerError) {
+          console.log(`Not found with confidence ${confidence}`);
+          continue;
+        }
+      }
       
     } catch (error) {
-      console.log('Maximize button not found, window might already be maximized or image missing');
-      console.log('Make sure to add the maximize_button.png image to the /images folder');
+      console.log('Maximize button not found with any confidence level');
+      console.log('Tips to fix this:');
+      console.log('1. Make sure Notepad window is visible and not minimized');
+      console.log('2. Take a new screenshot of JUST the maximize button (square icon)');
+      console.log('3. Ensure the image is PNG format');
+      console.log('4. Try taking the screenshot on the same screen resolution/scale');
+      console.log('5. Make sure Windows is not in dark/light mode different from when image was taken');
     }
     
     // Wait a moment for the window to maximize
