@@ -51,16 +51,16 @@ function exportAccessData(selectedIds, filter) {
                     }
                 }
                 
-                const csvFiles = extractAccessCSVFromXML(xmlDoc);
+                const xlsxFiles = extractAccessXLSXFromXML(xmlDoc);
                 
-                if (csvFiles.length === 0) {
-                    alert('Erro: Nenhum arquivo CSV gerado');
+                if (xlsxFiles.length === 0) {
+                    alert('Erro: Nenhum arquivo XLSX gerado');
                     return;
                 }
                 
-                csvFiles.forEach((file, index) => {
+                xlsxFiles.forEach((file, index) => {
                     setTimeout(() => {
-                        downloadAccessCSVFile(file.content, file.filename);
+                        downloadAccessXLSXFile(file.workbook, file.filename);
                     }, index * 1500);
                 });
                 
@@ -84,95 +84,106 @@ function exportAccessData(selectedIds, filter) {
         });
 }
 
-function extractAccessCSVFromXML(xmlDoc) {
-    const csvFiles = [];
+function extractAccessXLSXFromXML(xmlDoc) {
+    const xlsxFiles = [];
     const timestamp = getCurrentTimestamp();
     const filter = getCurrentFilter();
     
+    // Process AV/UN/PR data
     const file1Data = xmlDoc.getElementsByTagName('avUnPrData')[0];
     if (file1Data) {
-        let csvContent1 = 'cod_empresa\r\n';
         const empresas1 = file1Data.getElementsByTagName('empresa');
+        const worksheetData1 = [['cod_empresa']]; // Header row
         
         for (let i = 0; i < empresas1.length; i++) {
             const empresa = empresas1[i].textContent || empresas1[i].text || '';
             if (empresa) {
-                csvContent1 += empresa + '\r\n';
+                worksheetData1.push([empresa]);
             }
         }
         
-        csvFiles.push({
-            filename: `access_av_un_pr_${filter}_${timestamp}.csv`,
-            content: csvContent1
-        });
+        if (worksheetData1.length > 1) { // Only create file if there's data beyond header
+            const workbook1 = XLSX.utils.book_new();
+            const worksheet1 = XLSX.utils.aoa_to_sheet(worksheetData1);
+            
+            // Auto-size column
+            worksheet1['!cols'] = [{ wch: 15 }];
+            
+            // Add worksheet to workbook
+            XLSX.utils.book_append_sheet(workbook1, worksheet1, 'AV_UN_PR_Data');
+            
+            xlsxFiles.push({
+                filename: `access_av_un_pr_${filter}_${timestamp}.xlsx`,
+                workbook: workbook1
+            });
+        }
     }
     
+    // Process OP data
     const file2Data = xmlDoc.getElementsByTagName('opData')[0];
     if (file2Data) {
-        let csvContent2 = 'cod_empresa\r\n';
         const empresas2 = file2Data.getElementsByTagName('empresa');
+        const worksheetData2 = [['cod_empresa']]; // Header row
         
         for (let i = 0; i < empresas2.length; i++) {
             const empresa = empresas2[i].textContent || empresas2[i].text || '';
             if (empresa) {
-                csvContent2 += empresa + '\r\n';
+                worksheetData2.push([empresa]);
             }
         }
         
-        csvFiles.push({
-            filename: `access_op_${filter}_${timestamp}.csv`,
-            content: csvContent2
+        if (worksheetData2.length > 1) { // Only create file if there's data beyond header
+            const workbook2 = XLSX.utils.book_new();
+            const worksheet2 = XLSX.utils.aoa_to_sheet(worksheetData2);
+            
+            // Auto-size column
+            worksheet2['!cols'] = [{ wch: 15 }];
+            
+            // Add worksheet to workbook
+            XLSX.utils.book_append_sheet(workbook2, worksheet2, 'OP_Data');
+            
+            xlsxFiles.push({
+                filename: `access_op_${filter}_${timestamp}.xlsx`,
+                workbook: workbook2
+            });
+        }
+    }
+    
+    return xlsxFiles;
+}
+
+function downloadAccessXLSXFile(workbook, filename) {
+    try {
+        // Generate XLSX file
+        const xlsxData = XLSX.write(workbook, { 
+            bookType: 'xlsx', 
+            type: 'array',
+            compression: true
         });
-    }
-    
-    return csvFiles;
-}
-
-// Keep the original CSV download function specifically for Access exports
-function downloadAccessCSVFile(csvContent, filename) {
-    const csvWithBOM = '\uFEFF' + csvContent;
-    const blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8;' });
-    
-    const link = document.createElement('a');
-    if (link.download !== undefined) {
-        const url = URL.createObjectURL(blob);
-        link.setAttribute('href', url);
-        link.setAttribute('download', filename);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
         
-        setTimeout(() => {
-            URL.revokeObjectURL(url);
-        }, 1000);
-    } else {
-        alert('Seu navegador não suporta download automático.');
-    }
-}
-
-// Keep these existing helper functions
-function downloadCSVFile(csvContent, filename) {
-    const csvWithBOM = '\uFEFF' + csvContent;
-    const blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8;' });
-    downloadFile(blob, filename);
-}
-
-function downloadFile(blob, filename) {
-    const link = document.createElement('a');
-    if (link.download !== undefined) {
-        const url = URL.createObjectURL(blob);
-        link.setAttribute('href', url);
-        link.setAttribute('download', filename);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        // Create blob and download
+        const blob = new Blob([xlsxData], { 
+            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+        });
         
-        setTimeout(() => {
-            URL.revokeObjectURL(url);
-        }, 1000);
-    } else {
-        alert('Seu navegador não suporta download automático.');
+        const link = document.createElement('a');
+        if (link.download !== undefined) {
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', filename);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            setTimeout(() => {
+                URL.revokeObjectURL(url);
+            }, 1000);
+        } else {
+            alert('Seu navegador não suporta download automático de XLSX.');
+        }
+    } catch (error) {
+        console.error('Erro ao gerar arquivo XLSX para Access:', error);
+        alert('Erro ao gerar arquivo XLSX: ' + error.message);
     }
 }
