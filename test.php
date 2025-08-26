@@ -98,3 +98,65 @@ async function automateNotepad() {
 
 // Run the automation
 automateNotepad();
+
+----------
+
+const { screen } = require('@nut-tree-fork/nut-js');
+const path = require('path');
+const fs = require('fs');
+
+async function debugImageMatching() {
+  console.log('=== Image Matching Debug Tool ===\n');
+  
+  const maximizeButtonPath = path.join(__dirname, 'images', 'maximize_button.png');
+  console.log('Image path:', maximizeButtonPath);
+  
+  // Check if file exists
+  if (!fs.existsSync(maximizeButtonPath)) {
+    console.log('❌ ERROR: maximize_button.png not found!');
+    console.log('Please add the image to the images folder first.');
+    return;
+  }
+  
+  console.log('✅ Image file exists');
+  
+  // Get file size info
+  const stats = fs.statSync(maximizeButtonPath);
+  console.log(`📁 File size: ${stats.size} bytes`);
+  
+  console.log('\nTesting different confidence levels...\n');
+  
+  // Test with different confidence levels
+  const confidenceLevels = [0.99, 0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.65, 0.6];
+  
+  for (const confidence of confidenceLevels) {
+    try {
+      screen.config.confidence = confidence;
+      console.log(`🔍 Testing confidence: ${confidence}`);
+      
+      const result = await screen.find(maximizeButtonPath);
+      console.log(`✅ SUCCESS! Found at position: x=${result.left}, y=${result.top}`);
+      console.log(`   Confidence ${confidence} worked!`);
+      break;
+      
+    } catch (error) {
+      console.log(`❌ Not found with confidence: ${confidence}`);
+    }
+  }
+  
+  console.log('\n=== Tips for better image matching ===');
+  console.log('1. Open Notepad and make sure the maximize button is visible');
+  console.log('2. Take a screenshot of ONLY the maximize button (crop tightly)');
+  console.log('3. Save as PNG format');
+  console.log('4. Ensure same Windows theme (dark/light mode)');
+  console.log('5. Try different window sizes when taking the screenshot');
+  console.log('6. Make sure screen scaling is the same as when image was captured');
+}
+
+// Run the debug tool
+console.log('Starting image matching debug...');
+console.log('Make sure Notepad is open before running this!\n');
+
+setTimeout(() => {
+  debugImageMatching().catch(console.error);
+}, 1000);
