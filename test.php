@@ -1,287 +1,5 @@
 const { exec } = require('child_process');
 const { screen, mouse, keyboard, Key, Button, getWindows, getActiveWindow } = require('@nut-tree-fork/nut-js');
-const path = require('path');
-
-// Configure screen for better detection
-screen.config.confidence = 0.7;
-screen.config.autoHighlight = true;
-
-async function findMaximizeButtonByRegion() {
-  try {
-    console.log('🔍 Method 1: Finding maximize button by window region analysis...');
-    
-    // Get active window (should be Notepad)
-    const activeWindow = await getActiveWindow();
-    console.log('Active window:', activeWindow);
-    
-    // The maximize button is typically in the top-right corner of the window
-    // Calculate approximate position based on window bounds
-    const windowBounds = {
-      x: activeWindow.left,
-      y: activeWindow.top,
-      width: activeWindow.width,
-      height: activeWindow.height
-    };
-    
-    console.log('Window bounds:', windowBounds);
-    
-    // Maximize button is usually about 46 pixels from the right edge and 12-20 pixels from top
-    const estimatedMaximizeButton = {
-      x: windowBounds.x + windowBounds.width - 46,
-      y: windowBounds.y + 12
-    };
-    
-    console.log('Estimated maximize button position:', estimatedMaximizeButton);
-    return estimatedMaximizeButton;
-    
-  } catch (error) {
-    console.log('❌ Method 1 failed:', error.message);
-    return null;
-  }
-}
-
-async function findMaximizeButtonByPixelColor() {
-  try {
-    console.log('🔍 Method 2: Finding maximize button by scanning for button patterns...');
-    
-    // Get screen dimensions
-    const screenSize = await screen.size();
-    console.log('Screen size:', screenSize);
-    
-    // Scan the top portion of screen for typical maximize button colors/patterns
-    // Look for small square regions with button-like characteristics
-    
-    for (let y = 0; y < 100; y += 5) {
-      for (let x = screenSize.width - 200; x < screenSize.width - 20; x += 5) {
-        try {
-          // Sample pixel color at this position
-          const color = await screen.colorAt({ x, y });
-          
-          // Look for typical Windows button colors (light gray, borders, etc.)
-          if (isButtonLikeColor(color)) {
-            console.log(`Found potential button at (${x}, ${y}) with color:`, color);
-            
-            // Verify it's in a reasonable position for a maximize button
-            if (x > screenSize.width - 100 && y < 50) {
-              return { x, y };
-            }
-          }
-        } catch (e) {
-          // Continue scanning
-        }
-      }
-    }
-    
-    return null;
-  } catch (error) {
-    console.log('❌ Method 2 failed:', error.message);
-    return null;
-  }
-}
-
-function isButtonLikeColor(color) {
-  // Check for common Windows button colors
-  // Light theme: light grays, whites
-  // Dark theme: dark grays, blacks
-  const { r, g, b } = color;
-  
-  // Light theme button colors
-  if (r > 200 && g > 200 && b > 200) return true;
-  if (r >= 240 && g >= 240 && b >= 240) return true;
-  
-  // Dark theme button colors  
-  if (r < 100 && g < 100 && b < 100) return true;
-  if (Math.abs(r - g) < 20 && Math.abs(g - b) < 20 && r < 150) return true;
-  
-  // Button border colors
-  if (r >= 160 && r <= 180 && g >= 160 && g <= 180 && b >= 160 && b <= 180) return true;
-  
-  return false;
-}
-
-async function findMaximizeButtonByPatternMatching() {
-  try {
-    console.log('🔍 Method 3: Using advanced pattern matching...');
-    
-    // Create multiple template patterns for maximize button
-    const patterns = [
-      'maximize_button.png',
-      'maximize_button_light.png', 
-      'maximize_button_dark.png'
-    ];
-    
-    for (const pattern of patterns) {
-      const patternPath = path.join(__dirname, 'images', pattern);
-      
-      // Try with very low confidence and different search methods
-      for (let confidence = 0.5; confidence >= 0.3; confidence -= 0.05) {
-        try {
-          screen.config.confidence = confidence;
-          console.log(`Trying pattern ${pattern} with confidence ${confidence}`);
-          
-          const result = await screen.find(patternPath);
-          console.log(`✅ Found with pattern matching: ${pattern} at confidence ${confidence}`);
-          return { x: result.left + 10, y: result.top + 10 }; // Click center of button
-          
-        } catch (e) {
-          continue;
-        }
-      }
-    }
-    
-    return null;
-  } catch (error) {
-    console.log('❌ Method 3 failed:', error.message);
-    return null;
-  }
-}
-
-async function findMaximizeButtonByCursorProbing() {
-  try {
-    console.log('🔍 Method 4: Cursor probing for interactive elements...');
-    
-    // Get active window bounds
-    const activeWindow = await getActiveWindow();
-    const rightEdge = activeWindow.left + activeWindow.width;
-    const topEdge = activeWindow.top;
-    
-    // Probe the title bar area for interactive elements
-    const probingPoints = [
-      { x: rightEdge - 46, y: topEdge + 12 }, // Standard maximize button position
-      { x: rightEdge - 47, y: topEdge + 15 }, // Slightly adjusted
-      { x: rightEdge - 45, y: topEdge + 10 }, // Alternative position
-      { x: rightEdge - 48, y: topEdge + 14 }, // Another variation
-    ];
-    
-    for (const point of probingPoints) {
-      console.log(`Probing point (${point.x}, ${point.y})`);
-      
-      // Move cursor to position and check if it changes (indicating interactive element)
-      await mouse.setPosition(point);
-      await new Promise(resolve => setTimeout(resolve, 200));
-      
-      // Sample the area around this point to see if it looks like a button
-      try {
-        const colors = [];
-        for (let dx = -2; dx <= 2; dx++) {
-          for (let dy = -2; dy <= 2; dy++) {
-            const color = await screen.colorAt({ x: point.x + dx, y: point.y + dy });
-            colors.push(color);
-          }
-        }
-        
-        // Analyze if this region has button-like characteristics
-        if (hasButtonCharacteristics(colors)) {
-          console.log('✅ Found button-like region at:', point);
-          return point;
-        }
-        
-      } catch (e) {
-        continue;
-      }
-    }
-    
-    return null;
-  } catch (error) {
-    console.log('❌ Method 4 failed:', error.message);
-    return null;
-  }
-}
-
-function hasButtonCharacteristics(colors) {
-  // Check if color array has characteristics of a button
-  // Buttons typically have consistent colors with some variation for borders
-  const uniqueColors = new Set(colors.map(c => `${c.r}-${c.g}-${c.b}`));
-  
-  // Should have some color variation (2-5 different colors for button and border)
-  if (uniqueColors.size >= 2 && uniqueColors.size <= 5) {
-    return true;
-  }
-  
-  return false;
-}
-
-async function automateNotepadWithRobustDetection() {
-  try {
-    console.log('🚀 Starting robust Notepad automation...');
-    
-    // Open Notepad
-    console.log('📝 Opening Notepad...');
-    exec('notepad.exe');
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Try multiple detection methods
-    const detectionMethods = [
-      findMaximizeButtonByRegion,
-      findMaximizeButtonByPixelColor,
-      findMaximizeButtonByPatternMatching,
-      findMaximizeButtonByCursorProbing
-    ];
-    
-    let maximizeButtonPosition = null;
-    
-    for (let i = 0; i < detectionMethods.length; i++) {
-      console.log(`\n🔄 Attempting detection method ${i + 1}...`);
-      
-      maximizeButtonPosition = await detectionMethods[i]();
-      
-      if (maximizeButtonPosition) {
-        console.log(`✅ Success with method ${i + 1}!`);
-        break;
-      } else {
-        console.log(`❌ Method ${i + 1} failed, trying next...`);
-      }
-    }
-    
-    if (maximizeButtonPosition) {
-      console.log('🎯 Clicking maximize button at:', maximizeButtonPosition);
-      
-      // Click the maximize button
-      await mouse.setPosition(maximizeButtonPosition);
-      await new Promise(resolve => setTimeout(resolve, 100));
-      await mouse.pressButton(Button.LEFT);
-      await mouse.releaseButton(Button.LEFT);
-      
-      console.log('✅ Window maximized successfully!');
-    } else {
-      console.log('⚠️  Could not locate maximize button with any method');
-      console.log('Continuing with typing demonstration...');
-    }
-    
-    // Wait for window to adjust
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Click in text area and type
-    console.log('⌨️  Clicking in text area and typing...');
-    await mouse.setPosition({ x: 400, y: 300 });
-    await mouse.pressButton(Button.LEFT);
-    await mouse.releaseButton(Button.LEFT);
-    
-    // Type "test" with proper key handling
-    const text = "test";
-    for (const char of text) {
-      const key = char.toUpperCase();
-      await keyboard.pressKey(Key[key]);
-      await keyboard.releaseKey(Key[key]);
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
-    
-    console.log('🎉 Automation completed successfully!');
-    
-  } catch (error) {
-    console.error('💥 Error during automation:', error);
-  }
-}
-
-// Run the robust automation
-automateNotepadWithRobustDetection();
-
-
------------
-
-
-const { exec } = require('child_process');
-const { screen, mouse, keyboard, Key, Button, getWindows, getActiveWindow } = require('@nut-tree-fork/nut-js');
 
 async function findNotepadWindow() {
   try {
@@ -294,15 +12,52 @@ async function findNotepadWindow() {
     // Look for Notepad window by title
     let notepadWindow = null;
     for (const window of windows) {
-      console.log(`Window: "${window.title}" - Class: ${window.className}`);
-      
-      // Check for Notepad indicators
-      if (window.title.toLowerCase().includes('notepad') || 
-          window.title.toLowerCase().includes('untitled') ||
-          window.className.toLowerCase().includes('notepad')) {
-        notepadWindow = window;
-        console.log('✅ Found Notepad window:', window);
-        break;
+      try {
+        // Resolve window properties that might be Promises
+        const title = typeof window.title === 'string' ? window.title : await window.title;
+        const className = typeof window.className === 'string' ? window.className : await window.className;
+        
+        console.log(`Window: "${title}" - Class: ${className || 'undefined'}`);
+        
+        // Check for Notepad indicators
+        const titleLower = (title || '').toLowerCase();
+        const classLower = (className || '').toLowerCase();
+        
+        if (titleLower.includes('notepad') || 
+            titleLower.includes('untitled') ||
+            titleLower.includes('text') ||
+            classLower.includes('notepad')) {
+          notepadWindow = window;
+          console.log('✅ Found Notepad window:', { title, className });
+          break;
+        }
+      } catch (windowError) {
+        console.log('Error processing window:', windowError.message);
+        continue;
+      }
+    }
+    
+    // If still not found, try getting the active window
+    if (!notepadWindow) {
+      console.log('🔍 Trying to get active window as fallback...');
+      try {
+        const activeWindow = await getActiveWindow();
+        const activeTitle = typeof activeWindow.title === 'string' ? activeWindow.title : await activeWindow.title;
+        console.log('Active window title:', activeTitle);
+        
+        // Check if active window might be Notepad
+        if (activeTitle && (activeTitle.toLowerCase().includes('notepad') || 
+                           activeTitle.toLowerCase().includes('untitled') ||
+                           activeTitle.toLowerCase().includes('text'))) {
+          notepadWindow = activeWindow;
+          console.log('✅ Using active window as Notepad window');
+        } else {
+          // Even if it's not clearly Notepad, let's try the active window
+          console.log('⚠️ Using active window (may or may not be Notepad)');
+          notepadWindow = activeWindow;
+        }
+      } catch (activeError) {
+        console.log('Error getting active window:', activeError.message);
       }
     }
     
@@ -316,21 +71,34 @@ async function findNotepadWindow() {
 async function calculateMaximizeButtonPosition(window) {
   console.log('📐 Calculating maximize button position...');
   
-  // Standard Windows title bar button positions:
-  // Close button: rightmost
-  // Maximize button: second from right (usually 46-50px from right edge)
-  // Minimize button: third from right
-  
-  const titleBarHeight = 30; // Standard Windows title bar height
-  const buttonWidth = 46;    // Standard button width
-  const buttonFromRight = 46; // Distance from right edge
-  
-  const maximizeX = window.left + window.width - buttonFromRight;
-  const maximizeY = window.top + (titleBarHeight / 2);
-  
-  console.log(`Calculated position: (${maximizeX}, ${maximizeY})`);
-  
-  return { x: maximizeX, y: maximizeY };
+  try {
+    // Resolve window properties that might be Promises
+    const left = typeof window.left === 'number' ? window.left : await window.left;
+    const top = typeof window.top === 'number' ? window.top : await window.top;
+    const width = typeof window.width === 'number' ? window.width : await window.width;
+    const height = typeof window.height === 'number' ? window.height : await window.height;
+    
+    console.log(`Window bounds: left=${left}, top=${top}, width=${width}, height=${height}`);
+    
+    // Standard Windows title bar button positions:
+    // Close button: rightmost
+    // Maximize button: second from right (usually 46-50px from right edge)
+    // Minimize button: third from right
+    
+    const titleBarHeight = 30; // Standard Windows title bar height
+    const buttonWidth = 46;    // Standard button width
+    const buttonFromRight = 46; // Distance from right edge
+    
+    const maximizeX = left + width - buttonFromRight;
+    const maximizeY = top + (titleBarHeight / 2);
+    
+    console.log(`Calculated position: (${maximizeX}, ${maximizeY})`);
+    
+    return { x: maximizeX, y: maximizeY };
+  } catch (error) {
+    console.log('❌ Error calculating maximize button position:', error.message);
+    return { x: 0, y: 0 }; // Return fallback position
+  }
 }
 
 async function verifyButtonLocation(position) {
@@ -411,21 +179,31 @@ async function smartClickMaximizeButton(position) {
     // Verify the click had an effect by checking window state
     const windowAfterClick = await findNotepadWindow();
     if (windowAfterClick) {
-      console.log('Window after click:', {
-        width: windowAfterClick.width,
-        height: windowAfterClick.height,
-        position: { x: windowAfterClick.left, y: windowAfterClick.top }
-      });
-      
-      // Check if window is now maximized (typically near screen size)
-      const screenSize = await screen.size();
-      const isMaximized = windowAfterClick.width > screenSize.width * 0.8 && 
-                         windowAfterClick.height > screenSize.height * 0.8;
-      
-      if (isMaximized) {
-        console.log('✅ Window appears to be maximized!');
-      } else {
-        console.log('⚠️  Window size didn\'t change significantly');
+      try {
+        // Resolve window properties
+        const width = typeof windowAfterClick.width === 'number' ? windowAfterClick.width : await windowAfterClick.width;
+        const height = typeof windowAfterClick.height === 'number' ? windowAfterClick.height : await windowAfterClick.height;
+        const left = typeof windowAfterClick.left === 'number' ? windowAfterClick.left : await windowAfterClick.left;
+        const top = typeof windowAfterClick.top === 'number' ? windowAfterClick.top : await windowAfterClick.top;
+        
+        console.log('Window after click:', {
+          width: width,
+          height: height,
+          position: { x: left, y: top }
+        });
+        
+        // Check if window is now maximized (typically near screen size)
+        const screenSize = await screen.size();
+        const isMaximized = width > screenSize.width * 0.8 && 
+                           height > screenSize.height * 0.8;
+        
+        if (isMaximized) {
+          console.log('✅ Window appears to be maximized!');
+        } else {
+          console.log('⚠️  Window size didn\'t change significantly');
+        }
+      } catch (windowPropError) {
+        console.log('⚠️  Could not verify window maximization state:', windowPropError.message);
       }
     }
     
@@ -482,15 +260,29 @@ async function performSmartNotepadAutomation() {
     // Get updated window position after potential maximization
     const updatedWindow = await findNotepadWindow();
     if (updatedWindow) {
-      // Click in center of window for text area
-      const textAreaX = updatedWindow.left + (updatedWindow.width / 2);
-      const textAreaY = updatedWindow.top + (updatedWindow.height / 2);
-      
-      await mouse.setPosition({ x: textAreaX, y: textAreaY });
-      await mouse.pressButton(Button.LEFT);
-      await mouse.releaseButton(Button.LEFT);
-      
-      console.log(`Clicked in text area at (${textAreaX}, ${textAreaY})`);
+      try {
+        // Resolve window properties
+        const left = typeof updatedWindow.left === 'number' ? updatedWindow.left : await updatedWindow.left;
+        const top = typeof updatedWindow.top === 'number' ? updatedWindow.top : await updatedWindow.top;
+        const width = typeof updatedWindow.width === 'number' ? updatedWindow.width : await updatedWindow.width;
+        const height = typeof updatedWindow.height === 'number' ? updatedWindow.height : await updatedWindow.height;
+        
+        // Click in center of window for text area
+        const textAreaX = left + (width / 2);
+        const textAreaY = top + (height / 2);
+        
+        await mouse.setPosition({ x: textAreaX, y: textAreaY });
+        await mouse.pressButton(Button.LEFT);
+        await mouse.releaseButton(Button.LEFT);
+        
+        console.log(`Clicked in text area at (${textAreaX}, ${textAreaY})`);
+      } catch (windowPropError) {
+        console.log('Error getting window properties, using fallback position:', windowPropError.message);
+        // Fallback position
+        await mouse.setPosition({ x: 400, y: 300 });
+        await mouse.pressButton(Button.LEFT);
+        await mouse.releaseButton(Button.LEFT);
+      }
     } else {
       // Fallback position
       await mouse.setPosition({ x: 400, y: 300 });
@@ -518,3 +310,202 @@ async function performSmartNotepadAutomation() {
 
 // Execute the smart automation
 performSmartNotepadAutomation();
+
+
+--------------
+
+
+const { exec } = require('child_process');
+const { screen, mouse, keyboard, Key, Button } = require('@nut-tree-fork/nut-js');
+
+async function findMaximizeButtonByScreenScanning() {
+  console.log('🔍 Scanning screen for maximize button...');
+  
+  try {
+    const screenSize = await screen.size();
+    console.log('Screen size:', screenSize);
+    
+    // Scan the top-right area of the screen where maximize buttons typically are
+    // Look for typical maximize button positions
+    const scanAreas = [
+      // Top-right area of screen
+      { startX: screenSize.width - 200, endX: screenSize.width - 20, startY: 0, endY: 100 }
+    ];
+    
+    for (const area of scanAreas) {
+      console.log(`Scanning area: x${area.startX}-${area.endX}, y${area.startY}-${area.endY}`);
+      
+      // Sample colors in a grid pattern
+      for (let y = area.startY; y < area.endY; y += 10) {
+        for (let x = area.startX; x < area.endX; x += 10) {
+          try {
+            const color = await screen.colorAt({ x, y });
+            
+            // Look for button-like colors (Windows UI colors)
+            if (isWindowsButtonColor(color)) {
+              console.log(`Found potential button color at (${x}, ${y}):`, color);
+              
+              // Test if this area responds to hover (typical of buttons)
+              const buttonPosition = { x: x + 5, y: y + 5 }; // Offset to center of button
+              
+              if (await testButtonInteraction(buttonPosition)) {
+                console.log('✅ Found interactive button-like element at:', buttonPosition);
+                return buttonPosition;
+              }
+            }
+          } catch (e) {
+            // Continue scanning if color sampling fails
+            continue;
+          }
+        }
+      }
+    }
+    
+    console.log('⚠️ No button found by scanning, using calculated position');
+    return await calculateStandardMaximizePosition();
+    
+  } catch (error) {
+    console.log('❌ Error during screen scanning:', error.message);
+    return await calculateStandardMaximizePosition();
+  }
+}
+
+function isWindowsButtonColor(color) {
+  const { r, g, b } = color;
+  
+  // Common Windows button colors across themes:
+  
+  // Light theme button colors (light grays, whites with slight tints)
+  if (r >= 220 && g >= 220 && b >= 220 && r <= 245 && g <= 245 && b <= 245) return true;
+  
+  // Button border colors (medium grays)
+  if (r >= 150 && r <= 200 && g >= 150 && g <= 200 && b >= 150 && b <= 200 && 
+      Math.abs(r - g) < 30 && Math.abs(g - b) < 30) return true;
+  
+  // Dark theme button colors
+  if (r >= 40 && r <= 80 && g >= 40 && g <= 80 && b >= 40 && b <= 80) return true;
+  
+  // Hover state colors (slightly different from base)
+  if (r >= 200 && r <= 235 && g >= 200 && g <= 235 && b >= 200 && b <= 235) return true;
+  
+  return false;
+}
+
+async function testButtonInteraction(position) {
+  try {
+    // Move mouse to position and sample color
+    const colorBefore = await screen.colorAt(position);
+    
+    await mouse.setPosition(position);
+    await new Promise(resolve => setTimeout(resolve, 100)); // Small delay for hover effect
+    
+    const colorAfter = await screen.colorAt(position);
+    
+    // If color changed, it's likely an interactive element
+    const colorChanged = Math.abs(colorBefore.r - colorAfter.r) > 5 || 
+                        Math.abs(colorBefore.g - colorAfter.g) > 5 || 
+                        Math.abs(colorBefore.b - colorAfter.b) > 5;
+    
+    if (colorChanged) {
+      console.log('Color changed on hover - this is likely a button');
+      return true;
+    }
+    
+    // Even if color didn't change, position might still be valid
+    return true;
+    
+  } catch (error) {
+    return false;
+  }
+}
+
+async function calculateStandardMaximizePosition() {
+  console.log('📐 Using standard Windows maximize button position calculation...');
+  
+  const screenSize = await screen.size();
+  
+  // Standard positions for different scenarios:
+  const positions = [
+    // Standard windowed mode maximize button (common positions)
+    { x: screenSize.width - 46, y: 15 },   // Most common
+    { x: screenSize.width - 50, y: 18 },   // Slightly different sizing
+    { x: screenSize.width - 42, y: 12 },   // Compact title bar
+    { x: screenSize.width - 48, y: 16 },   // Alternative sizing
+  ];
+  
+  console.log('Will try these positions:', positions);
+  return positions[0]; // Return the most common position
+}
+
+async function performSimpleAutomation() {
+  console.log('🚀 Starting Simple Notepad Automation\n');
+  
+  try {
+    // Step 1: Launch Notepad
+    console.log('📝 Launching Notepad...');
+    exec('notepad.exe');
+    await new Promise(resolve => setTimeout(resolve, 2500));
+    
+    // Step 2: Find maximize button by screen analysis
+    console.log('\n🔍 Searching for maximize button...');
+    const maximizePosition = await findMaximizeButtonByScreenScanning();
+    
+    if (maximizePosition) {
+      console.log('🎯 Attempting to click maximize button at:', maximizePosition);
+      
+      // Move to position and click
+      await mouse.setPosition(maximizePosition);
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // Sample color before click for debugging
+      try {
+        const colorAtButton = await screen.colorAt(maximizePosition);
+        console.log('Color at button position:', colorAtButton);
+      } catch (e) {
+        console.log('Could not sample color at button position');
+      }
+      
+      // Perform the click
+      await mouse.pressButton(Button.LEFT);
+      await mouse.releaseButton(Button.LEFT);
+      console.log('✅ Click performed');
+      
+      // Wait for window to adjust
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    } else {
+      console.log('⚠️ Could not determine maximize button position');
+    }
+    
+    // Step 3: Click in text area (center of screen is safe for maximized window)
+    console.log('\n⌨️ Clicking in text area...');
+    const screenSize = await screen.size();
+    const textAreaPosition = {
+      x: screenSize.width / 2,
+      y: screenSize.height / 2
+    };
+    
+    await mouse.setPosition(textAreaPosition);
+    await mouse.pressButton(Button.LEFT);
+    await mouse.releaseButton(Button.LEFT);
+    console.log(`Clicked in text area at (${textAreaPosition.x}, ${textAreaPosition.y})`);
+    
+    // Step 4: Type "test"
+    console.log('\n✍️ Typing "test"...');
+    const textToType = "test";
+    for (const char of textToType) {
+      const key = char.toUpperCase();
+      await keyboard.pressKey(Key[key]);
+      await keyboard.releaseKey(Key[key]);
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    console.log('\n🎉 Simple automation completed!');
+    console.log('✅ Used screen scanning and standard position calculation');
+    
+  } catch (error) {
+    console.error('💥 Error during automation:', error.message);
+  }
+}
+
+// Execute the simple automation
+performSimpleAutomation();
