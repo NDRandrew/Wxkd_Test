@@ -1,10 +1,10 @@
-const Tesseract = require('tesseract.js');
+const Jimp = require('jimp');
 const path = require('path');
 const fs = require('fs');
 
-async function recognizeTextFromImage(imagePath) {
+async function analyzeImageForText(imagePath) {
   try {
-    console.log('🔍 Starting text recognition...');
+    console.log('🔍 Starting offline text analysis...');
     console.log(`📁 Processing image: ${imagePath}`);
     
     // Check if image file exists
@@ -15,64 +15,22 @@ async function recognizeTextFromImage(imagePath) {
     }
     
     console.log('✅ Image file found');
-    console.log('🤖 Initializing OCR engine...');
+    console.log('🖼️  Loading and analyzing image...');
     
-    // Configure Tesseract for better accuracy
-    const result = await Tesseract.recognize(
-      imagePath,
-      'eng', // Language: English
-      {
-        logger: (m) => {
-          if (m.status === 'recognizing text') {
-            const progress = Math.round(m.progress * 100);
-            console.log(`📖 Processing: ${progress}%`);
-          }
-        }
-      }
-    );
+    // Load image with Jimp
+    const image = await Jimp.read(imagePath);
+    console.log(`📊 Image dimensions: ${image.getWidth()}x${image.getHeight()}`);
     
-    console.log('\n🎉 Text Recognition Complete!');
+    // Perform text detection analysis
+    const textAnalysis = await performTextAnalysis(image);
+    
+    console.log('\n🎉 Text Analysis Complete!');
     console.log('=' .repeat(50));
     
-    // Output recognized text
-    const recognizedText = result.data.text.trim();
-    
-    if (recognizedText) {
-      console.log('📝 RECOGNIZED TEXT:');
-      console.log('=' .repeat(30));
-      console.log(recognizedText);
-      console.log('=' .repeat(30));
-      
-      // Additional analysis
-      const words = recognizedText.split(/\s+/).filter(word => word.length > 0);
-      const lines = recognizedText.split('\n').filter(line => line.trim().length > 0);
-      
-      console.log('\n📊 TEXT ANALYSIS:');
-      console.log(`Total characters: ${recognizedText.length}`);
-      console.log(`Total words: ${words.length}`);
-      console.log(`Total lines: ${lines.length}`);
-      
-      if (words.length > 0) {
-        console.log('\n📋 INDIVIDUAL WORDS:');
-        words.forEach((word, index) => {
-          console.log(`  ${index + 1}. "${word}"`);
-        });
-      }
-      
-      // Confidence score
-      console.log(`\n🎯 Confidence: ${Math.round(result.data.confidence)}%`);
-      
-    } else {
-      console.log('⚠️  No text was recognized in the image');
-      console.log('💡 Tips to improve recognition:');
-      console.log('   - Ensure text is clear and high contrast');
-      console.log('   - Use images with good resolution');
-      console.log('   - Make sure text is not rotated or skewed');
-      console.log('   - Try images with dark text on light background');
-    }
+    displayAnalysisResults(textAnalysis, path.basename(imagePath));
     
   } catch (error) {
-    console.error('💥 Error during text recognition:', error.message);
+    console.error('💥 Error during text analysis:', error.message);
     console.log('\n🔧 Troubleshooting:');
     console.log('1. Make sure the image file is valid (PNG, JPG, etc.)');
     console.log('2. Check that the image contains readable text');
@@ -80,9 +38,331 @@ async function recognizeTextFromImage(imagePath) {
   }
 }
 
-async function main() {
-  console.log('🚀 Image Text Recognition Tool');
+async function performTextAnalysis(image) {
+  console.log('🔍 Analyzing image for text patterns...');
+  
+  const width = image.getWidth();
+  const height = image.getHeight();
+  
+  // Convert to grayscale for easier analysis
+  const grayImage = image.clone().greyscale();
+  
+  // Analysis results
+  const analysis = {
+    textRegions: [],
+    dominantColors: [],
+    contrastLevel: 0,
+    textLikeAreas: 0,
+    hasHighContrast: false,
+    estimatedTextLines: 0,
+    imageCharacteristics: {}
+  };
+  
+  // 1. Analyze contrast levels
+  analysis.contrastLevel = await analyzeContrast(grayImage);
+  analysis.hasHighContrast = analysis.contrastLevel > 50;
+  
+  // 2. Find text-like regions
+  analysis.textRegions = await findTextRegions(grayImage);
+  analysis.textLikeAreas = analysis.textRegions.length;
+  
+  // 3. Estimate text lines
+  analysis.estimatedTextLines = await estimateTextLines(grayImage);
+  
+  // 4. Analyze dominant colors
+  analysis.dominantColors = await findDominantColors(image);
+  
+  // 5. Image characteristics
+  analysis.imageCharacteristics = {
+    width: width,
+    height: height,
+    aspectRatio: (width / height).toFixed(2),
+    size: `${width}x${height}`
+  };
+  
+  return analysis;
+}
+
+async function analyzeContrast(grayImage) {
+  console.log('📊 Analyzing image contrast...');
+  
+  let minBrightness = 255;
+  let maxBrightness = 0;
+  let totalBrightness = 0;
+  let pixelCount = 0;
+  
+  grayImage.scan(0, 0, grayImage.getWidth(), grayImage.getHeight(), function (x, y, idx) {
+    const brightness = this.bitmap.data[idx]; // Red channel (same for grayscale)
+    
+    minBrightness = Math.min(minBrightness, brightness);
+    maxBrightness = Math.max(maxBrightness, brightness);
+    totalBrightness += brightness;
+    pixelCount++;
+  });
+  
+  const avgBrightness = totalBrightness / pixelCount;
+  const contrast = maxBrightness - minBrightness;
+  
+  console.log(`   Brightness range: ${minBrightness} - ${maxBrightness}`);
+  console.log(`   Average brightness: ${Math.round(avgBrightness)}`);
+  console.log(`   Contrast level: ${contrast}`);
+  
+  return contrast;
+}
+
+async function findTextRegions(grayImage) {
+  console.log('🔍 Scanning for text-like regions...');
+  
+  const regions = [];
+  const width = grayImage.getWidth();
+  const height = grayImage.getHeight();
+  const blockSize = 20; // Size of blocks to analyze
+  
+  // Scan image in blocks looking for text patterns
+  for (let y = 0; y < height - blockSize; y += blockSize) {
+    for (let x = 0; x < width - blockSize; x += blockSize) {
+      const regionAnalysis = analyzeRegionForText(grayImage, x, y, blockSize, blockSize);
+      
+      if (regionAnalysis.isTextLike) {
+        regions.push({
+          x: x,
+          y: y,
+          width: blockSize,
+          height: blockSize,
+          confidence: regionAnalysis.confidence,
+          characteristics: regionAnalysis.characteristics
+        });
+      }
+    }
+  }
+  
+  console.log(`   Found ${regions.length} potential text regions`);
+  return regions;
+}
+
+function analyzeRegionForText(image, x, y, width, height) {
+  let blackPixels = 0;
+  let whitePixels = 0;
+  let totalPixels = 0;
+  let edgePixels = 0;
+  
+  // Sample pixels in the region
+  for (let dy = 0; dy < height; dy += 2) {
+    for (let dx = 0; dx < width; dx += 2) {
+      if (x + dx < image.getWidth() && y + dy < image.getHeight()) {
+        const pixelColor = image.getPixelColor(x + dx, y + dy);
+        const brightness = (pixelColor >> 16) & 0xFF; // Red channel for grayscale
+        
+        totalPixels++;
+        
+        if (brightness < 100) blackPixels++;
+        else if (brightness > 200) whitePixels++;
+        
+        // Check for edges (significant brightness changes)
+        if (dx > 0 && dy > 0) {
+          const prevPixel = image.getPixelColor(x + dx - 2, y + dy);
+          const prevBrightness = (prevPixel >> 16) & 0xFF;
+          if (Math.abs(brightness - prevBrightness) > 50) {
+            edgePixels++;
+          }
+        }
+      }
+    }
+  }
+  
+  // Calculate characteristics that suggest text
+  const blackWhiteRatio = totalPixels > 0 ? (blackPixels + whitePixels) / totalPixels : 0;
+  const edgeRatio = totalPixels > 0 ? edgePixels / totalPixels : 0;
+  const contrast = blackPixels > 0 && whitePixels > 0;
+  
+  // Text typically has:
+  // - Good contrast (black and white pixels)
+  // - Moderate edge density (letters have edges)
+  // - Not too much noise
+  const isTextLike = contrast && blackWhiteRatio > 0.3 && edgeRatio > 0.1 && edgeRatio < 0.8;
+  
+  const confidence = Math.round((blackWhiteRatio * 0.4 + edgeRatio * 0.6) * 100);
+  
+  return {
+    isTextLike: isTextLike,
+    confidence: Math.min(confidence, 100),
+    characteristics: {
+      blackPixels: blackPixels,
+      whitePixels: whitePixels,
+      edgePixels: edgePixels,
+      blackWhiteRatio: Math.round(blackWhiteRatio * 100) / 100,
+      edgeRatio: Math.round(edgeRatio * 100) / 100,
+      hasContrast: contrast
+    }
+  };
+}
+
+async function estimateTextLines(grayImage) {
+  console.log('📏 Estimating text lines...');
+  
+  const height = grayImage.getHeight();
+  const width = grayImage.getWidth();
+  let horizontalTransitions = [];
+  
+  // Scan horizontal lines for text patterns
+  for (let y = 0; y < height; y += 5) {
+    let transitions = 0;
+    let lastBrightness = null;
+    
+    for (let x = 0; x < width; x += 3) {
+      const pixelColor = grayImage.getPixelColor(x, y);
+      const brightness = (pixelColor >> 16) & 0xFF;
+      
+      if (lastBrightness !== null && Math.abs(brightness - lastBrightness) > 50) {
+        transitions++;
+      }
+      lastBrightness = brightness;
+    }
+    
+    horizontalTransitions.push({ y: y, transitions: transitions });
+  }
+  
+  // Find rows with significant transitions (likely text lines)
+  const avgTransitions = horizontalTransitions.reduce((sum, row) => sum + row.transitions, 0) / horizontalTransitions.length;
+  const textLines = horizontalTransitions.filter(row => row.transitions > avgTransitions * 1.5);
+  
+  console.log(`   Estimated ${textLines.length} potential text lines`);
+  return textLines.length;
+}
+
+async function findDominantColors(image) {
+  console.log('🎨 Analyzing color palette...');
+  
+  const colorCounts = {};
+  const sampleRate = 10; // Sample every 10th pixel for performance
+  
+  image.scan(0, 0, image.getWidth(), image.getHeight(), function (x, y, idx) {
+    if (x % sampleRate === 0 && y % sampleRate === 0) {
+      const red = this.bitmap.data[idx];
+      const green = this.bitmap.data[idx + 1];
+      const blue = this.bitmap.data[idx + 2];
+      
+      // Group similar colors
+      const colorKey = `${Math.floor(red/32)*32}-${Math.floor(green/32)*32}-${Math.floor(blue/32)*32}`;
+      colorCounts[colorKey] = (colorCounts[colorKey] || 0) + 1;
+    }
+  });
+  
+  // Find top 5 colors
+  const sortedColors = Object.entries(colorCounts)
+    .sort(([,a], [,b]) => b - a)
+    .slice(0, 5)
+    .map(([color, count]) => {
+      const [r, g, b] = color.split('-').map(Number);
+      return { color: `rgb(${r}, ${g}, ${b})`, count, hex: rgbToHex(r, g, b) };
+    });
+  
+  return sortedColors;
+}
+
+function rgbToHex(r, g, b) {
+  return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
+
+function displayAnalysisResults(analysis, filename) {
+  console.log(`📝 Analysis Results for "${filename}":`);
   console.log('=' .repeat(40));
+  
+  // Image characteristics
+  console.log('📊 Image Properties:');
+  console.log(`   Dimensions: ${analysis.imageCharacteristics.size}`);
+  console.log(`   Aspect Ratio: ${analysis.imageCharacteristics.aspectRatio}`);
+  console.log(`   Contrast Level: ${analysis.contrastLevel}/255`);
+  console.log(`   High Contrast: ${analysis.hasHighContrast ? '✅ Yes' : '❌ No'}`);
+  
+  // Text detection results
+  console.log('\n🔍 Text Detection:');
+  console.log(`   Potential text regions: ${analysis.textLikeAreas}`);
+  console.log(`   Estimated text lines: ${analysis.estimatedTextLines}`);
+  
+  if (analysis.textRegions.length > 0) {
+    console.log('\n📍 Text Region Details:');
+    analysis.textRegions.slice(0, 5).forEach((region, index) => {
+      console.log(`   Region ${index + 1}: (${region.x}, ${region.y}) ${region.width}x${region.height}`);
+      console.log(`     Confidence: ${region.confidence}%`);
+    });
+    
+    if (analysis.textRegions.length > 5) {
+      console.log(`   ... and ${analysis.textRegions.length - 5} more regions`);
+    }
+  }
+  
+  // Color analysis
+  console.log('\n🎨 Dominant Colors:');
+  analysis.dominantColors.forEach((colorInfo, index) => {
+    console.log(`   ${index + 1}. ${colorInfo.hex} (${colorInfo.color}) - ${colorInfo.count} pixels`);
+  });
+  
+  // Overall assessment
+  console.log('\n🎯 Text Likelihood Assessment:');
+  let score = 0;
+  const reasons = [];
+  
+  if (analysis.hasHighContrast) {
+    score += 30;
+    reasons.push('✅ Good contrast detected');
+  } else {
+    reasons.push('❌ Low contrast may affect text clarity');
+  }
+  
+  if (analysis.textLikeAreas > 5) {
+    score += 25;
+    reasons.push('✅ Multiple text-like regions found');
+  } else if (analysis.textLikeAreas > 0) {
+    score += 10;
+    reasons.push('⚠️  Few text-like regions found');
+  } else {
+    reasons.push('❌ No clear text regions detected');
+  }
+  
+  if (analysis.estimatedTextLines > 1) {
+    score += 25;
+    reasons.push('✅ Multiple text lines estimated');
+  } else if (analysis.estimatedTextLines === 1) {
+    score += 15;
+    reasons.push('⚠️  Single text line estimated');
+  } else {
+    reasons.push('❌ No clear text lines detected');
+  }
+  
+  // Check for typical text colors (black/white contrast)
+  const hasTypicalTextColors = analysis.dominantColors.some(c => 
+    c.hex === '#000000' || c.hex === '#ffffff' || 
+    c.hex.startsWith('#00') || c.hex.startsWith('#ff')
+  );
+  
+  if (hasTypicalTextColors) {
+    score += 20;
+    reasons.push('✅ Typical text colors (black/white) detected');
+  }
+  
+  console.log(`Overall Text Likelihood: ${score}/100`);
+  console.log('\nAssessment Details:');
+  reasons.forEach(reason => console.log(`   ${reason}`));
+  
+  console.log('\n💡 Recommendations:');
+  if (score < 30) {
+    console.log('   - This image may not contain readable text');
+    console.log('   - Try images with higher contrast');
+    console.log('   - Ensure text is dark on light background (or vice versa)');
+  } else if (score < 60) {
+    console.log('   - Some text may be present but difficult to read');
+    console.log('   - Consider improving image quality or contrast');
+  } else {
+    console.log('   - Good likelihood of readable text content');
+    console.log('   - This image should work well with OCR tools');
+  }
+}
+
+async function main() {
+  console.log('🚀 Offline Image Text Analysis Tool');
+  console.log('=' .repeat(50));
+  console.log('📝 This tool analyzes images for text content without requiring internet connection');
   
   // Default image path
   const defaultImagePath = path.join(__dirname, 'images', 'text_image.png');
@@ -93,363 +373,12 @@ async function main() {
   
   console.log(`🎯 Target image: ${path.basename(imagePath)}`);
   
-  await recognizeTextFromImage(imagePath);
+  await analyzeImageForText(imagePath);
   
-  console.log('\n✅ Text recognition process completed!');
+  console.log('\n✅ Text analysis completed!');
+  console.log('\n🔧 Note: This is offline analysis. For actual text extraction, use:');
+  console.log('   npm run original  (requires internet for Tesseract.js)');
 }
 
-// Run the text recognition
+// Run the offline text analysis
 main().catch(console.error);
-
-
-------------
-
-const Tesseract = require('tesseract.js');
-const path = require('path');
-const fs = require('fs');
-
-async function testMultipleImages() {
-  console.log('🧪 Testing OCR on Multiple Images');
-  console.log('=' .repeat(50));
-  
-  // Look for all images in the images folder
-  const imagesDir = path.join(__dirname, 'images');
-  
-  if (!fs.existsSync(imagesDir)) {
-    console.log('📁 Creating images folder...');
-    fs.mkdirSync(imagesDir);
-    console.log('✅ Images folder created');
-    console.log('\n📋 Instructions:');
-    console.log('1. Add image files (PNG, JPG, etc.) to the /images folder');
-    console.log('2. Run this script again to test OCR on your images');
-    return;
-  }
-  
-  // Get all image files
-  const imageExtensions = ['.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.webp'];
-  const imageFiles = fs.readdirSync(imagesDir)
-    .filter(file => imageExtensions.some(ext => file.toLowerCase().endsWith(ext)));
-  
-  if (imageFiles.length === 0) {
-    console.log('📝 No image files found in /images folder');
-    console.log('\n📋 Instructions:');
-    console.log('1. Add image files to the /images folder');
-    console.log('2. Supported formats: PNG, JPG, JPEG, BMP, TIFF, WEBP');
-    console.log('3. Run this script again');
-    return;
-  }
-  
-  console.log(`🖼️  Found ${imageFiles.length} image(s) to process:`);
-  imageFiles.forEach((file, index) => {
-    console.log(`  ${index + 1}. ${file}`);
-  });
-  
-  // Process each image
-  for (let i = 0; i < imageFiles.length; i++) {
-    const imageFile = imageFiles[i];
-    const imagePath = path.join(imagesDir, imageFile);
-    
-    console.log('\n' + '='.repeat(60));
-    console.log(`📸 Processing Image ${i + 1}/${imageFiles.length}: ${imageFile}`);
-    console.log('='.repeat(60));
-    
-    await processImageWithAdvancedOCR(imagePath, imageFile);
-    
-    // Add delay between images to prevent overwhelming the console
-    if (i < imageFiles.length - 1) {
-      console.log('\n⏳ Waiting before next image...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-  }
-  
-  console.log('\n🎉 All images processed!');
-}
-
-async function processImageWithAdvancedOCR(imagePath, fileName) {
-  try {
-    // Get file size info
-    const stats = fs.statSync(imagePath);
-    console.log(`📊 File size: ${Math.round(stats.size / 1024)} KB`);
-    
-    console.log('🤖 Starting OCR with multiple configurations...');
-    
-    // Try different OCR configurations for better results
-    const ocrConfigs = [
-      {
-        name: 'Standard',
-        options: {
-          tessedit_pageseg_mode: Tesseract.PSM.AUTO,
-        }
-      },
-      {
-        name: 'Single Text Block',
-        options: {
-          tessedit_pageseg_mode: Tesseract.PSM.SINGLE_BLOCK,
-        }
-      },
-      {
-        name: 'Single Text Line',
-        options: {
-          tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
-        }
-      }
-    ];
-    
-    let bestResult = null;
-    let bestConfidence = 0;
-    
-    for (const config of ocrConfigs) {
-      try {
-        console.log(`\n🔄 Trying ${config.name} configuration...`);
-        
-        const result = await Tesseract.recognize(
-          imagePath,
-          'eng',
-          {
-            logger: (m) => {
-              if (m.status === 'recognizing text') {
-                const progress = Math.round(m.progress * 100);
-                process.stdout.write(`\r   Progress: ${progress}%`);
-              }
-            },
-            ...config.options
-          }
-        );
-        
-        process.stdout.write('\n'); // New line after progress
-        
-        const confidence = result.data.confidence;
-        const text = result.data.text.trim();
-        
-        console.log(`   Confidence: ${Math.round(confidence)}%`);
-        console.log(`   Characters found: ${text.length}`);
-        
-        if (confidence > bestConfidence && text.length > 0) {
-          bestResult = result;
-          bestConfidence = confidence;
-          console.log('   ✅ Best result so far!');
-        }
-        
-      } catch (configError) {
-        console.log(`   ❌ ${config.name} failed:`, configError.message);
-      }
-    }
-    
-    // Display best result
-    if (bestResult && bestResult.data.text.trim()) {
-      console.log('\n🏆 BEST RESULT:');
-      console.log('=' .repeat(40));
-      console.log(`📝 Text from "${fileName}":`);
-      console.log('-'.repeat(40));
-      console.log(bestResult.data.text.trim());
-      console.log('-'.repeat(40));
-      
-      // Word analysis
-      const words = bestResult.data.text.trim().split(/\s+/).filter(word => word.length > 0);
-      console.log(`\n📊 Analysis:`);
-      console.log(`   Words found: ${words.length}`);
-      console.log(`   Confidence: ${Math.round(bestResult.data.confidence)}%`);
-      
-      if (words.length > 0 && words.length <= 20) {
-        console.log(`\n📋 Individual words:`);
-        words.forEach((word, index) => {
-          console.log(`   ${index + 1}. "${word}"`);
-        });
-      }
-      
-      // Look for specific patterns
-      const hasNumbers = /\d/.test(bestResult.data.text);
-      const hasUppercase = /[A-Z]/.test(bestResult.data.text);
-      const hasLowercase = /[a-z]/.test(bestResult.data.text);
-      
-      console.log(`\n🔍 Content analysis:`);
-      console.log(`   Contains numbers: ${hasNumbers ? '✅' : '❌'}`);
-      console.log(`   Contains uppercase: ${hasUppercase ? '✅' : '❌'}`);
-      console.log(`   Contains lowercase: ${hasLowercase ? '✅' : '❌'}`);
-      
-    } else {
-      console.log('\n⚠️  No readable text found in this image');
-      console.log('💡 Tips for better results:');
-      console.log('   - Use high contrast images (dark text on light background)');
-      console.log('   - Ensure text is not rotated or distorted');
-      console.log('   - Try images with larger, clearer fonts');
-      console.log('   - Avoid images with complex backgrounds');
-    }
-    
-  } catch (error) {
-    console.error(`💥 Error processing ${fileName}:`, error.message);
-  }
-}
-
-// Run the test
-testMultipleImages().catch(console.error);
-
-
-
--------------
-
-
-const { screen } = require('@nut-tree-fork/nut-js');
-const Tesseract = require('tesseract.js');
-const path = require('path');
-const fs = require('fs');
-
-async function captureAndReadScreenText() {
-  try {
-    console.log('📸 Taking screenshot of current screen...');
-    
-    // Capture full screen
-    const screenSize = await screen.size();
-    console.log(`Screen size: ${screenSize.width}x${screenSize.height}`);
-    
-    // Take screenshot
-    const screenshotPath = path.join(__dirname, 'images', 'screenshot.png');
-    
-    // Ensure images directory exists
-    const imagesDir = path.dirname(screenshotPath);
-    if (!fs.existsSync(imagesDir)) {
-      fs.mkdirSync(imagesDir, { recursive: true });
-    }
-    
-    await screen.capture(screenshotPath);
-    console.log('✅ Screenshot saved to:', screenshotPath);
-    
-    // Wait a moment for file to be written
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    console.log('\n🔍 Analyzing screenshot for text...');
-    
-    // Process the screenshot with OCR
-    await recognizeTextFromScreenshot(screenshotPath);
-    
-  } catch (error) {
-    console.error('💥 Error during screen capture and text recognition:', error.message);
-  }
-}
-
-async function captureRegionAndReadText(x, y, width, height) {
-  try {
-    console.log(`📸 Capturing screen region: (${x}, ${y}) ${width}x${height}...`);
-    
-    // Capture specific region
-    const regionPath = path.join(__dirname, 'images', 'region_capture.png');
-    
-    // Ensure images directory exists
-    const imagesDir = path.dirname(regionPath);
-    if (!fs.existsSync(imagesDir)) {
-      fs.mkdirSync(imagesDir, { recursive: true });
-    }
-    
-    await screen.capture(regionPath, { x, y, width, height });
-    console.log('✅ Region captured to:', regionPath);
-    
-    // Wait for file to be written
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    console.log('\n🔍 Analyzing captured region for text...');
-    
-    // Process the region capture with OCR
-    await recognizeTextFromScreenshot(regionPath);
-    
-  } catch (error) {
-    console.error('💥 Error during region capture and text recognition:', error.message);
-  }
-}
-
-async function recognizeTextFromScreenshot(imagePath) {
-  try {
-    console.log('🤖 Starting OCR on captured image...');
-    
-    const result = await Tesseract.recognize(
-      imagePath,
-      'eng',
-      {
-        logger: (m) => {
-          if (m.status === 'recognizing text') {
-            const progress = Math.round(m.progress * 100);
-            process.stdout.write(`\r   OCR Progress: ${progress}%`);
-          }
-        }
-      }
-    );
-    
-    process.stdout.write('\n'); // New line after progress
-    
-    const recognizedText = result.data.text.trim();
-    
-    if (recognizedText) {
-      console.log('\n🎉 TEXT FOUND ON SCREEN!');
-      console.log('=' .repeat(50));
-      console.log(recognizedText);
-      console.log('=' .repeat(50));
-      
-      // Analysis
-      const words = recognizedText.split(/\s+/).filter(word => word.length > 0);
-      const lines = recognizedText.split('\n').filter(line => line.trim().length > 0);
-      
-      console.log(`\n📊 Analysis:`);
-      console.log(`   Total words: ${words.length}`);
-      console.log(`   Total lines: ${lines.length}`);
-      console.log(`   Confidence: ${Math.round(result.data.confidence)}%`);
-      
-      // Look for common UI elements
-      const commonUIElements = ['OK', 'Cancel', 'Yes', 'No', 'Save', 'Open', 'Close', 'Exit', 'File', 'Edit', 'View', 'Help'];
-      const foundUIElements = words.filter(word => 
-        commonUIElements.some(ui => ui.toLowerCase() === word.toLowerCase())
-      );
-      
-      if (foundUIElements.length > 0) {
-        console.log(`\n🖥️  UI Elements detected: ${foundUIElements.join(', ')}`);
-      }
-      
-      // Check for specific patterns
-      const hasNumbers = /\d/.test(recognizedText);
-      const hasEmail = /@/.test(recognizedText);
-      const hasURL = /http|www\./.test(recognizedText);
-      
-      console.log(`\n🔍 Content patterns:`);
-      console.log(`   Contains numbers: ${hasNumbers ? '✅' : '❌'}`);
-      console.log(`   Contains email: ${hasEmail ? '✅' : '❌'}`);
-      console.log(`   Contains URLs: ${hasURL ? '✅' : '❌'}`);
-      
-    } else {
-      console.log('\n⚠️  No readable text found in the screenshot');
-      console.log('This might happen if:');
-      console.log('   - The screen has mostly graphics/images');
-      console.log('   - Text is too small or blurry');
-      console.log('   - Text color is too similar to background');
-    }
-    
-  } catch (error) {
-    console.error('💥 Error during OCR processing:', error.message);
-  }
-}
-
-async function demonstrateScreenTextRecognition() {
-  console.log('🚀 Screen Text Recognition Demo');
-  console.log('=' .repeat(50));
-  
-  const args = process.argv.slice(2);
-  
-  if (args.length === 4) {
-    // Region capture mode: node script.js x y width height
-    const [x, y, width, height] = args.map(Number);
-    console.log(`🎯 Region capture mode: (${x}, ${y}) ${width}x${height}`);
-    await captureRegionAndReadText(x, y, width, height);
-  } else if (args.length === 0) {
-    // Full screen mode
-    console.log('🖥️  Full screen capture mode');
-    await captureAndReadScreenText();
-  } else {
-    console.log('📋 Usage options:');
-    console.log('   Full screen: npm run screen-ocr');
-    console.log('   Specific region: npm run screen-ocr -- x y width height');
-    console.log('   Example: npm run screen-ocr -- 100 100 400 200');
-    return;
-  }
-  
-  console.log('\n✅ Screen text recognition completed!');
-}
-
-// Run the demonstration
-demonstrateScreenTextRecognition().catch(console.error);
