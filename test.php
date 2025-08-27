@@ -382,3 +382,352 @@ async function main() {
 
 // Run the offline text analysis
 main().catch(console.error);
+
+
+------------
+
+const { screen } = require('@nut-tree-fork/nut-js');
+const path = require('path');
+const fs = require('fs');
+
+// Simple text detection patterns (works completely offline)
+const commonUITexts = [
+  // Window controls
+  'minimize', 'maximize', 'close', 'restore',
+  // File operations  
+  'file', 'edit', 'view', 'insert', 'format', 'tools', 'help',
+  'new', 'open', 'save', 'save as', 'print', 'exit',
+  // Common buttons
+  'ok', 'cancel', 'yes', 'no', 'apply', 'submit', 'continue',
+  'back', 'next', 'finish', 'done', 'close',
+  // Common labels
+  'name', 'password', 'email', 'address', 'phone', 'date',
+  'username', 'login', 'register', 'search', 'settings',
+  // Application names
+  'notepad', 'word', 'excel', 'browser', 'chrome', 'firefox',
+  'windows', 'microsoft', 'google', 'adobe'
+];
+
+async function captureAndAnalyzeScreen() {
+  try {
+    console.log('📸 Capturing current screen...');
+    
+    // Get screen size
+    const screenSize = await screen.size();
+    console.log(`Screen dimensions: ${screenSize.width}x${screenSize.height}`);
+    
+    // Create images directory if it doesn't exist
+    const imagesDir = path.join(__dirname, 'images');
+    if (!fs.existsSync(imagesDir)) {
+      fs.mkdirSync(imagesDir, { recursive: true });
+    }
+    
+    // Capture screenshot
+    const screenshotPath = path.join(imagesDir, 'screen_capture.png');
+    await screen.capture(screenshotPath);
+    console.log('✅ Screenshot saved:', screenshotPath);
+    
+    // Wait for file to be written
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    console.log('\n🔍 Analyzing screenshot...');
+    
+    // Perform simple analysis
+    await performSimpleScreenAnalysis(screenshotPath, screenSize);
+    
+  } catch (error) {
+    console.error('💥 Error during screen capture:', error.message);
+  }
+}
+
+async function performSimpleScreenAnalysis(imagePath, screenSize) {
+  console.log('📊 Performing basic screen analysis...');
+  
+  try {
+    // Get file information
+    const stats = fs.statSync(imagePath);
+    console.log(`📁 Screenshot file size: ${Math.round(stats.size / 1024)} KB`);
+    
+    // Analyze likely UI regions
+    const uiRegions = identifyUIRegions(screenSize);
+    
+    console.log('\n🖥️  Screen Analysis Results:');
+    console.log('=' .repeat(40));
+    
+    console.log('📐 Screen Properties:');
+    console.log(`   Resolution: ${screenSize.width}x${screenSize.height}`);
+    console.log(`   Aspect Ratio: ${(screenSize.width / screenSize.height).toFixed(2)}`);
+    console.log(`   Estimated DPI: ${estimateDPI(screenSize)}`);
+    
+    console.log('\n🎯 Likely UI Regions:');
+    uiRegions.forEach((region, index) => {
+      console.log(`   ${index + 1}. ${region.name}: (${region.x}, ${region.y}) ${region.width}x${region.height}`);
+      console.log(`      Purpose: ${region.purpose}`);
+    });
+    
+    // Suggest text areas to check
+    console.log('\n🔍 Suggested Areas to Check for Text:');
+    const textAreas = suggestTextAreas(screenSize);
+    textAreas.forEach((area, index) => {
+      console.log(`   ${index + 1}. ${area.name}: (${area.x}, ${area.y}) ${area.width}x${area.height}`);
+      console.log(`      Likely to contain: ${area.expectedContent}`);
+    });
+    
+    // Generate commands for region capture
+    console.log('\n⚡ Quick Commands to Capture Specific Regions:');
+    textAreas.forEach((area, index) => {
+      if (index < 3) { // Show first 3 commands
+        console.log(`   Region ${index + 1}: npm run screen-region -- ${area.x} ${area.y} ${area.width} ${area.height}`);
+      }
+    });
+    
+    // Basic pattern suggestions
+    console.log('\n🎨 Visual Patterns Analysis:');
+    console.log(`   Title bar height: ~30 pixels`);
+    console.log(`   Common button size: ~75x23 pixels`);
+    console.log(`   Menu bar height: ~20-25 pixels`);
+    console.log(`   Scrollbar width: ~17 pixels`);
+    
+    console.log('\n💡 Text Detection Tips:');
+    console.log('   - Title bars typically contain window titles');
+    console.log('   - Menu bars contain File, Edit, View, etc.');
+    console.log('   - Status bars show information at bottom');
+    console.log('   - Content areas contain the main text');
+    
+  } catch (error) {
+    console.error('Error during analysis:', error.message);
+  }
+}
+
+function identifyUIRegions(screenSize) {
+  const regions = [];
+  
+  // Top title bar area
+  regions.push({
+    name: 'Title Bar Area',
+    x: 0,
+    y: 0,
+    width: screenSize.width,
+    height: 40,
+    purpose: 'Window titles, controls (minimize/maximize/close)'
+  });
+  
+  // Menu bar area
+  regions.push({
+    name: 'Menu Bar Area',
+    x: 0,
+    y: 40,
+    width: screenSize.width,
+    height: 25,
+    purpose: 'File, Edit, View menus'
+  });
+  
+  // Toolbar area
+  regions.push({
+    name: 'Toolbar Area',
+    x: 0,
+    y: 65,
+    width: screenSize.width,
+    height: 40,
+    purpose: 'Tool buttons, formatting controls'
+  });
+  
+  // Main content area
+  regions.push({
+    name: 'Content Area',
+    x: 0,
+    y: 105,
+    width: screenSize.width,
+    height: screenSize.height - 135,
+    purpose: 'Main document or application content'
+  });
+  
+  // Status bar area
+  regions.push({
+    name: 'Status Bar Area',
+    x: 0,
+    y: screenSize.height - 30,
+    width: screenSize.width,
+    height: 30,
+    purpose: 'Status information, progress bars'
+  });
+  
+  return regions;
+}
+
+function suggestTextAreas(screenSize) {
+  const areas = [];
+  
+  // Window title area (most common place for text)
+  areas.push({
+    name: 'Window Title',
+    x: 100,
+    y: 5,
+    width: screenSize.width - 200,
+    height: 30,
+    expectedContent: 'Application name, document title'
+  });
+  
+  // Menu bar
+  areas.push({
+    name: 'Menu Bar',
+    x: 0,
+    y: 30,
+    width: 500,
+    height: 25,
+    expectedContent: 'File, Edit, View, Insert, Format, Tools, Help'
+  });
+  
+  // Center content area
+  areas.push({
+    name: 'Main Content',
+    x: Math.floor(screenSize.width * 0.1),
+    y: Math.floor(screenSize.height * 0.15),
+    width: Math.floor(screenSize.width * 0.8),
+    height: Math.floor(screenSize.height * 0.6),
+    expectedContent: 'Document text, form fields, main content'
+  });
+  
+  // Dialog center (common for popup dialogs)
+  areas.push({
+    name: 'Dialog Center',
+    x: Math.floor(screenSize.width * 0.25),
+    y: Math.floor(screenSize.height * 0.3),
+    width: Math.floor(screenSize.width * 0.5),
+    height: Math.floor(screenSize.height * 0.4),
+    expectedContent: 'Dialog boxes, error messages, prompts'
+  });
+  
+  // Right-click context menu area
+  areas.push({
+    name: 'Context Menu Area',
+    x: Math.floor(screenSize.width * 0.3),
+    y: Math.floor(screenSize.height * 0.3),
+    width: 200,
+    height: 300,
+    expectedContent: 'Copy, Paste, Cut, Properties menu items'
+  });
+  
+  return areas;
+}
+
+function estimateDPI(screenSize) {
+  // Rough DPI estimation based on common resolutions
+  if (screenSize.width >= 3840) return '4K (High DPI)';
+  if (screenSize.width >= 2560) return 'QHD (Medium-High DPI)';
+  if (screenSize.width >= 1920) return 'Full HD (Standard DPI)';
+  if (screenSize.width >= 1366) return 'HD (Standard DPI)';
+  return 'Lower Resolution';
+}
+
+async function captureSpecificRegion(x, y, width, height) {
+  try {
+    console.log(`📸 Capturing region: (${x}, ${y}) ${width}x${height}`);
+    
+    const imagesDir = path.join(__dirname, 'images');
+    if (!fs.existsSync(imagesDir)) {
+      fs.mkdirSync(imagesDir, { recursive: true });
+    }
+    
+    const regionPath = path.join(imagesDir, `region_${x}_${y}_${width}x${height}.png`);
+    
+    await screen.capture(regionPath, { x, y, width, height });
+    console.log('✅ Region captured:', regionPath);
+    
+    console.log('\n📋 Region Analysis:');
+    console.log(`   Coordinates: (${x}, ${y})`);
+    console.log(`   Size: ${width}x${height} pixels`);
+    console.log(`   Area: ${width * height} pixels`);
+    
+    // Suggest what this region might contain based on position
+    const screenSize = await screen.size();
+    const regionPurpose = analyzeRegionPurpose(x, y, width, height, screenSize);
+    console.log(`   Likely contains: ${regionPurpose}`);
+    
+    // Wait for file and get size
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const stats = fs.statSync(regionPath);
+    console.log(`   File size: ${Math.round(stats.size / 1024)} KB`);
+    
+    console.log('\n💡 Next Steps:');
+    console.log(`   1. Open the captured image: ${regionPath}`);
+    console.log('   2. Visually inspect the text content');
+    console.log('   3. Use online OCR tools if needed for text extraction');
+    
+  } catch (error) {
+    console.error('💥 Error capturing region:', error.message);
+  }
+}
+
+function analyzeRegionPurpose(x, y, width, height, screenSize) {
+  const centerX = x + width / 2;
+  const centerY = y + height / 2;
+  
+  // Top area - likely title bars or menus
+  if (y < 100) {
+    if (centerX > screenSize.width * 0.8) {
+      return 'Window controls (minimize/maximize/close buttons)';
+    } else if (y < 40) {
+      return 'Window title, application name';
+    } else {
+      return 'Menu bar items (File, Edit, View, etc.)';
+    }
+  }
+  
+  // Bottom area - likely status bars
+  if (y > screenSize.height - 100) {
+    return 'Status bar, progress information';
+  }
+  
+  // Center area
+  if (centerX > screenSize.width * 0.2 && centerX < screenSize.width * 0.8 &&
+      centerY > screenSize.height * 0.2 && centerY < screenSize.height * 0.8) {
+    return 'Main content area, document text, form fields';
+  }
+  
+  // Small regions might be buttons or labels
+  if (width < 200 && height < 50) {
+    return 'Buttons, labels, or small text elements';
+  }
+  
+  return 'Generic UI area, mixed content';
+}
+
+async function runSimpleTextDetection() {
+  console.log('🚀 Simple Text Detection Tool (Offline)');
+  console.log('=' .repeat(50));
+  console.log('🔧 This tool works completely offline - no internet required!');
+  
+  const args = process.argv.slice(2);
+  
+  if (args.length === 4) {
+    // Region capture mode
+    const [x, y, width, height] = args.map(Number);
+    console.log(`🎯 Region capture mode: (${x}, ${y}) ${width}x${height}`);
+    await captureSpecificRegion(x, y, width, height);
+  } else if (args.length === 0) {
+    // Full screen analysis mode
+    console.log('🖥️  Full screen analysis mode');
+    await captureAndAnalyzeScreen();
+  } else {
+    console.log('📋 Usage:');
+    console.log('   Full screen analysis: npm start');
+    console.log('   Capture region: npm start x y width height');
+    console.log('   Example: npm start 100 50 400 200');
+    console.log('\n💡 This tool helps you identify where text might be on screen');
+    console.log('   and captures regions for manual inspection.');
+    return;
+  }
+  
+  console.log('\n✅ Simple text detection completed!');
+  console.log('\n🔍 For actual text reading:');
+  console.log('   - Use the captured images with online OCR tools');
+  console.log('   - Or try npm run original (if you have internet access)');
+}
+
+// Add this to package.json scripts: "screen-region": "node simple_text_detection.js"
+if (require.main === module) {
+  runSimpleTextDetection().catch(console.error);
+}
+
+module.exports = { captureAndAnalyzeScreen, captureSpecificRegion }; 
