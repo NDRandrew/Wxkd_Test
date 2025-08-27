@@ -1,511 +1,455 @@
-const { exec } = require('child_process');
-const { screen, mouse, keyboard, Key, Button, getWindows, getActiveWindow } = require('@nut-tree-fork/nut-js');
+const Tesseract = require('tesseract.js');
+const path = require('path');
+const fs = require('fs');
 
-async function findNotepadWindow() {
+async function recognizeTextFromImage(imagePath) {
   try {
-    console.log('🔍 Searching for Notepad window...');
+    console.log('🔍 Starting text recognition...');
+    console.log(`📁 Processing image: ${imagePath}`);
     
-    // Get all windows
-    const windows = await getWindows();
-    console.log(`Found ${windows.length} windows`);
-    
-    // Look for Notepad window by title
-    let notepadWindow = null;
-    for (const window of windows) {
-      try {
-        // Resolve window properties that might be Promises
-        const title = typeof window.title === 'string' ? window.title : await window.title;
-        const className = typeof window.className === 'string' ? window.className : await window.className;
-        
-        console.log(`Window: "${title}" - Class: ${className || 'undefined'}`);
-        
-        // Check for Notepad indicators
-        const titleLower = (title || '').toLowerCase();
-        const classLower = (className || '').toLowerCase();
-        
-        if (titleLower.includes('notepad') || 
-            titleLower.includes('untitled') ||
-            titleLower.includes('text') ||
-            classLower.includes('notepad')) {
-          notepadWindow = window;
-          console.log('✅ Found Notepad window:', { title, className });
-          break;
-        }
-      } catch (windowError) {
-        console.log('Error processing window:', windowError.message);
-        continue;
-      }
-    }
-    
-    // If still not found, try getting the active window
-    if (!notepadWindow) {
-      console.log('🔍 Trying to get active window as fallback...');
-      try {
-        const activeWindow = await getActiveWindow();
-        const activeTitle = typeof activeWindow.title === 'string' ? activeWindow.title : await activeWindow.title;
-        console.log('Active window title:', activeTitle);
-        
-        // Check if active window might be Notepad
-        if (activeTitle && (activeTitle.toLowerCase().includes('notepad') || 
-                           activeTitle.toLowerCase().includes('untitled') ||
-                           activeTitle.toLowerCase().includes('text'))) {
-          notepadWindow = activeWindow;
-          console.log('✅ Using active window as Notepad window');
-        } else {
-          // Even if it's not clearly Notepad, let's try the active window
-          console.log('⚠️ Using active window (may or may not be Notepad)');
-          notepadWindow = activeWindow;
-        }
-      } catch (activeError) {
-        console.log('Error getting active window:', activeError.message);
-      }
-    }
-    
-    return notepadWindow;
-  } catch (error) {
-    console.log('❌ Error finding Notepad window:', error.message);
-    return null;
-  }
-}
-
-async function calculateMaximizeButtonPosition(window) {
-  console.log('📐 Calculating maximize button position...');
-  
-  try {
-    // Resolve window properties that might be Promises
-    const left = typeof window.left === 'number' ? window.left : await window.left;
-    const top = typeof window.top === 'number' ? window.top : await window.top;
-    const width = typeof window.width === 'number' ? window.width : await window.width;
-    const height = typeof window.height === 'number' ? window.height : await window.height;
-    
-    console.log(`Window bounds: left=${left}, top=${top}, width=${width}, height=${height}`);
-    
-    // Standard Windows title bar button positions:
-    // Close button: rightmost
-    // Maximize button: second from right (usually 46-50px from right edge)
-    // Minimize button: third from right
-    
-    const titleBarHeight = 30; // Standard Windows title bar height
-    const buttonWidth = 46;    // Standard button width
-    const buttonFromRight = 46; // Distance from right edge
-    
-    const maximizeX = left + width - buttonFromRight;
-    const maximizeY = top + (titleBarHeight / 2);
-    
-    console.log(`Calculated position: (${maximizeX}, ${maximizeY})`);
-    
-    return { x: maximizeX, y: maximizeY };
-  } catch (error) {
-    console.log('❌ Error calculating maximize button position:', error.message);
-    return { x: 0, y: 0 }; // Return fallback position
-  }
-}
-
-async function verifyButtonLocation(position) {
-  try {
-    console.log('🔍 Verifying button location by analyzing pixels...');
-    
-    // Sample colors around the calculated position to verify it looks like a button
-    const samplePositions = [
-      { x: position.x, y: position.y },
-      { x: position.x - 5, y: position.y },
-      { x: position.x + 5, y: position.y },
-      { x: position.x, y: position.y - 3 },
-      { x: position.x, y: position.y + 3 }
-    ];
-    
-    const colors = [];
-    for (const pos of samplePositions) {
-      try {
-        const color = await screen.colorAt(pos);
-        colors.push(color);
-        console.log(`Color at (${pos.x}, ${pos.y}):`, color);
-      } catch (e) {
-        console.log(`Cannot sample color at (${pos.x}, ${pos.y})`);
-      }
-    }
-    
-    // Analyze colors to determine if this looks like a button area
-    if (colors.length > 0) {
-      const avgColor = {
-        r: Math.round(colors.reduce((sum, c) => sum + c.r, 0) / colors.length),
-        g: Math.round(colors.reduce((sum, c) => sum + c.g, 0) / colors.length),
-        b: Math.round(colors.reduce((sum, c) => sum + c.b, 0) / colors.length)
-      };
-      
-      console.log('Average color in button area:', avgColor);
-      
-      // Check if colors suggest this is a UI element (not pure white/black)
-      if (avgColor.r > 50 && avgColor.r < 250 && 
-          avgColor.g > 50 && avgColor.g < 250 && 
-          avgColor.b > 50 && avgColor.b < 250) {
-        console.log('✅ Colors suggest this is a UI button area');
-        return true;
-      }
-    }
-    
-    console.log('⚠️  Colors don\'t clearly indicate a button, but proceeding anyway');
-    return true; // Proceed with calculated position
-    
-  } catch (error) {
-    console.log('❌ Error verifying button location:', error.message);
-    return true; // Proceed anyway
-  }
-}
-
-async function smartClickMaximizeButton(position) {
-  console.log('🖱️  Performing smart click on maximize button...');
-  
-  try {
-    // Move to position
-    await mouse.setPosition(position);
-    console.log(`Moved mouse to (${position.x}, ${position.y})`);
-    
-    // Small delay to ensure positioning
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
-    // Capture color before click for verification
-    const colorBeforeClick = await screen.colorAt(position);
-    console.log('Color before click:', colorBeforeClick);
-    
-    // Perform click
-    await mouse.pressButton(Button.LEFT);
-    await mouse.releaseButton(Button.LEFT);
-    console.log('✅ Click performed');
-    
-    // Wait a moment and check if window state changed
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Verify the click had an effect by checking window state
-    const windowAfterClick = await findNotepadWindow();
-    if (windowAfterClick) {
-      try {
-        // Resolve window properties
-        const width = typeof windowAfterClick.width === 'number' ? windowAfterClick.width : await windowAfterClick.width;
-        const height = typeof windowAfterClick.height === 'number' ? windowAfterClick.height : await windowAfterClick.height;
-        const left = typeof windowAfterClick.left === 'number' ? windowAfterClick.left : await windowAfterClick.left;
-        const top = typeof windowAfterClick.top === 'number' ? windowAfterClick.top : await windowAfterClick.top;
-        
-        console.log('Window after click:', {
-          width: width,
-          height: height,
-          position: { x: left, y: top }
-        });
-        
-        // Check if window is now maximized (typically near screen size)
-        const screenSize = await screen.size();
-        const isMaximized = width > screenSize.width * 0.8 && 
-                           height > screenSize.height * 0.8;
-        
-        if (isMaximized) {
-          console.log('✅ Window appears to be maximized!');
-        } else {
-          console.log('⚠️  Window size didn\'t change significantly');
-        }
-      } catch (windowPropError) {
-        console.log('⚠️  Could not verify window maximization state:', windowPropError.message);
-      }
-    }
-    
-    return true;
-    
-  } catch (error) {
-    console.log('❌ Error during click operation:', error.message);
-    return false;
-  }
-}
-
-async function performSmartNotepadAutomation() {
-  console.log('🚀 Starting Smart Notepad Automation with Dynamic Screen Detection\n');
-  
-  try {
-    // Step 1: Launch Notepad
-    console.log('📝 Launching Notepad...');
-    exec('notepad.exe');
-    await new Promise(resolve => setTimeout(resolve, 2500));
-    
-    // Step 2: Find Notepad window
-    const notepadWindow = await findNotepadWindow();
-    if (!notepadWindow) {
-      console.log('❌ Could not find Notepad window');
+    // Check if image file exists
+    if (!fs.existsSync(imagePath)) {
+      console.log('❌ Error: Image file not found!');
+      console.log(`Expected location: ${imagePath}`);
       return;
     }
     
-    // Step 3: Calculate maximize button position
-    const maximizePosition = await calculateMaximizeButtonPosition(notepadWindow);
+    console.log('✅ Image file found');
+    console.log('🤖 Initializing OCR engine...');
     
-    // Step 4: Verify the calculated position looks correct
-    const isValidPosition = await verifyButtonLocation(maximizePosition);
-    
-    if (isValidPosition) {
-      // Step 5: Click the maximize button
-      const clickSuccess = await smartClickMaximizeButton(maximizePosition);
-      
-      if (clickSuccess) {
-        console.log('✅ Maximize operation completed');
-      } else {
-        console.log('⚠️  Maximize operation may have failed');
-      }
-    } else {
-      console.log('⚠️  Calculated position doesn\'t look like a button');
-    }
-    
-    // Step 6: Wait for window to adjust
-    console.log('\n⏱️  Waiting for window adjustment...');
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Step 7: Click in text area and type
-    console.log('⌨️  Focusing text area and typing...');
-    
-    // Get updated window position after potential maximization
-    const updatedWindow = await findNotepadWindow();
-    if (updatedWindow) {
-      try {
-        // Resolve window properties
-        const left = typeof updatedWindow.left === 'number' ? updatedWindow.left : await updatedWindow.left;
-        const top = typeof updatedWindow.top === 'number' ? updatedWindow.top : await updatedWindow.top;
-        const width = typeof updatedWindow.width === 'number' ? updatedWindow.width : await updatedWindow.width;
-        const height = typeof updatedWindow.height === 'number' ? updatedWindow.height : await updatedWindow.height;
-        
-        // Click in center of window for text area
-        const textAreaX = left + (width / 2);
-        const textAreaY = top + (height / 2);
-        
-        await mouse.setPosition({ x: textAreaX, y: textAreaY });
-        await mouse.pressButton(Button.LEFT);
-        await mouse.releaseButton(Button.LEFT);
-        
-        console.log(`Clicked in text area at (${textAreaX}, ${textAreaY})`);
-      } catch (windowPropError) {
-        console.log('Error getting window properties, using fallback position:', windowPropError.message);
-        // Fallback position
-        await mouse.setPosition({ x: 400, y: 300 });
-        await mouse.pressButton(Button.LEFT);
-        await mouse.releaseButton(Button.LEFT);
-      }
-    } else {
-      // Fallback position
-      await mouse.setPosition({ x: 400, y: 300 });
-      await mouse.pressButton(Button.LEFT);
-      await mouse.releaseButton(Button.LEFT);
-    }
-    
-    // Step 8: Type "test"
-    console.log('✍️  Typing "test"...');
-    const textToType = "test";
-    for (const char of textToType) {
-      const key = char.toUpperCase();
-      await keyboard.pressKey(Key[key]);
-      await keyboard.releaseKey(Key[key]);
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
-    
-    console.log('\n🎉 Smart automation completed successfully!');
-    console.log('✅ Screen elements detected and manipulated dynamically');
-    
-  } catch (error) {
-    console.error('💥 Error during smart automation:', error.message);
-  }
-}
-
-// Execute the smart automation
-performSmartNotepadAutomation();
-
-
---------------
-
-
-const { exec } = require('child_process');
-const { screen, mouse, keyboard, Key, Button } = require('@nut-tree-fork/nut-js');
-
-async function findMaximizeButtonByScreenScanning() {
-  console.log('🔍 Scanning screen for maximize button...');
-  
-  try {
-    const screenSize = await screen.size();
-    console.log('Screen size:', screenSize);
-    
-    // Scan the top-right area of the screen where maximize buttons typically are
-    // Look for typical maximize button positions
-    const scanAreas = [
-      // Top-right area of screen
-      { startX: screenSize.width - 200, endX: screenSize.width - 20, startY: 0, endY: 100 }
-    ];
-    
-    for (const area of scanAreas) {
-      console.log(`Scanning area: x${area.startX}-${area.endX}, y${area.startY}-${area.endY}`);
-      
-      // Sample colors in a grid pattern
-      for (let y = area.startY; y < area.endY; y += 10) {
-        for (let x = area.startX; x < area.endX; x += 10) {
-          try {
-            const color = await screen.colorAt({ x, y });
-            
-            // Look for button-like colors (Windows UI colors)
-            if (isWindowsButtonColor(color)) {
-              console.log(`Found potential button color at (${x}, ${y}):`, color);
-              
-              // Test if this area responds to hover (typical of buttons)
-              const buttonPosition = { x: x + 5, y: y + 5 }; // Offset to center of button
-              
-              if (await testButtonInteraction(buttonPosition)) {
-                console.log('✅ Found interactive button-like element at:', buttonPosition);
-                return buttonPosition;
-              }
-            }
-          } catch (e) {
-            // Continue scanning if color sampling fails
-            continue;
+    // Configure Tesseract for better accuracy
+    const result = await Tesseract.recognize(
+      imagePath,
+      'eng', // Language: English
+      {
+        logger: (m) => {
+          if (m.status === 'recognizing text') {
+            const progress = Math.round(m.progress * 100);
+            console.log(`📖 Processing: ${progress}%`);
           }
         }
       }
-    }
+    );
     
-    console.log('⚠️ No button found by scanning, using calculated position');
-    return await calculateStandardMaximizePosition();
+    console.log('\n🎉 Text Recognition Complete!');
+    console.log('=' .repeat(50));
     
-  } catch (error) {
-    console.log('❌ Error during screen scanning:', error.message);
-    return await calculateStandardMaximizePosition();
-  }
-}
-
-function isWindowsButtonColor(color) {
-  const { r, g, b } = color;
-  
-  // Common Windows button colors across themes:
-  
-  // Light theme button colors (light grays, whites with slight tints)
-  if (r >= 220 && g >= 220 && b >= 220 && r <= 245 && g <= 245 && b <= 245) return true;
-  
-  // Button border colors (medium grays)
-  if (r >= 150 && r <= 200 && g >= 150 && g <= 200 && b >= 150 && b <= 200 && 
-      Math.abs(r - g) < 30 && Math.abs(g - b) < 30) return true;
-  
-  // Dark theme button colors
-  if (r >= 40 && r <= 80 && g >= 40 && g <= 80 && b >= 40 && b <= 80) return true;
-  
-  // Hover state colors (slightly different from base)
-  if (r >= 200 && r <= 235 && g >= 200 && g <= 235 && b >= 200 && b <= 235) return true;
-  
-  return false;
-}
-
-async function testButtonInteraction(position) {
-  try {
-    // Move mouse to position and sample color
-    const colorBefore = await screen.colorAt(position);
+    // Output recognized text
+    const recognizedText = result.data.text.trim();
     
-    await mouse.setPosition(position);
-    await new Promise(resolve => setTimeout(resolve, 100)); // Small delay for hover effect
-    
-    const colorAfter = await screen.colorAt(position);
-    
-    // If color changed, it's likely an interactive element
-    const colorChanged = Math.abs(colorBefore.r - colorAfter.r) > 5 || 
-                        Math.abs(colorBefore.g - colorAfter.g) > 5 || 
-                        Math.abs(colorBefore.b - colorAfter.b) > 5;
-    
-    if (colorChanged) {
-      console.log('Color changed on hover - this is likely a button');
-      return true;
-    }
-    
-    // Even if color didn't change, position might still be valid
-    return true;
-    
-  } catch (error) {
-    return false;
-  }
-}
-
-async function calculateStandardMaximizePosition() {
-  console.log('📐 Using standard Windows maximize button position calculation...');
-  
-  const screenSize = await screen.size();
-  
-  // Standard positions for different scenarios:
-  const positions = [
-    // Standard windowed mode maximize button (common positions)
-    { x: screenSize.width - 46, y: 15 },   // Most common
-    { x: screenSize.width - 50, y: 18 },   // Slightly different sizing
-    { x: screenSize.width - 42, y: 12 },   // Compact title bar
-    { x: screenSize.width - 48, y: 16 },   // Alternative sizing
-  ];
-  
-  console.log('Will try these positions:', positions);
-  return positions[0]; // Return the most common position
-}
-
-async function performSimpleAutomation() {
-  console.log('🚀 Starting Simple Notepad Automation\n');
-  
-  try {
-    // Step 1: Launch Notepad
-    console.log('📝 Launching Notepad...');
-    exec('notepad.exe');
-    await new Promise(resolve => setTimeout(resolve, 2500));
-    
-    // Step 2: Find maximize button by screen analysis
-    console.log('\n🔍 Searching for maximize button...');
-    const maximizePosition = await findMaximizeButtonByScreenScanning();
-    
-    if (maximizePosition) {
-      console.log('🎯 Attempting to click maximize button at:', maximizePosition);
+    if (recognizedText) {
+      console.log('📝 RECOGNIZED TEXT:');
+      console.log('=' .repeat(30));
+      console.log(recognizedText);
+      console.log('=' .repeat(30));
       
-      // Move to position and click
-      await mouse.setPosition(maximizePosition);
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // Additional analysis
+      const words = recognizedText.split(/\s+/).filter(word => word.length > 0);
+      const lines = recognizedText.split('\n').filter(line => line.trim().length > 0);
       
-      // Sample color before click for debugging
-      try {
-        const colorAtButton = await screen.colorAt(maximizePosition);
-        console.log('Color at button position:', colorAtButton);
-      } catch (e) {
-        console.log('Could not sample color at button position');
+      console.log('\n📊 TEXT ANALYSIS:');
+      console.log(`Total characters: ${recognizedText.length}`);
+      console.log(`Total words: ${words.length}`);
+      console.log(`Total lines: ${lines.length}`);
+      
+      if (words.length > 0) {
+        console.log('\n📋 INDIVIDUAL WORDS:');
+        words.forEach((word, index) => {
+          console.log(`  ${index + 1}. "${word}"`);
+        });
       }
       
-      // Perform the click
-      await mouse.pressButton(Button.LEFT);
-      await mouse.releaseButton(Button.LEFT);
-      console.log('✅ Click performed');
+      // Confidence score
+      console.log(`\n🎯 Confidence: ${Math.round(result.data.confidence)}%`);
       
-      // Wait for window to adjust
-      await new Promise(resolve => setTimeout(resolve, 1000));
     } else {
-      console.log('⚠️ Could not determine maximize button position');
+      console.log('⚠️  No text was recognized in the image');
+      console.log('💡 Tips to improve recognition:');
+      console.log('   - Ensure text is clear and high contrast');
+      console.log('   - Use images with good resolution');
+      console.log('   - Make sure text is not rotated or skewed');
+      console.log('   - Try images with dark text on light background');
     }
-    
-    // Step 3: Click in text area (center of screen is safe for maximized window)
-    console.log('\n⌨️ Clicking in text area...');
-    const screenSize = await screen.size();
-    const textAreaPosition = {
-      x: screenSize.width / 2,
-      y: screenSize.height / 2
-    };
-    
-    await mouse.setPosition(textAreaPosition);
-    await mouse.pressButton(Button.LEFT);
-    await mouse.releaseButton(Button.LEFT);
-    console.log(`Clicked in text area at (${textAreaPosition.x}, ${textAreaPosition.y})`);
-    
-    // Step 4: Type "test"
-    console.log('\n✍️ Typing "test"...');
-    const textToType = "test";
-    for (const char of textToType) {
-      const key = char.toUpperCase();
-      await keyboard.pressKey(Key[key]);
-      await keyboard.releaseKey(Key[key]);
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    
-    console.log('\n🎉 Simple automation completed!');
-    console.log('✅ Used screen scanning and standard position calculation');
     
   } catch (error) {
-    console.error('💥 Error during automation:', error.message);
+    console.error('💥 Error during text recognition:', error.message);
+    console.log('\n🔧 Troubleshooting:');
+    console.log('1. Make sure the image file is valid (PNG, JPG, etc.)');
+    console.log('2. Check that the image contains readable text');
+    console.log('3. Try a different image with clearer text');
   }
 }
 
-// Execute the simple automation
-performSimpleAutomation();
+async function main() {
+  console.log('🚀 Image Text Recognition Tool');
+  console.log('=' .repeat(40));
+  
+  // Default image path
+  const defaultImagePath = path.join(__dirname, 'images', 'text_image.png');
+  
+  // Check command line arguments for custom image path
+  const args = process.argv.slice(2);
+  const imagePath = args.length > 0 ? args[0] : defaultImagePath;
+  
+  console.log(`🎯 Target image: ${path.basename(imagePath)}`);
+  
+  await recognizeTextFromImage(imagePath);
+  
+  console.log('\n✅ Text recognition process completed!');
+}
+
+// Run the text recognition
+main().catch(console.error);
+
+
+------------
+
+const Tesseract = require('tesseract.js');
+const path = require('path');
+const fs = require('fs');
+
+async function testMultipleImages() {
+  console.log('🧪 Testing OCR on Multiple Images');
+  console.log('=' .repeat(50));
+  
+  // Look for all images in the images folder
+  const imagesDir = path.join(__dirname, 'images');
+  
+  if (!fs.existsSync(imagesDir)) {
+    console.log('📁 Creating images folder...');
+    fs.mkdirSync(imagesDir);
+    console.log('✅ Images folder created');
+    console.log('\n📋 Instructions:');
+    console.log('1. Add image files (PNG, JPG, etc.) to the /images folder');
+    console.log('2. Run this script again to test OCR on your images');
+    return;
+  }
+  
+  // Get all image files
+  const imageExtensions = ['.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.webp'];
+  const imageFiles = fs.readdirSync(imagesDir)
+    .filter(file => imageExtensions.some(ext => file.toLowerCase().endsWith(ext)));
+  
+  if (imageFiles.length === 0) {
+    console.log('📝 No image files found in /images folder');
+    console.log('\n📋 Instructions:');
+    console.log('1. Add image files to the /images folder');
+    console.log('2. Supported formats: PNG, JPG, JPEG, BMP, TIFF, WEBP');
+    console.log('3. Run this script again');
+    return;
+  }
+  
+  console.log(`🖼️  Found ${imageFiles.length} image(s) to process:`);
+  imageFiles.forEach((file, index) => {
+    console.log(`  ${index + 1}. ${file}`);
+  });
+  
+  // Process each image
+  for (let i = 0; i < imageFiles.length; i++) {
+    const imageFile = imageFiles[i];
+    const imagePath = path.join(imagesDir, imageFile);
+    
+    console.log('\n' + '='.repeat(60));
+    console.log(`📸 Processing Image ${i + 1}/${imageFiles.length}: ${imageFile}`);
+    console.log('='.repeat(60));
+    
+    await processImageWithAdvancedOCR(imagePath, imageFile);
+    
+    // Add delay between images to prevent overwhelming the console
+    if (i < imageFiles.length - 1) {
+      console.log('\n⏳ Waiting before next image...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+  
+  console.log('\n🎉 All images processed!');
+}
+
+async function processImageWithAdvancedOCR(imagePath, fileName) {
+  try {
+    // Get file size info
+    const stats = fs.statSync(imagePath);
+    console.log(`📊 File size: ${Math.round(stats.size / 1024)} KB`);
+    
+    console.log('🤖 Starting OCR with multiple configurations...');
+    
+    // Try different OCR configurations for better results
+    const ocrConfigs = [
+      {
+        name: 'Standard',
+        options: {
+          tessedit_pageseg_mode: Tesseract.PSM.AUTO,
+        }
+      },
+      {
+        name: 'Single Text Block',
+        options: {
+          tessedit_pageseg_mode: Tesseract.PSM.SINGLE_BLOCK,
+        }
+      },
+      {
+        name: 'Single Text Line',
+        options: {
+          tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
+        }
+      }
+    ];
+    
+    let bestResult = null;
+    let bestConfidence = 0;
+    
+    for (const config of ocrConfigs) {
+      try {
+        console.log(`\n🔄 Trying ${config.name} configuration...`);
+        
+        const result = await Tesseract.recognize(
+          imagePath,
+          'eng',
+          {
+            logger: (m) => {
+              if (m.status === 'recognizing text') {
+                const progress = Math.round(m.progress * 100);
+                process.stdout.write(`\r   Progress: ${progress}%`);
+              }
+            },
+            ...config.options
+          }
+        );
+        
+        process.stdout.write('\n'); // New line after progress
+        
+        const confidence = result.data.confidence;
+        const text = result.data.text.trim();
+        
+        console.log(`   Confidence: ${Math.round(confidence)}%`);
+        console.log(`   Characters found: ${text.length}`);
+        
+        if (confidence > bestConfidence && text.length > 0) {
+          bestResult = result;
+          bestConfidence = confidence;
+          console.log('   ✅ Best result so far!');
+        }
+        
+      } catch (configError) {
+        console.log(`   ❌ ${config.name} failed:`, configError.message);
+      }
+    }
+    
+    // Display best result
+    if (bestResult && bestResult.data.text.trim()) {
+      console.log('\n🏆 BEST RESULT:');
+      console.log('=' .repeat(40));
+      console.log(`📝 Text from "${fileName}":`);
+      console.log('-'.repeat(40));
+      console.log(bestResult.data.text.trim());
+      console.log('-'.repeat(40));
+      
+      // Word analysis
+      const words = bestResult.data.text.trim().split(/\s+/).filter(word => word.length > 0);
+      console.log(`\n📊 Analysis:`);
+      console.log(`   Words found: ${words.length}`);
+      console.log(`   Confidence: ${Math.round(bestResult.data.confidence)}%`);
+      
+      if (words.length > 0 && words.length <= 20) {
+        console.log(`\n📋 Individual words:`);
+        words.forEach((word, index) => {
+          console.log(`   ${index + 1}. "${word}"`);
+        });
+      }
+      
+      // Look for specific patterns
+      const hasNumbers = /\d/.test(bestResult.data.text);
+      const hasUppercase = /[A-Z]/.test(bestResult.data.text);
+      const hasLowercase = /[a-z]/.test(bestResult.data.text);
+      
+      console.log(`\n🔍 Content analysis:`);
+      console.log(`   Contains numbers: ${hasNumbers ? '✅' : '❌'}`);
+      console.log(`   Contains uppercase: ${hasUppercase ? '✅' : '❌'}`);
+      console.log(`   Contains lowercase: ${hasLowercase ? '✅' : '❌'}`);
+      
+    } else {
+      console.log('\n⚠️  No readable text found in this image');
+      console.log('💡 Tips for better results:');
+      console.log('   - Use high contrast images (dark text on light background)');
+      console.log('   - Ensure text is not rotated or distorted');
+      console.log('   - Try images with larger, clearer fonts');
+      console.log('   - Avoid images with complex backgrounds');
+    }
+    
+  } catch (error) {
+    console.error(`💥 Error processing ${fileName}:`, error.message);
+  }
+}
+
+// Run the test
+testMultipleImages().catch(console.error);
+
+
+
+-------------
+
+
+const { screen } = require('@nut-tree-fork/nut-js');
+const Tesseract = require('tesseract.js');
+const path = require('path');
+const fs = require('fs');
+
+async function captureAndReadScreenText() {
+  try {
+    console.log('📸 Taking screenshot of current screen...');
+    
+    // Capture full screen
+    const screenSize = await screen.size();
+    console.log(`Screen size: ${screenSize.width}x${screenSize.height}`);
+    
+    // Take screenshot
+    const screenshotPath = path.join(__dirname, 'images', 'screenshot.png');
+    
+    // Ensure images directory exists
+    const imagesDir = path.dirname(screenshotPath);
+    if (!fs.existsSync(imagesDir)) {
+      fs.mkdirSync(imagesDir, { recursive: true });
+    }
+    
+    await screen.capture(screenshotPath);
+    console.log('✅ Screenshot saved to:', screenshotPath);
+    
+    // Wait a moment for file to be written
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    console.log('\n🔍 Analyzing screenshot for text...');
+    
+    // Process the screenshot with OCR
+    await recognizeTextFromScreenshot(screenshotPath);
+    
+  } catch (error) {
+    console.error('💥 Error during screen capture and text recognition:', error.message);
+  }
+}
+
+async function captureRegionAndReadText(x, y, width, height) {
+  try {
+    console.log(`📸 Capturing screen region: (${x}, ${y}) ${width}x${height}...`);
+    
+    // Capture specific region
+    const regionPath = path.join(__dirname, 'images', 'region_capture.png');
+    
+    // Ensure images directory exists
+    const imagesDir = path.dirname(regionPath);
+    if (!fs.existsSync(imagesDir)) {
+      fs.mkdirSync(imagesDir, { recursive: true });
+    }
+    
+    await screen.capture(regionPath, { x, y, width, height });
+    console.log('✅ Region captured to:', regionPath);
+    
+    // Wait for file to be written
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    console.log('\n🔍 Analyzing captured region for text...');
+    
+    // Process the region capture with OCR
+    await recognizeTextFromScreenshot(regionPath);
+    
+  } catch (error) {
+    console.error('💥 Error during region capture and text recognition:', error.message);
+  }
+}
+
+async function recognizeTextFromScreenshot(imagePath) {
+  try {
+    console.log('🤖 Starting OCR on captured image...');
+    
+    const result = await Tesseract.recognize(
+      imagePath,
+      'eng',
+      {
+        logger: (m) => {
+          if (m.status === 'recognizing text') {
+            const progress = Math.round(m.progress * 100);
+            process.stdout.write(`\r   OCR Progress: ${progress}%`);
+          }
+        }
+      }
+    );
+    
+    process.stdout.write('\n'); // New line after progress
+    
+    const recognizedText = result.data.text.trim();
+    
+    if (recognizedText) {
+      console.log('\n🎉 TEXT FOUND ON SCREEN!');
+      console.log('=' .repeat(50));
+      console.log(recognizedText);
+      console.log('=' .repeat(50));
+      
+      // Analysis
+      const words = recognizedText.split(/\s+/).filter(word => word.length > 0);
+      const lines = recognizedText.split('\n').filter(line => line.trim().length > 0);
+      
+      console.log(`\n📊 Analysis:`);
+      console.log(`   Total words: ${words.length}`);
+      console.log(`   Total lines: ${lines.length}`);
+      console.log(`   Confidence: ${Math.round(result.data.confidence)}%`);
+      
+      // Look for common UI elements
+      const commonUIElements = ['OK', 'Cancel', 'Yes', 'No', 'Save', 'Open', 'Close', 'Exit', 'File', 'Edit', 'View', 'Help'];
+      const foundUIElements = words.filter(word => 
+        commonUIElements.some(ui => ui.toLowerCase() === word.toLowerCase())
+      );
+      
+      if (foundUIElements.length > 0) {
+        console.log(`\n🖥️  UI Elements detected: ${foundUIElements.join(', ')}`);
+      }
+      
+      // Check for specific patterns
+      const hasNumbers = /\d/.test(recognizedText);
+      const hasEmail = /@/.test(recognizedText);
+      const hasURL = /http|www\./.test(recognizedText);
+      
+      console.log(`\n🔍 Content patterns:`);
+      console.log(`   Contains numbers: ${hasNumbers ? '✅' : '❌'}`);
+      console.log(`   Contains email: ${hasEmail ? '✅' : '❌'}`);
+      console.log(`   Contains URLs: ${hasURL ? '✅' : '❌'}`);
+      
+    } else {
+      console.log('\n⚠️  No readable text found in the screenshot');
+      console.log('This might happen if:');
+      console.log('   - The screen has mostly graphics/images');
+      console.log('   - Text is too small or blurry');
+      console.log('   - Text color is too similar to background');
+    }
+    
+  } catch (error) {
+    console.error('💥 Error during OCR processing:', error.message);
+  }
+}
+
+async function demonstrateScreenTextRecognition() {
+  console.log('🚀 Screen Text Recognition Demo');
+  console.log('=' .repeat(50));
+  
+  const args = process.argv.slice(2);
+  
+  if (args.length === 4) {
+    // Region capture mode: node script.js x y width height
+    const [x, y, width, height] = args.map(Number);
+    console.log(`🎯 Region capture mode: (${x}, ${y}) ${width}x${height}`);
+    await captureRegionAndReadText(x, y, width, height);
+  } else if (args.length === 0) {
+    // Full screen mode
+    console.log('🖥️  Full screen capture mode');
+    await captureAndReadScreenText();
+  } else {
+    console.log('📋 Usage options:');
+    console.log('   Full screen: npm run screen-ocr');
+    console.log('   Specific region: npm run screen-ocr -- x y width height');
+    console.log('   Example: npm run screen-ocr -- 100 100 400 200');
+    return;
+  }
+  
+  console.log('\n✅ Screen text recognition completed!');
+}
+
+// Run the demonstration
+demonstrateScreenTextRecognition().catch(console.error);
