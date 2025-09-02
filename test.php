@@ -1,168 +1,3 @@
-<?php
-require_once('\\\\D4920S010\D4920_2\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\Lib\ClassRepository\geral\MSSQL\MSSQL.class.php'); 
-class Alerta{
-    public function Alerta() 
-    {
-        $this->sql = new MSSQL('INFRA');
-    }
-    
-    // Encode problematic characters for database storage
-    private function encode_special_chars($text) {
-        $replacements = array(
-            "'" => "XSQUOTEX",
-            "+" => "XPLUSX", 
-            "-" => "XMINUSX",
-            "<" => "XLTX",
-            ">" => "XGTX"
-        );
-        return str_replace(array_keys($replacements), array_values($replacements), $text);
-    }
-    
-    // Decode characters when retrieving from database
-    private function decode_special_chars($text) {
-        $replacements = array(
-            "XSQUOTEX" => "'",
-            "XPLUSX" => "+",
-            "XMINUSX" => "-", 
-            "XLTX" => "<",
-            "XGTX" => ">"
-        );
-        return str_replace(array_keys($replacements), array_values($replacements), $text);
-    }
-    
-    public function cadastrar_alerta($nome_alerta,$query_alerta,$descricao_alerta,$select_area_resp){
-        // Encode special characters before saving
-        $nome_alerta_encoded = $this->encode_special_chars($nome_alerta);
-        $query_alerta_encoded = $this->encode_special_chars($query_alerta);
-        $descricao_alerta_encoded = $this->encode_special_chars($descricao_alerta);
-        
-        $query = "INSERT INTO INFRA.DBO.TB_QUERIES_ALERTA (NOME_ALERTA,QUERY,STATUS_QUERY,DESCRICAO_ALERTA,ID_AREA) 
-                VALUES ('".$nome_alerta_encoded."','".$query_alerta_encoded."',1,'".$descricao_alerta_encoded."','".$select_area_resp."')";
-        $dados = $this->sql->insert($query);
-        #print $query;
-        return $dados;
-    }
-
-    public function editar_alerta($id,$nome_alerta,$query_alerta,$descricao_alerta,$select_area_resp){
-        // Encode special characters before saving
-        $nome_alerta_encoded = $this->encode_special_chars($nome_alerta);
-        $query_alerta_encoded = $this->encode_special_chars($query_alerta);
-        $descricao_alerta_encoded = $this->encode_special_chars($descricao_alerta);
-        
-        $query = "UPDATE INFRA.DBO.TB_QUERIES_ALERTA
-                SET nome_alerta= '".$nome_alerta_encoded."'
-                    ,query='".$query_alerta_encoded."'
-                    ,descricao_alerta='".$descricao_alerta_encoded."'
-                    ,id_area=".$select_area_resp." 
-                WHERE ID = '".$id."'
-                ";
-        #print $query;die();
-        $dados = $this->sql->update($query);
-        
-        return $dados;
-    }
-    
-    public function consultar_alerta_nome($nome_alerta){
-        $nome_alerta_encoded = $this->encode_special_chars($nome_alerta);
-        $query = "select * from INFRA.DBO.TB_QUERIES_ALERTA where NOME_ALERTA='".$nome_alerta_encoded."'";
-        $dados = $this->sql->qtdRows($query);
-        return $dados;
-    }
-    
-    public function lista_alertas()    {
-        
-        $query = "SELECT id,nome_alerta,query,dt_atualizado,resultado,descricao_alerta,ISNULL(A.id_area,0)id_area, ISNULL(B.DESC_AREA_RESP,'GERAL') desc_area_resp
-        ,SUBSTRING(QUERY,CHARINDEX('SELECT',QUERY),7)+' * '+SUBSTRING(CONVERT(VARCHAR(8000),QUERY),CHARINDEX('FROM',QUERY),LEN(convert(varchar(8000),QUERY))) query_lista
-        ,CONVERT(VARCHAR,DT_ATUALIZADO,103)+' '+CONVERT(VARCHAR,DT_ATUALIZADO,108) dt_atlz       
-       FROM INFRA.DBO.TB_QUERIES_ALERTA A
-        LEFT JOIN
-        TB_ALERTAS_AREA_RESP B ON A.ID_AREA=B.ID_AREA
-       ORDER BY A.ID_AREA,[ID]";
-        $dados = $this->sql->select($query);
-        
-        // Decode special characters when retrieving
-        for($i = 0; $i < count($dados); $i++) {
-            $dados[$i]['nome_alerta'] = $this->decode_special_chars($dados[$i]['nome_alerta']);
-            $dados[$i]['query'] = $this->decode_special_chars($dados[$i]['query']);
-            $dados[$i]['descricao_alerta'] = $this->decode_special_chars($dados[$i]['descricao_alerta']);
-            $dados[$i]['query_lista'] = $this->decode_special_chars($dados[$i]['query_lista']);
-        }
-        
-        return $dados;
-    }
-
-    public function exec_query($query)
-    {   
-        // Decode the query before executing
-        $query_decoded = $this->decode_special_chars($query);
-        $dados = $this->sql->select($query_decoded);
-        return $dados;
-    }
-    
-     public function delete_item($id_item)
-    {   
-        $query = "DELETE FROM INFRA.DBO.TB_QUERIES_ALERTA WHERE ID=".$id_item."";
-        $dados = $this->sql->delete($query);
-        return $dados;
-    }
-    
-    public function lista_query($id)
-    {
-        $query = "SELECT id,nome_alerta,query,convert(varchar,dt_atualizado,103)+' '+convert(varchar,dt_atualizado,108) dt_atualizado,resultado,descricao_alerta FROM INFRA.DBO.TB_QUERIES_ALERTA where id = ".$id." ORDER BY [ID]";
-        $dados = $this->sql->select($query);
-        
-        // Decode special characters when retrieving
-        for($i = 0; $i < count($dados); $i++) {
-            $dados[$i]['nome_alerta'] = $this->decode_special_chars($dados[$i]['nome_alerta']);
-            $dados[$i]['query'] = $this->decode_special_chars($dados[$i]['query']);
-            $dados[$i]['descricao_alerta'] = $this->decode_special_chars($dados[$i]['descricao_alerta']);
-        }
-        
-        return $dados;
-    }
-    
-    public function lista_query_alerta($id)
-    {
-        $query = "SELECT id,nome_alerta,query,dt_atualizado,resultado,descricao_alerta FROM INFRA.DBO.TB_QUERIES_ALERTA where id = ".$id." ORDER BY [ID]";
-        $dados = $this->sql->select($query);
-
-        // Decode the query before executing it
-        $query_to_execute = $this->decode_special_chars($dados[0]['query']);
-        $dados = $this->sql->select($query_to_execute);
-        return $dados;
-    }
-    
-    public function lista_query_grafico($id)
-    {
-        $query = "select id,nome_alerta,convert(varchar,dt_atualizado,103)dt_atualizado,convert(varchar,dt_atualizado,108)hora, resultado 
-                from infra.dbo.tb_queries_alerta_log where datediff(day,dt_atualizado,getdate()) <31 and id = ".$id." order by convert(varchar,dt_atualizado,112)";
-        $dados = $this->sql->select($query);
-        
-        // Decode special characters when retrieving
-        for($i = 0; $i < count($dados); $i++) {
-            $dados[$i]['nome_alerta'] = $this->decode_special_chars($dados[$i]['nome_alerta']);
-        }
-       
-        return $dados;
-    }
-    
-    public function lista_areas()
-    {
-        $query = "select * from infra.dbo.TB_ALERTAS_AREA_RESP";
-        $dados = $this->sql->select($query);
-        
-       
-        return $dados;
-    }
-}   
-
-?>
-
-
-_________
-
-
-
 <?php 
 @session_start();
 
@@ -346,16 +181,21 @@ if($acao =='lista_query_alerta')
     
     $btnExportar = '<p><a href="../view/exportar_xls.php" target="_blank"><button class="btn btn-success" id="btn_exportar_excel">Exportar</button></a></p>';
 
-    if(count($dados)==0)
+    if(!is_array($dados) || count($dados)==0)
     {
         print '<div class="alert alert-info"> <i class="fa-fw fa fa-info"></i> Nenhum registro encontrato!</div>';die();
     }
 
-    foreach ($dados[0] as $key => $value) {
-        if(!is_int($key))
-        {
-            $header[]=$key;
+    $header = array();
+    if(isset($dados[0]) && is_array($dados[0])) {
+        foreach ($dados[0] as $key => $value) {
+            if(!is_int($key))
+            {
+                $header[]=$key;
+            }
         }
+    } else {
+        print '<div class="alert alert-danger"> <i class="fa-fw fa fa-error"></i> Erro na estrutura dos dados!</div>';die();
     }
 
     #<th class="th_csv sorting_desc" tabindex="0" aria-controls="tabela_lojas_sem_municipio" rowspan="1" colspan="1" aria-sort="descending" aria-label="ChaveLoja: activate to sort column ascending" style="width: 63.5185px;">ChaveLoja</th>
