@@ -9,11 +9,11 @@ class Alerta{
     // Encode problematic characters for database storage
     private function encode_special_chars($text) {
         $replacements = array(
-            "'" => "/SQUOTE/",
-            "+" => "/PLUS/", 
-            "-" => "/MINUS/",
-            "<" => "/LT/",
-            ">" => "/GT/"
+            "'" => "XSQUOTEX",
+            "+" => "XPLUSX", 
+            "-" => "XMINUSX",
+            "<" => "XLTX",
+            ">" => "XGTX"
         );
         return str_replace(array_keys($replacements), array_values($replacements), $text);
     }
@@ -21,11 +21,11 @@ class Alerta{
     // Decode characters when retrieving from database
     private function decode_special_chars($text) {
         $replacements = array(
-            "/SQUOTE/" => "'",
-            "/PLUS/" => "+",
-            "/MINUS/" => "-", 
-            "/LT/" => "<",
-            "/GT/" => ">"
+            "XSQUOTEX" => "'",
+            "XPLUSX" => "+",
+            "XMINUSX" => "-", 
+            "XLTX" => "<",
+            "XGTX" => ">"
         );
         return str_replace(array_keys($replacements), array_values($replacements), $text);
     }
@@ -159,7 +159,8 @@ class Alerta{
 ?>
 
 
--------
+_________
+
 
 
 <?php 
@@ -178,22 +179,22 @@ extract($_POST);
 // Helper functions for character encoding/decoding (same as in model)
 function encode_special_chars($text) {
     $replacements = array(
-        "'" => "/SQUOTE/",
-        "+" => "/PLUS/", 
-        "-" => "/MINUS/",
-        "<" => "/LT/",
-        ">" => "/GT/"
+        "'" => "XSQUOTEX",
+        "+" => "XPLUSX", 
+        "-" => "XMINUSX",
+        "<" => "XLTX",
+        ">" => "XGTX"
     );
     return str_replace(array_keys($replacements), array_values($replacements), $text);
 }
 
 function decode_special_chars($text) {
     $replacements = array(
-        "/SQUOTE/" => "'",
-        "/PLUS/" => "+",
-        "/MINUS/" => "-", 
-        "/LT/" => "<",
-        "/GT/" => ">"
+        "XSQUOTEX" => "'",
+        "XPLUSX" => "+",
+        "XMINUSX" => "-", 
+        "XLTX" => "<",
+        "XGTX" => ">"
     );
     return str_replace(array_keys($replacements), array_values($replacements), $text);
 }
@@ -430,4 +431,4 @@ if($acao =='lista_query_alerta')
 
 
 
-?> 
+?>
