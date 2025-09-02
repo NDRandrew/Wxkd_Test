@@ -6,54 +6,41 @@ class Alerta{
         $this->sql = new MSSQL('INFRA');
     }
     
-    // Helper function to escape single quotes for SQL Server  
-    private function escape_sql_string($value) {
-        return str_replace("'", "''", $value);
-    }
-    
     public function cadastrar_alerta($nome_alerta,$query_alerta,$descricao_alerta,$select_area_resp){
-        // Simple escaping - just escape single quotes
-        $nome_alerta_escaped = $this->escape_sql_string($nome_alerta);
-        $query_alerta_escaped = $this->escape_sql_string($query_alerta);
-        $descricao_alerta_escaped = $this->escape_sql_string($descricao_alerta);
+        $nome_alerta = str_replace("'", "''", $nome_alerta);
+        $query_alerta = str_replace("'", "''", $query_alerta);
+        $descricao_alerta = str_replace("'", "''", $descricao_alerta);
         
         $query = "INSERT INTO INFRA.DBO.TB_QUERIES_ALERTA (NOME_ALERTA,QUERY,STATUS_QUERY,DESCRICAO_ALERTA,ID_AREA) 
-                VALUES ('".$nome_alerta_escaped."','".$query_alerta_escaped."',1,'".$descricao_alerta_escaped."','".$select_area_resp."')";
+                VALUES ('".$nome_alerta."','".$query_alerta."',1,'".$descricao_alerta."','".$select_area_resp."')";
         $dados = $this->sql->insert($query);
-        #print $query;
         return $dados;
     }
 
     public function editar_alerta($id,$nome_alerta,$query_alerta,$descricao_alerta,$select_area_resp){
-        // For editing: First normalize by removing any existing double quotes, then escape properly
-        $query_alerta_clean = str_replace("''", "'", $query_alerta); // Normalize first
-        
-        $nome_alerta_escaped = $this->escape_sql_string($nome_alerta);
-        $query_alerta_escaped = $this->escape_sql_string($query_alerta_clean);
-        $descricao_alerta_escaped = $this->escape_sql_string($descricao_alerta);
+        $nome_alerta = str_replace("'", "''", $nome_alerta);
+        $query_alerta = str_replace("'", "''", $query_alerta);
+        $descricao_alerta = str_replace("'", "''", $descricao_alerta);
         
         $query = "UPDATE INFRA.DBO.TB_QUERIES_ALERTA
-                SET nome_alerta= '".$nome_alerta_escaped."'
-                    ,query='".$query_alerta_escaped."'
-                    ,descricao_alerta='".$descricao_alerta_escaped."'
+                SET nome_alerta= '".$nome_alerta."'
+                    ,query='".$query_alerta."'
+                    ,descricao_alerta='".$descricao_alerta."'
                     ,id_area=".$select_area_resp." 
                 WHERE ID = '".$id."'
                 ";
-        #print $query;die();
         $dados = $this->sql->update($query);
-        
         return $dados;
     }
     
     public function consultar_alerta_nome($nome_alerta){
-        $nome_alerta_escaped = $this->escape_sql_string($nome_alerta);
-        $query = "select * from INFRA.DBO.TB_QUERIES_ALERTA where NOME_ALERTA='".$nome_alerta_escaped."'";
+        $nome_alerta = str_replace("'", "''", $nome_alerta);
+        $query = "select * from INFRA.DBO.TB_QUERIES_ALERTA where NOME_ALERTA='".$nome_alerta."'";
         $dados = $this->sql->qtdRows($query);
         return $dados;
     }
     
-    public function lista_alertas()    {
-        
+    public function lista_alertas(){
         $query = "SELECT id,nome_alerta,query,dt_atualizado,resultado,descricao_alerta,ISNULL(A.id_area,0)id_area, ISNULL(B.DESC_AREA_RESP,'GERAL') desc_area_resp
         ,SUBSTRING(QUERY,CHARINDEX('SELECT',QUERY),7)+' * '+SUBSTRING(CONVERT(VARCHAR(8000),QUERY),CHARINDEX('FROM',QUERY),LEN(convert(varchar(8000),QUERY))) query_lista
         ,CONVERT(VARCHAR,DT_ATUALIZADO,103)+' '+CONVERT(VARCHAR,DT_ATUALIZADO,108) dt_atlz       
@@ -70,32 +57,21 @@ class Alerta{
         $dados = $this->sql->select($query);
         return $dados;
     }
-     public function delete_item($id_item)
+    
+    public function delete_item($id_item)
     {   
         $query = "DELETE FROM INFRA.DBO.TB_QUERIES_ALERTA WHERE ID=".$id_item."";
         $dados = $this->sql->delete($query);
         return $dados;
     }
+    
     public function lista_query($id)
     {
         $query = "SELECT id,nome_alerta,query,convert(varchar,dt_atualizado,103)+' '+convert(varchar,dt_atualizado,108) dt_atualizado,resultado,descricao_alerta FROM INFRA.DBO.TB_QUERIES_ALERTA where id = ".$id." ORDER BY [ID]";
         $dados = $this->sql->select($query);
-        
-        // Unescape data for proper display in forms (prevents double-escaping)
-        if(!empty($dados) && isset($dados[0])) {
-            if(isset($dados[0]['query'])) {
-                $dados[0]['query'] = str_replace("''", "'", $dados[0]['query']);
-            }
-            if(isset($dados[0]['nome_alerta'])) {
-                $dados[0]['nome_alerta'] = str_replace("''", "'", $dados[0]['nome_alerta']);
-            }
-            if(isset($dados[0]['descricao_alerta'])) {
-                $dados[0]['descricao_alerta'] = str_replace("''", "'", $dados[0]['descricao_alerta']);
-            }
-        }
-        
         return $dados;
     }
+    
     public function lista_query_alerta($id)
     {
         $query = "SELECT id,nome_alerta,query,dt_atualizado,resultado,descricao_alerta FROM INFRA.DBO.TB_QUERIES_ALERTA where id = ".$id." ORDER BY [ID]";
@@ -104,21 +80,19 @@ class Alerta{
         $dados = $this->sql->select($dados[0]['query']);
         return $dados;
     }
+    
     public function lista_query_grafico($id)
     {
         $query = "select id,nome_alerta,convert(varchar,dt_atualizado,103)dt_atualizado,convert(varchar,dt_atualizado,108)hora, resultado 
                 from infra.dbo.tb_queries_alerta_log where datediff(day,dt_atualizado,getdate()) <31 and id = ".$id." order by convert(varchar,dt_atualizado,112)";
         $dados = $this->sql->select($query);
-        
-       
         return $dados;
     }
+    
     public function lista_areas()
     {
         $query = "select * from infra.dbo.TB_ALERTAS_AREA_RESP";
         $dados = $this->sql->select($query);
-        
-       
         return $dados;
     }
 }   
@@ -127,139 +101,6 @@ class Alerta{
 
 
 --------
-
-
-<?php
-require_once('\\\\D4920S010\D4920_2\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\Lib\ClassRepository\geral\MSSQL\MSSQL.class.php'); 
-class Alerta{
-    public function Alerta() 
-    {
-        $this->sql = new MSSQL('INFRA');
-    }
-    
-    // Helper function to escape single quotes for SQL Server  
-    private function escape_sql_string($value) {
-        return str_replace("'", "''", $value);
-    }
-    
-    public function cadastrar_alerta($nome_alerta,$query_alerta,$descricao_alerta,$select_area_resp){
-        // Simple escaping - just escape single quotes
-        $nome_alerta_escaped = $this->escape_sql_string($nome_alerta);
-        $query_alerta_escaped = $this->escape_sql_string($query_alerta);
-        $descricao_alerta_escaped = $this->escape_sql_string($descricao_alerta);
-        
-        $query = "INSERT INTO INFRA.DBO.TB_QUERIES_ALERTA (NOME_ALERTA,QUERY,STATUS_QUERY,DESCRICAO_ALERTA,ID_AREA) 
-                VALUES ('".$nome_alerta_escaped."','".$query_alerta_escaped."',1,'".$descricao_alerta_escaped."','".$select_area_resp."')";
-        $dados = $this->sql->insert($query);
-        #print $query;
-        return $dados;
-    }
-
-    public function editar_alerta($id,$nome_alerta,$query_alerta,$descricao_alerta,$select_area_resp){
-        // For editing: First normalize by removing any existing double quotes, then escape properly
-        $query_alerta_clean = str_replace("''", "'", $query_alerta); // Normalize first
-        
-        $nome_alerta_escaped = $this->escape_sql_string($nome_alerta);
-        $query_alerta_escaped = $this->escape_sql_string($query_alerta_clean);
-        $descricao_alerta_escaped = $this->escape_sql_string($descricao_alerta);
-        
-        $query = "UPDATE INFRA.DBO.TB_QUERIES_ALERTA
-                SET nome_alerta= '".$nome_alerta_escaped."'
-                    ,query='".$query_alerta_escaped."'
-                    ,descricao_alerta='".$descricao_alerta_escaped."'
-                    ,id_area=".$select_area_resp." 
-                WHERE ID = '".$id."'
-                ";
-        #print $query;die();
-        $dados = $this->sql->update($query);
-        
-        return $dados;
-    }
-    
-    public function consultar_alerta_nome($nome_alerta){
-        $nome_alerta_escaped = $this->escape_sql_string($nome_alerta);
-        $query = "select * from INFRA.DBO.TB_QUERIES_ALERTA where NOME_ALERTA='".$nome_alerta_escaped."'";
-        $dados = $this->sql->qtdRows($query);
-        return $dados;
-    }
-    
-    public function lista_alertas()    {
-        
-        $query = "SELECT id,nome_alerta,query,dt_atualizado,resultado,descricao_alerta,ISNULL(A.id_area,0)id_area, ISNULL(B.DESC_AREA_RESP,'GERAL') desc_area_resp
-        ,SUBSTRING(QUERY,CHARINDEX('SELECT',QUERY),7)+' * '+SUBSTRING(CONVERT(VARCHAR(8000),QUERY),CHARINDEX('FROM',QUERY),LEN(convert(varchar(8000),QUERY))) query_lista
-        ,CONVERT(VARCHAR,DT_ATUALIZADO,103)+' '+CONVERT(VARCHAR,DT_ATUALIZADO,108) dt_atlz       
-       FROM INFRA.DBO.TB_QUERIES_ALERTA A
-        LEFT JOIN
-        TB_ALERTAS_AREA_RESP B ON A.ID_AREA=B.ID_AREA
-       ORDER BY A.ID_AREA,[ID]";
-        $dados = $this->sql->select($query);
-        return $dados;
-    }
-
-    public function exec_query($query)
-    {   
-        $dados = $this->sql->select($query);
-        return $dados;
-    }
-     public function delete_item($id_item)
-    {   
-        $query = "DELETE FROM INFRA.DBO.TB_QUERIES_ALERTA WHERE ID=".$id_item."";
-        $dados = $this->sql->delete($query);
-        return $dados;
-    }
-    public function lista_query($id)
-    {
-        $query = "SELECT id,nome_alerta,query,convert(varchar,dt_atualizado,103)+' '+convert(varchar,dt_atualizado,108) dt_atualizado,resultado,descricao_alerta FROM INFRA.DBO.TB_QUERIES_ALERTA where id = ".$id." ORDER BY [ID]";
-        $dados = $this->sql->select($query);
-        
-        // Unescape data for proper display in forms (prevents double-escaping)
-        if(!empty($dados) && isset($dados[0])) {
-            if(isset($dados[0]['query'])) {
-                $dados[0]['query'] = str_replace("''", "'", $dados[0]['query']);
-            }
-            if(isset($dados[0]['nome_alerta'])) {
-                $dados[0]['nome_alerta'] = str_replace("''", "'", $dados[0]['nome_alerta']);
-            }
-            if(isset($dados[0]['descricao_alerta'])) {
-                $dados[0]['descricao_alerta'] = str_replace("''", "'", $dados[0]['descricao_alerta']);
-            }
-        }
-        
-        return $dados;
-    }
-    public function lista_query_alerta($id)
-    {
-        $query = "SELECT id,nome_alerta,query,dt_atualizado,resultado,descricao_alerta FROM INFRA.DBO.TB_QUERIES_ALERTA where id = ".$id." ORDER BY [ID]";
-        $dados = $this->sql->select($query);
-
-        $dados = $this->sql->select($dados[0]['query']);
-        return $dados;
-    }
-    public function lista_query_grafico($id)
-    {
-        $query = "select id,nome_alerta,convert(varchar,dt_atualizado,103)dt_atualizado,convert(varchar,dt_atualizado,108)hora, resultado 
-                from infra.dbo.tb_queries_alerta_log where datediff(day,dt_atualizado,getdate()) <31 and id = ".$id." order by convert(varchar,dt_atualizado,112)";
-        $dados = $this->sql->select($query);
-        
-       
-        return $dados;
-    }
-    public function lista_areas()
-    {
-        $query = "select * from infra.dbo.TB_ALERTAS_AREA_RESP";
-        $dados = $this->sql->select($query);
-        
-       
-        return $dados;
-    }
-}   
-
-?>
-
-
-
---------
-
 
 
 <?php 
@@ -268,35 +109,10 @@ class Alerta{
 require_once '../model/alerta_model.php';
 $alerta = new Alerta();
 
-#$dados = extract($_GET);
-
-#print_r($_POST);
-
 extract($_GET);
 extract($_POST);
 
-// Helper function to escape single quotes for SQL Server (needed for JavaScript generation)
-function escape_sql_string($value) {
-    return str_replace("'", "''", $value);
-}
-
-// Helper function to validate and sanitize numeric IDs
-function validate_numeric_id($id) {
-    if (!is_numeric($id) || $id <= 0) {
-        die('ID inválido!');
-    }
-    return (int)$id; // Cast to integer for safety
-}
-
-// Helper function to escape HTML output to prevent XSS
-function escape_html($value) {
-    return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
-}
-
 if($acao == 'cadastrar_alerta'){
-    #print 'Alerta cadastrado com sucesso!';
-    #die();
-
     if($alerta->cadastrar_alerta($nome_alerta,$query_alerta,$descricao_alerta,$select_area_resp))
     {
         print 'Alerta cadastrado com sucesso!';
@@ -305,9 +121,8 @@ if($acao == 'cadastrar_alerta'){
     }
     die();
 }
-if($acao == 'editar_alerta'){
-    #print_r($_GET);die();
 
+if($acao == 'editar_alerta'){
     if($alerta->editar_alerta($id,$nome_alerta,$query_alerta,$descricao_alerta,$select_area_resp))
     {
         print 'Alerta editado com sucesso!';
@@ -319,124 +134,72 @@ if($acao == 'editar_alerta'){
 
 if($acao=='exec_query')
 {
-    // CRITICAL SECURITY FIX: Do not allow arbitrary query execution
-    // This is extremely dangerous as it allows any SQL to be executed
-    // Instead, restrict to only SELECT queries and add validation
-    
-    $query = trim($query);
-    
-    // Only allow SELECT queries (basic protection)
-    if(!preg_match('/^SELECT\s+/i', $query)) {
-        die('Erro: Apenas consultas SELECT são permitidas!');
-    }
-    
-    // Check for dangerous SQL keywords
-    $dangerous_keywords = array('DROP', 'DELETE', 'UPDATE', 'INSERT', 'ALTER', 'CREATE', 'EXEC', 'EXECUTE');
-    foreach($dangerous_keywords as $keyword) {
-        if(stripos($query, $keyword) !== false) {
-            die('Erro: Query contém comandos não permitidos!');
-        }
-    }
-    
     $dados =  $alerta->exec_query($query);
-    
     print $query;die();
-    
 }
 
 if($acao=='delete_item')
 {
-    // Validate ID is numeric
-    $id_item = validate_numeric_id($id_item);
-    
     if($alerta->delete_item($id_item))
     {
         print 'Excluido com sucesso!';
     }else{
          print 'Erro ao excluir alerta!';
     }
- 
     die();
 }
+
 if($acao =='lista_query')
 {
-    // Validate ID is numeric  
-    $clean_id = validate_numeric_id(str_replace('item_query', '', $id));
-    
-    $dados =  $alerta->lista_query($clean_id);
-    #print_r($dados);
-    print number_format($dados[0]['resultado'],0,',','.')."<br><i style='font-size:10px;font-style:normal;font-weight:normal;' class='pull-right'>".escape_html($dados[0]['dt_atualizado'])."";
-    
-
+    $dados =  $alerta->lista_query(str_replace('item_query', '', $id));
+    print number_format($dados[0]['resultado'],0,',','.')."<br><i style='font-size:10px;font-style:normal;font-weight:normal;' class='pull-right'>".$dados[0]['dt_atualizado']."";
     die();
 }
+
 if($acao =='lista_query_grafico')
 {
-    // Validate ID is numeric
-    $id = validate_numeric_id($id);
-    
     $dados =  $alerta->lista_query_grafico($id);
-    
-    // CHECK: Make sure $dados is not null/empty before proceeding
-    if(empty($dados) || !is_array($dados)) {
-        print '<div class="alert alert-info"> <i class="fa-fw fa fa-info"></i> Nenhum dado encontrado para o gráfico!</div>';
-        die();
-    }
-    
-    #print '<pre>';print_r($dados);die(); 
-    $dt_atualizado = "";
-    $resultado = "";
     
     for($i=0;$i<count($dados);$i++)
     {
-        // Escape single quotes for JavaScript string safety
-        $dt_atualizado.="'".escape_sql_string($dados[$i]['dt_atualizado'])."',";
+        $dt_atualizado.="'".$dados[$i]['dt_atualizado']."',";
         $resultado.=$dados[$i]['resultado'].",";
     }
 
     print "
-
     <script>
         Highcharts.chart('div_return_grafico', {
-
             legend: {
-                    itemStyle: {
-                        fontSize: '16px' // Altere o valor conforme necessário
-                    }
-                },
-
+                itemStyle: {
+                    fontSize: '16px'
+                }
+            },
             chart: {
                 type: 'spline'
             },
             title: {
-                text: '"; 
-                // Escape JavaScript string to prevent XSS and quote issues
-                print str_replace("'", "\\'", $dados[0]['nome_alerta']);
-                print "',
+                text: '".$dados[0]['nome_alerta']."',
                 style: {
-                            fontSize: '16px',
-                            fontWeight: 'bold'
-                        }
+                    fontSize: '16px',
+                    fontWeight: 'bold'
+                }
             },
-            
             xAxis: {
                 categories: [
-                    "; 
-                    print substr($dt_atualizado,0,strlen($dt_atualizado)-1);
-                    print "
+                    ".substr($dt_atualizado,0,strlen($dt_atualizado)-1)."
                 ],
                 labels: {
-                        style: {
-                            fontSize: '16px' // Altere o tamanho conforme necessário
-                        }
+                    style: {
+                        fontSize: '16px'
                     }
+                }
             },
             yAxis: {
                 title: {
                     text: 'Quantidade de Registros',                    
                     style: {
-                                fontSize: '16px'
-                            }
+                        fontSize: '16px'
+                    }
                 }
             },
             plotOptions: {
@@ -450,14 +213,12 @@ if($acao =='lista_query_grafico')
             series: [{
                 name: 'Historico resultado por dia (Ultimos 30 dias)',
                 data: [
-                   "; 
-                    print substr($resultado,0,strlen($resultado)-1);
-                    print "
+                   ".substr($resultado,0,strlen($resultado)-1)."
                 ],
                 dataLabels: {
                     enabled: true,
                     style: {
-                        fontSize: '16px', // Altere o tamanho conforme necessário
+                        fontSize: '16px',
                         fontWeight: 'bold',
                         color: '#000000'
                     }
@@ -465,23 +226,140 @@ if($acao =='lista_query_grafico')
             }]
         });
     </script>";
-   
 
     die();
 }
+
+<?php 
+@session_start();
+
+require_once '../model/alerta_model.php';
+$alerta = new Alerta();
+
+extract($_GET);
+extract($_POST);
+
+if($acao == 'cadastrar_alerta'){
+    if($alerta->cadastrar_alerta($nome_alerta,$query_alerta,$descricao_alerta,$select_area_resp))
+    {
+        print 'Alerta cadastrado com sucesso!';
+    }else{
+         print 'Erro ao cadastrar alerta!';
+    }
+    die();
+}
+
+if($acao == 'editar_alerta'){
+    if($alerta->editar_alerta($id,$nome_alerta,$query_alerta,$descricao_alerta,$select_area_resp))
+    {
+        print 'Alerta editado com sucesso!';
+    }else{
+         print 'Erro ao editar alerta!';
+    }
+    die();
+}
+
+if($acao=='exec_query')
+{
+    $dados =  $alerta->exec_query($query);
+    print $query;die();
+}
+
+if($acao=='delete_item')
+{
+    if($alerta->delete_item($id_item))
+    {
+        print 'Excluido com sucesso!';
+    }else{
+         print 'Erro ao excluir alerta!';
+    }
+    die();
+}
+
+if($acao =='lista_query')
+{
+    $dados =  $alerta->lista_query(str_replace('item_query', '', $id));
+    print number_format($dados[0]['resultado'],0,',','.')."<br><i style='font-size:10px;font-style:normal;font-weight:normal;' class='pull-right'>".$dados[0]['dt_atualizado']."";
+    die();
+}
+
+if($acao =='lista_query_grafico')
+{
+    $dados =  $alerta->lista_query_grafico($id);
+    
+    for($i=0;$i<count($dados);$i++)
+    {
+        $dt_atualizado.="'".$dados[$i]['dt_atualizado']."',";
+        $resultado.=$dados[$i]['resultado'].",";
+    }
+
+    print "
+    <script>
+        Highcharts.chart('div_return_grafico', {
+            legend: {
+                itemStyle: {
+                    fontSize: '16px'
+                }
+            },
+            chart: {
+                type: 'spline'
+            },
+            title: {
+                text: '".$dados[0]['nome_alerta']."',
+                style: {
+                    fontSize: '16px',
+                    fontWeight: 'bold'
+                }
+            },
+            xAxis: {
+                categories: [
+                    ".substr($dt_atualizado,0,strlen($dt_atualizado)-1)."
+                ],
+                labels: {
+                    style: {
+                        fontSize: '16px'
+                    }
+                }
+            },
+            yAxis: {
+                title: {
+                    text: 'Quantidade de Registros',                    
+                    style: {
+                        fontSize: '16px'
+                    }
+                }
+            },
+            plotOptions: {
+                line: {
+                    dataLabels: {
+                        enabled: true
+                    },
+                    enableMouseTracking: false
+                }
+            },
+            series: [{
+                name: 'Historico resultado por dia (Ultimos 30 dias)',
+                data: [
+                   ".substr($resultado,0,strlen($resultado)-1)."
+                ],
+                dataLabels: {
+                    enabled: true,
+                    style: {
+                        fontSize: '16px',
+                        fontWeight: 'bold',
+                        color: '#000000'
+                    }
+                }               
+            }]
+        });
+    </script>";
+
+    die();
+}
+
 if($acao =='lista_query_alerta')
 {
-    // Validate ID is numeric
-    $id = validate_numeric_id($id);
-    
     $dados =  $alerta->lista_query_alerta($id);
-    
-    // CHECK: Make sure $dados is not null/empty before proceeding
-    if(empty($dados) || !is_array($dados)) {
-        print '<div class="alert alert-info"> <i class="fa-fw fa fa-info"></i> Nenhum registro encontrado!</div>';
-        die();
-    }
-    
     $_SESSION['exportar_excel']=$dados;
     
     $btnExportar = '<p><a href="../view/exportar_xls.php" target="_blank"><button class="btn btn-success" id="btn_exportar_excel">Exportar</button></a></p>';
@@ -491,40 +369,25 @@ if($acao =='lista_query_alerta')
         print '<div class="alert alert-info"> <i class="fa-fw fa fa-info"></i> Nenhum registro encontrato!</div>';die();
     }
 
-    // CHECK: Make sure $dados[0] exists and is an array before foreach
-    $header = array();
-    if(isset($dados[0]) && is_array($dados[0])) {
-        foreach ($dados[0] as $key => $value) {
-            if(!is_int($key))
-            {
-                $header[]=$key;
-            }
+    foreach ($dados[0] as $key => $value) {
+        if(!is_int($key))
+        {
+            $header[]=$key;
         }
     }
-    
-    // CHECK: Only proceed if we have headers
-    if(empty($header)) {
-        print '<div class="alert alert-danger"> <i class="fa-fw fa fa-error"></i> Erro na estrutura dos dados!</div>';
-        die();
-    }
-
-    #<th class="th_csv sorting_desc" tabindex="0" aria-controls="tabela_lojas_sem_municipio" rowspan="1" colspan="1" aria-sort="descending" aria-label="ChaveLoja: activate to sort column ascending" style="width: 63.5185px;">ChaveLoja</th>
     
     $html_table = $btnExportar.'<table class="tabela_lista_query">';
     $html_table .= '<thead><tr role="row">';
     
-    // SAFE: foreach now guaranteed to work since we checked $header
     foreach($header as $key => $value)
     {
-       $html_table .= '<th>'.escape_html($value).'</th>'; 
+       $html_table .= '<th>'.$value.'</th>'; 
     }
     
     $html_table .= '</tr></thead><tbody>';
-
     
     for($i=0;$i<count($dados);$i++)
     {
-        
         if($i%2==0)
         {
             $bg=" bg_par ";
@@ -533,11 +396,9 @@ if($acao =='lista_query_alerta')
         }
 
         $html_table .= '<tr class="'.$bg.'">';
-        // SAFE: foreach now guaranteed to work since we checked $header  
         foreach($header as $key => $value)
         {
-            $cell_value = isset($dados[$i][$value]) ? $dados[$i][$value] : '';
-            $html_table .= '<td>'.escape_html($cell_value).'</td>';
+            $html_table .= '<td>'.$dados[$i][$value].'</td>';
         }
         $html_table .= '</tr>';
     }
@@ -574,12 +435,8 @@ if($acao =='lista_query_alerta')
         </script>
     <?php
 
-
     print $html_table;
-
     die();
 }
 
-
-
-?>
+?> 
