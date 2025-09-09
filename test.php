@@ -21,31 +21,19 @@
             <scope>system</scope>
             <systemPath>${basedir}/lib/pcspapi.jar</systemPath>
         </dependency>
+        <dependency>
+            <groupId>com.ibm</groupId>
+            <artifactId>pcsapi</artifactId>
+            <version>1.0</version>
+            <scope>system</scope>
+            <systemPath>${basedir}/lib/pcsapi.jar</systemPath>
+        </dependency>
+        <dependency>
+            <groupId>com.ibm</groupId>
+            <artifactId>base</artifactId>
+            <version>1.0</version>
+            <scope>system</scope>
+            <systemPath>${basedir}/lib/base.jar</systemPath>
+        </dependency>
     </dependencies>
 </project>
-
-------
-
-
-import com.ibm.eNetwork.ECL.*;
-
-public class CursorReader {
-    public static void main(String[] args) {
-        try {
-            ECLSession session = new ECLSession();
-            session.SetConnectionByName("A"); // or specify your .ws file path
-            
-            ECLScreenDesc screen = new ECLScreenDesc();
-            screen.SetSessionHandle(session.GetSessionHandle());
-            
-            int row = screen.GetCursorRow();
-            int col = screen.GetCursorCol();
-            
-            System.out.println("Line: " + row + ", Column: " + col);
-            
-            session.UnsetConnection();
-        } catch (Exception e) {
-            System.err.println("Error: " + e.getMessage());
-        }
-    }
-}
