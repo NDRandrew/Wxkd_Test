@@ -71,3 +71,18 @@ async function main() {
 main();
 
 
+__---_____-
+
+
+{
+  "name": "image-detector-notepad",
+  "version": "1.0.0",
+  "main": "app.js",
+  "dependencies": {
+    "@nut-tree-fork/nut-js": "^4.2.0",
+    "@tensorflow/tfjs-node": "^4.15.0",
+    "@tensorflow-models/coco-ssd": "^2.2.2"
+  }
+}
+
+
