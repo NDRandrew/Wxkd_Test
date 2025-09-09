@@ -1,40 +1,3 @@
-import com.sun.jna.Library;
-import com.sun.jna.Native;
-import com.sun.jna.platform.win32.WinDef.HWND;
-import com.sun.jna.platform.win32.User32;
-import com.sun.jna.platform.win32.WinDef.POINT;
-
-public class CursorPosition {
-    public static void main(String[] args) {
-        try {
-            HWND pcommWindow = User32.INSTANCE.FindWindow(null, "IBM Personal Communications");
-            if (pcommWindow == null) {
-                System.err.println("PCOMM window not found");
-                return;
-            }
-            
-            POINT cursor = new POINT();
-            User32.INSTANCE.GetCursorPos(cursor);
-            User32.INSTANCE.ScreenToClient(pcommWindow, cursor);
-            
-            // Approximate character position (adjust based on font size)
-            int charWidth = 8;  // pixels per character
-            int charHeight = 16; // pixels per character
-            int headerOffset = 30; // window header offset
-            
-            int col = (cursor.x / charWidth) + 1;
-            int row = ((cursor.y - headerOffset) / charHeight) + 1;
-            
-            System.out.println("Line: " + row + ", Column: " + col);
-            
-        } catch (Exception e) {
-            System.err.println("Error: " + e.getMessage());
-        }
-    }
-}
-
---------
-
 <!-- pom.xml -->
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
@@ -53,14 +16,6 @@ public class CursorPosition {
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
     
-    <dependencies>
-        <dependency>
-            <groupId>net.java.dev.jna</groupId>
-            <artifactId>jna-platform</artifactId>
-            <version>5.13.0</version>
-        </dependency>
-    </dependencies>
-    
     <build>
         <plugins>
             <plugin>
@@ -69,8 +24,36 @@ public class CursorPosition {
                 <version>3.1.0</version>
                 <configuration>
                     <mainClass>CursorPosition</mainClass>
+                    <options>
+                        <option>-Djava.library.path=${project.basedir}/lib</option>
+                    </options>
                 </configuration>
             </plugin>
         </plugins>
     </build>
 </project>
+
+
+-----------
+
+
+public class CursorPosition {
+    static {
+        System.loadLibrary("pcshll32");
+    }
+    
+    public static void main(String[] args) {
+        int[] pos = new int[2];
+        int result = hllapi(13, "", 0, pos); // Query cursor position
+        
+        if (result == 0) {
+            int row = (pos[0] / 80) + 1;
+            int col = (pos[0] % 80) + 1;
+            System.out.println("Line: " + row + ", Column: " + col);
+        } else {
+            System.err.println("HLLAPI Error: " + result);
+        }
+    }
+    
+    private static native int hllapi(int func, String data, int len, int[] pos);
+}
