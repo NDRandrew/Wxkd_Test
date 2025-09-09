@@ -1,21 +1,10 @@
-const { screen, mouse, keyboard, Button, Key } = require('@nut-tree-fork/nut-js');
-const tf = require('@tensorflow/tfjs-node');
-const cocoSsd = require('@tensorflow-models/coco-ssd');
-const fs = require('fs');
+const { screen, mouse, keyboard, Button } = require('@nut-tree-fork/nut-js');
+const Tesseract = require('tesseract.js');
 const { spawn } = require('child_process');
 
-async function loadImage(imagePath) {
-    const imageBuffer = fs.readFileSync(imagePath);
-    const tfimage = tf.node.decodeImage(imageBuffer, 3);
-    return tfimage;
-}
-
-async function detectObjects(imagePath) {
-    const model = await cocoSsd.load();
-    const image = await loadImage(imagePath);
-    const predictions = await model.detect(image);
-    image.dispose();
-    return predictions;
+async function extractText(imagePath) {
+    const { data: { text } } = await Tesseract.recognize(imagePath, 'eng');
+    return text.trim();
 }
 
 async function openNotepad() {
@@ -26,18 +15,17 @@ async function openNotepad() {
 }
 
 async function findAndClickMaximize() {
-    await screen.waitFor('maximize_button.png', 10000, { confidence: 0.8 })
-        .then(async (result) => {
-            await mouse.leftClick(result);
-            await mouse.releaseButton(Button.LEFT);
-        })
-        .catch(async () => {
-            const screenSize = await screen.size();
-            const maxButtonX = screenSize.width - 50;
-            const maxButtonY = 30;
-            await mouse.leftClick({ x: maxButtonX, y: maxButtonY });
-            await mouse.releaseButton(Button.LEFT);
-        });
+    try {
+        const result = await screen.waitFor('maximize_button.png', 5000, { confidence: 0.8 });
+        await mouse.leftClick(result);
+        await mouse.releaseButton(Button.LEFT);
+    } catch {
+        const screenSize = await screen.size();
+        const maxButtonX = screenSize.width - 50;
+        const maxButtonY = 30;
+        await mouse.leftClick({ x: maxButtonX, y: maxButtonY });
+        await mouse.releaseButton(Button.LEFT);
+    }
 }
 
 async function main() {
@@ -48,11 +36,9 @@ async function main() {
     }
 
     try {
-        console.log('Detecting objects...');
-        const predictions = await detectObjects(imagePath);
-        
-        const detectedObjects = predictions.map(p => p.class).join(', ');
-        console.log('Detected:', detectedObjects);
+        console.log('Extracting text...');
+        const extractedText = await extractText(imagePath);
+        console.log('Extracted:', extractedText);
 
         console.log('Opening Notepad...');
         await openNotepad();
@@ -60,7 +46,7 @@ async function main() {
         console.log('Maximizing window...');
         await findAndClickMaximize();
         
-        await keyboard.type(`Detected objects: ${detectedObjects}`);
+        await keyboard.type(`Extracted text: ${extractedText}`);
         
         console.log('Done!');
     } catch (error) {
@@ -71,8 +57,7 @@ async function main() {
 main();
 
 
-__---_____-
-
+-------
 
 {
   "name": "image-detector-notepad",
@@ -80,9 +65,6 @@ __---_____-
   "main": "app.js",
   "dependencies": {
     "@nut-tree-fork/nut-js": "^4.2.0",
-    "@tensorflow/tfjs-node": "^4.15.0",
-    "@tensorflow-models/coco-ssd": "^2.2.2"
+    "tesseract.js": "^5.0.4"
   }
 }
-
-
