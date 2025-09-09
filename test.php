@@ -1,27 +1,20 @@
-import com.ibm.eNetwork.ECL.*;
-
 public class CursorPosition {
+    static {
+        System.loadLibrary("pcshll32");
+    }
+    
     public static void main(String[] args) {
-        ECLSession session = new ECLSession();
+        int[] pos = new int[2];
+        int result = hllapi(13, "", 0, pos); // Query cursor position
         
-        try {
-            session.SetConnectionByName("A");
-            session.StartCommunication();
-            
-            ECLScreenDesc screen = new ECLScreenDesc();
-            session.GetScreen(screen);
-            
-            int row = session.GetCursorPos().y + 1;
-            int col = session.GetCursorPos().x + 1;
-            
+        if (result == 0) {
+            int row = (pos[0] / 80) + 1;
+            int col = (pos[0] % 80) + 1;
             System.out.println("Line: " + row + ", Column: " + col);
-            
-        } catch (Exception e) {
-            System.err.println("Error: " + e.getMessage());
-        } finally {
-            try {
-                session.StopCommunication();
-            } catch (Exception e) {}
+        } else {
+            System.err.println("HLLAPI Error: " + result);
         }
     }
+    
+    private static native int hllapi(int func, String data, int len, int[] pos);
 }
