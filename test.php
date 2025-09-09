@@ -1,23 +1,51 @@
-import java.io.*;
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    
+    <groupId>com.example</groupId>
+    <artifactId>pcomm-cursor</artifactId>
+    <version>1.0</version>
+    
+    <properties>
+        <maven.compiler.source>8</maven.compiler.source>
+        <maven.compiler.target>8</maven.compiler.target>
+    </properties>
+    
+    <dependencies>
+        <dependency>
+            <groupId>com.ibm</groupId>
+            <artifactId>hacl</artifactId>
+            <version>7.0</version>
+            <scope>system</scope>
+            <systemPath>${basedir}/lib/hacl.jar</systemPath>
+        </dependency>
+    </dependencies>
+</project>
 
-public class CursorPosition {
+
+
+-------
+
+
+import com.ibm.eNetwork.ECL.*;
+
+public class CursorReader {
     public static void main(String[] args) {
         try {
-            // Use PCOMM automation object via command line
-            ProcessBuilder pb = new ProcessBuilder("cmd", "/c", 
-                "echo Set sess = CreateObject(\"PCOMM.autECLSession\") > temp.vbs && " +
-                "echo sess.SetConnectionByName \"A\" >> temp.vbs && " +
-                "echo WScript.Echo sess.autECLPS.CursorPosRow ^& \",\" ^& sess.autECLPS.CursorPosCol >> temp.vbs && " +
-                "cscript //nologo temp.vbs && del temp.vbs");
+            ECLSession session = new ECLSession();
+            session.SetConnectionByName("A"); // or specify your .ws file path
             
-            Process p = pb.start();
-            BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
-            String result = reader.readLine();
+            ECLScreenDesc screen = new ECLScreenDesc();
+            screen.SetSessionHandle(session.GetSessionHandle());
             
-            if (result != null && result.contains(",")) {
-                String[] pos = result.split(",");
-                System.out.println("Line: " + pos[0] + ", Column: " + pos[1]);
-            }
+            int row = screen.GetCursorRow();
+            int col = screen.GetCursorCol();
+            
+            System.out.println("Line: " + row + ", Column: " + col);
+            
+            session.UnsetConnection();
         } catch (Exception e) {
             System.err.println("Error: " + e.getMessage());
         }
