@@ -1,15 +1,45 @@
 const { screen, mouse, keyboard, Button } = require('@nut-tree-fork/nut-js');
-const tesseract = require('node-tesseract-ocr');
 const { spawn } = require('child_process');
+const path = require('path');
 
 async function extractText(imagePath) {
-    const config = {
-        lang: 'eng',
-        oem: 1,
-        psm: 3,
-    };
-    const text = await tesseract.recognize(imagePath, config);
-    return text.trim();
+    return new Promise((resolve, reject) => {
+        const absolutePath = path.resolve(imagePath);
+        const powershellScript = `
+Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Windows.Forms
+[Windows.Media.Ocr.OcrEngine, Windows.winmd, ContentType = WindowsRuntime] | Out-Null
+[Windows.Storage.StorageFile, Windows.Storage, ContentType = WindowsRuntime] | Out-Null
+[Windows.Graphics.Imaging.BitmapDecoder, Windows.Graphics, ContentType = WindowsRuntime] | Out-Null
+
+$ocrEngine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
+$file = [Windows.Storage.StorageFile]::GetFileFromPathAsync("${absolutePath}").GetAwaiter().GetResult()
+$stream = $file.OpenReadAsync().GetAwaiter().GetResult()
+$decoder = [Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream).GetAwaiter().GetResult()
+$bitmap = $decoder.GetSoftwareBitmapAsync().GetAwaiter().GetResult()
+$result = $ocrEngine.RecognizeAsync($bitmap).GetAwaiter().GetResult()
+$result.Text
+`;
+        
+        const ps = spawn('powershell', ['-Command', powershellScript], { 
+            stdio: ['pipe', 'pipe', 'pipe'],
+            shell: true 
+        });
+        
+        let output = '';
+        let error = '';
+        
+        ps.stdout.on('data', (data) => output += data.toString());
+        ps.stderr.on('data', (data) => error += data.toString());
+        
+        ps.on('close', (code) => {
+            if (code === 0) {
+                resolve(output.trim());
+            } else {
+                reject(new Error(`PowerShell error: ${error}`));
+            }
+        });
+    });
 }
 
 async function openNotepad() {
@@ -60,25 +90,3 @@ async function main() {
 }
 
 main();
-
-
--------
-
-
-# OCR Text Extraction with Notepad Automation
-
-## Install Tesseract
-Download and install: https://github.com/UB-Mannheim/tesseract/wiki
-Add to PATH: `C:\Program Files\Tesseract-OCR`
-
-## Install Dependencies
-```bash
-npm install
-```
-
-## Run
-```bash
-node app.js path/to/your/image.jpg
-```
-
-Uses Tesseract OCR to extract text from images and write it to Notepad. 
