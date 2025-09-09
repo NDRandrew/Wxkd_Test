@@ -1,9 +1,14 @@
 const { screen, mouse, keyboard, Button } = require('@nut-tree-fork/nut-js');
-const Tesseract = require('tesseract.js');
+const tesseract = require('node-tesseract-ocr');
 const { spawn } = require('child_process');
 
 async function extractText(imagePath) {
-    const { data: { text } } = await Tesseract.recognize(imagePath, 'eng');
+    const config = {
+        lang: 'eng',
+        oem: 1,
+        psm: 3,
+    };
+    const text = await tesseract.recognize(imagePath, config);
     return text.trim();
 }
 
@@ -55,16 +60,3 @@ async function main() {
 }
 
 main();
-
-
--------
-
-{
-  "name": "image-detector-notepad",
-  "version": "1.0.0",
-  "main": "app.js",
-  "dependencies": {
-    "@nut-tree-fork/nut-js": "^4.2.0",
-    "tesseract.js": "^5.0.4"
-  }
-}
