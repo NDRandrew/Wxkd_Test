@@ -1,29 +1,53 @@
 const { screen, mouse, keyboard, Button } = require('@nut-tree-fork/nut-js');
 const { spawn } = require('child_process');
+const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
 async function extractText(imagePath) {
     return new Promise((resolve, reject) => {
         const absolutePath = path.resolve(imagePath);
+        const scriptPath = path.join(os.tmpdir(), 'ocr_script.ps1');
+        
         const powershellScript = `
 Add-Type -AssemblyName System.Drawing
-Add-Type -AssemblyName System.Windows.Forms
 [Windows.Media.Ocr.OcrEngine, Windows.winmd, ContentType = WindowsRuntime] | Out-Null
 [Windows.Storage.StorageFile, Windows.Storage, ContentType = WindowsRuntime] | Out-Null
 [Windows.Graphics.Imaging.BitmapDecoder, Windows.Graphics, ContentType = WindowsRuntime] | Out-Null
 
-$ocrEngine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
-$file = [Windows.Storage.StorageFile]::GetFileFromPathAsync("${absolutePath}").GetAwaiter().GetResult()
-$stream = $file.OpenReadAsync().GetAwaiter().GetResult()
-$decoder = [Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream).GetAwaiter().GetResult()
-$bitmap = $decoder.GetSoftwareBitmapAsync().GetAwaiter().GetResult()
-$result = $ocrEngine.RecognizeAsync($bitmap).GetAwaiter().GetResult()
-$result.Text
+try {
+    $ocrEngine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
+    $file = [Windows.Storage.StorageFile]::GetFileFromPathAsync("${absolutePath.replace(/\\/g, '\\\\')}")
+    $task = $file.AsTask()
+    $task.Wait()
+    $storageFile = $task.Result
+    
+    $streamTask = $storageFile.OpenReadAsync().AsTask()
+    $streamTask.Wait()
+    $stream = $streamTask.Result
+    
+    $decoderTask = [Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream).AsTask()
+    $decoderTask.Wait()
+    $decoder = $decoderTask.Result
+    
+    $bitmapTask = $decoder.GetSoftwareBitmapAsync().AsTask()
+    $bitmapTask.Wait()
+    $bitmap = $bitmapTask.Result
+    
+    $resultTask = $ocrEngine.RecognizeAsync($bitmap).AsTask()
+    $resultTask.Wait()
+    $result = $resultTask.Result
+    
+    Write-Output $result.Text
+} catch {
+    Write-Error $_.Exception.Message
+}
 `;
         
-        const ps = spawn('powershell', ['-Command', powershellScript], { 
-            stdio: ['pipe', 'pipe', 'pipe'],
-            shell: true 
+        fs.writeFileSync(scriptPath, powershellScript);
+        
+        const ps = spawn('powershell', ['-ExecutionPolicy', 'Bypass', '-File', scriptPath], { 
+            stdio: ['pipe', 'pipe', 'pipe']
         });
         
         let output = '';
@@ -33,6 +57,7 @@ $result.Text
         ps.stderr.on('data', (data) => error += data.toString());
         
         ps.on('close', (code) => {
+            fs.unlinkSync(scriptPath);
             if (code === 0) {
                 resolve(output.trim());
             } else {
