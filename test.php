@@ -1,20 +1,27 @@
+import com.sun.jna.Library;
+import com.sun.jna.Native;
+import com.sun.jna.ptr.IntByReference;
+
+interface HLLAPI extends Library {
+    HLLAPI INSTANCE = Native.load("pcshll32", HLLAPI.class);
+    void hllapi(IntByReference func, byte[] data, IntByReference len, IntByReference ret);
+}
+
 public class CursorPosition {
-    static {
-        System.loadLibrary("pcshll32");
-    }
-    
     public static void main(String[] args) {
-        int[] pos = new int[2];
-        int result = hllapi(13, "", 0, pos); // Query cursor position
+        IntByReference func = new IntByReference(13); // Query cursor
+        IntByReference len = new IntByReference(0);
+        IntByReference ret = new IntByReference(0);
         
-        if (result == 0) {
-            int row = (pos[0] / 80) + 1;
-            int col = (pos[0] % 80) + 1;
+        HLLAPI.INSTANCE.hllapi(func, new byte[0], len, ret);
+        
+        if (ret.getValue() == 0) {
+            int pos = len.getValue();
+            int row = (pos / 80) + 1;
+            int col = (pos % 80) + 1;
             System.out.println("Line: " + row + ", Column: " + col);
         } else {
-            System.err.println("HLLAPI Error: " + result);
+            System.err.println("Error: " + ret.getValue());
         }
     }
-    
-    private static native int hllapi(int func, String data, int len, int[] pos);
 }
