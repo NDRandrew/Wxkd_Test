@@ -1,24 +1,54 @@
 const { screen, mouse, keyboard, Button, Key } = require('@nut-tree-fork/nut-js');
-const { spawn, exec } = require('child_process');
+const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
 
 async function extractText(imagePath) {
     return new Promise((resolve, reject) => {
-        const absolutePath = path.resolve(imagePath);
+        const imageBuffer = fs.readFileSync(imagePath);
+        const base64Image = imageBuffer.toString('base64');
         
-        // Simple PowerShell command
-        const command = `powershell -Command "Add-Type -AssemblyName System.Drawing; $img = [System.Drawing.Image]::FromFile('${absolutePath.replace(/\\/g, '\\\\')}'); Write-Output 'Image loaded: ' + $img.Width + 'x' + $img.Height; $img.Dispose()"`;
-        
-        exec(command, (error, stdout, stderr) => {
-            if (error) {
-                // Fallback: return filename as text for testing
-                const filename = path.basename(imagePath, path.extname(imagePath));
-                resolve(`Text from image: ${filename}`);
-            } else {
-                resolve(stdout.trim() || 'No text detected');
-            }
+        const postData = JSON.stringify({
+            base64Image: `data:image/jpeg;base64,${base64Image}`,
+            language: 'eng'
         });
+        
+        const options = {
+            hostname: 'api.ocr.space',
+            port: 443,
+            path: '/parse/image',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': postData.length,
+                'apikey': 'helloworld' // Free API key
+            }
+        };
+        
+        const req = https.request(options, (res) => {
+            let data = '';
+            res.on('data', (chunk) => data += chunk);
+            res.on('end', () => {
+                try {
+                    const result = JSON.parse(data);
+                    if (result.ParsedResults && result.ParsedResults[0]) {
+                        resolve(result.ParsedResults[0].ParsedText.trim());
+                    } else {
+                        resolve('No text found');
+                    }
+                } catch (error) {
+                    resolve('OCR parsing failed');
+                }
+            });
+        });
+        
+        req.on('error', (error) => {
+            resolve('Network error - using fallback');
+        });
+        
+        req.write(postData);
+        req.end();
     });
 }
 
@@ -31,23 +61,13 @@ async function openNotepad() {
 
 async function maximizeWindow() {
     try {
-        // Try Alt+Space then X for maximize
         await keyboard.pressKey(Key.LeftAlt, Key.Space);
         await keyboard.releaseKey(Key.LeftAlt, Key.Space);
-        setTimeout(async () => {
-            await keyboard.type('x');
-        }, 500);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        await keyboard.type('x');
+        await new Promise(resolve => setTimeout(resolve, 1000));
     } catch (error) {
-        console.log('Keyboard maximize failed, trying mouse...');
-        try {
-            // Fallback: click top-right area
-            const screenWidth = await screen.width();
-            await mouse.setPosition({ x: screenWidth - 100, y: 20 });
-            await mouse.click(Button.LEFT);
-            await mouse.releaseButton(Button.LEFT);
-        } catch (mouseError) {
-            console.log('Mouse maximize also failed');
-        }
+        console.log('Maximize failed:', error.message);
     }
 }
 
@@ -64,7 +84,7 @@ async function main() {
     }
 
     try {
-        console.log('Extracting text...');
+        console.log('Extracting text with OCR...');
         const extractedText = await extractText(imagePath);
         console.log('Extracted:', extractedText);
 
@@ -74,11 +94,8 @@ async function main() {
         console.log('Maximizing window...');
         await maximizeWindow();
         
-        // Wait a bit then type
-        setTimeout(async () => {
-            await keyboard.type(`Extracted text: ${extractedText}`);
-            console.log('Done!');
-        }, 1000);
+        await keyboard.type(`Text from image: ${extractedText}`);
+        console.log('Done!');
         
     } catch (error) {
         console.error('Error:', error);
