@@ -60,3 +60,25 @@ async function main() {
 }
 
 main();
+
+
+-------
+
+
+# OCR Text Extraction with Notepad Automation
+
+## Install Tesseract
+Download and install: https://github.com/UB-Mannheim/tesseract/wiki
+Add to PATH: `C:\Program Files\Tesseract-OCR`
+
+## Install Dependencies
+```bash
+npm install
+```
+
+## Run
+```bash
+node app.js path/to/your/image.jpg
+```
+
+Uses Tesseract OCR to extract text from images and write it to Notepad. 
