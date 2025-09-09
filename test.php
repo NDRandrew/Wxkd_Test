@@ -1,25 +1,25 @@
+import java.io.*;
+
 public class CursorPosition {
-    static {
-        // Try 64-bit first, then 32-bit
-        try {
-            System.loadLibrary("pcshll64");
-        } catch (UnsatisfiedLinkError e) {
-            System.loadLibrary("pcshll32");
-        }
-    }
-    
     public static void main(String[] args) {
-        int[] pos = new int[2];
-        int result = hllapi(13, "", 0, pos); // Query cursor position
-        
-        if (result == 0) {
-            int row = (pos[0] / 80) + 1;
-            int col = (pos[0] % 80) + 1;
-            System.out.println("Line: " + row + ", Column: " + col);
-        } else {
-            System.err.println("HLLAPI Error: " + result);
+        try {
+            // Use PCOMM automation object via command line
+            ProcessBuilder pb = new ProcessBuilder("cmd", "/c", 
+                "echo Set sess = CreateObject(\"PCOMM.autECLSession\") > temp.vbs && " +
+                "echo sess.SetConnectionByName \"A\" >> temp.vbs && " +
+                "echo WScript.Echo sess.autECLPS.CursorPosRow ^& \",\" ^& sess.autECLPS.CursorPosCol >> temp.vbs && " +
+                "cscript //nologo temp.vbs && del temp.vbs");
+            
+            Process p = pb.start();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
+            String result = reader.readLine();
+            
+            if (result != null && result.contains(",")) {
+                String[] pos = result.split(",");
+                System.out.println("Line: " + pos[0] + ", Column: " + pos[1]);
+            }
+        } catch (Exception e) {
+            System.err.println("Error: " + e.getMessage());
         }
     }
-    
-    private static native int hllapi(int func, String data, int len, int[] pos);
 }
