@@ -16,17 +16,15 @@
     <dependencies>
         <dependency>
             <groupId>com.ibm</groupId>
-            <artifactId>hacl</artifactId>
-            <version>7.0</version>
+            <artifactId>pcspapi</artifactId>
+            <version>1.0</version>
             <scope>system</scope>
-            <systemPath>${basedir}/lib/hacl.jar</systemPath>
+            <systemPath>${basedir}/lib/pcspapi.jar</systemPath>
         </dependency>
     </dependencies>
 </project>
 
-
-
--------
+------
 
 
 import com.ibm.eNetwork.ECL.*;
