@@ -80,8 +80,9 @@ async function findAndClickMaximize() {
         await mouse.leftClick(result);
         await mouse.releaseButton(Button.LEFT);
     } catch {
-        const screenSize = await screen.size();
-        const maxButtonX = screenSize.width - 50;
+        const screenWidth = await screen.width();
+        const screenHeight = await screen.height();
+        const maxButtonX = screenWidth - 50;
         const maxButtonY = 30;
         await mouse.leftClick({ x: maxButtonX, y: maxButtonY });
         await mouse.releaseButton(Button.LEFT);
