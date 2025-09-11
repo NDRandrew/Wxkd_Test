@@ -4,6 +4,8 @@ import win32con
 import win32com.client
 import time
 import os
+import subprocess
+import sys
 
 class PCOMMAutomation:
     def __init__(self, ws_file_path=None):
@@ -11,7 +13,36 @@ class PCOMMAutomation:
         self.window_title = "IBM Personal Communications"
         self.ws_file_path = ws_file_path
         self.pcomm_session = None
-        self.session_name = "A"  # Default session name, adjust if needed
+        self.session_name = "A"
+        self.ehllapi = None  # Alternative EHLLAPI interface
+    
+    def register_pcomm_automation(self):
+        """Try to register PCOMM automation components"""
+        print("Attempting to register PCOMM automation...")
+        
+        # Common PCOMM installation paths
+        pcomm_paths = [
+            r"C:\Program Files\IBM\Personal Communications",
+            r"C:\Program Files (x86)\IBM\Personal Communications", 
+            r"C:\PCOMM",
+            r"C:\IBM\PCOMM"
+        ]
+        
+        for path in pcomm_paths:
+            dll_path = os.path.join(path, "autECL32.dll")
+            if os.path.exists(dll_path):
+                try:
+                    print(f"Registering {dll_path}")
+                    subprocess.run([
+                        "regsvr32", "/s", dll_path
+                    ], check=True)
+                    print("Registration successful!")
+                    return True
+                except Exception as e:
+                    print(f"Registration failed: {e}")
+        
+        print("Could not find PCOMM automation DLL to register")
+        return False
     
     def open_pcomm_workspace(self):
         """Open PCOMM by launching the .ws file"""
@@ -28,7 +59,7 @@ class PCOMMAutomation:
             os.startfile(self.ws_file_path)
             
             print("Waiting for PCOMM to load...")
-            time.sleep(5)
+            time.sleep(7)  # Give more time for PCOMM to fully load
             
             return True
             
@@ -37,22 +68,105 @@ class PCOMMAutomation:
             return False
     
     def connect_to_pcomm_session(self):
-        """Connect to PCOMM automation object"""
+        """Try multiple methods to connect to PCOMM"""
+        connection_methods = [
+            self._connect_method_1,
+            self._connect_method_2,
+            self._connect_method_3,
+            self._connect_ehllapi
+        ]
+        
+        for i, method in enumerate(connection_methods, 1):
+            print(f"Trying connection method {i}...")
+            if method():
+                return True
+        
+        print("All connection methods failed")
+        return False
+    
+    def _connect_method_1(self):
+        """Standard PCOMM automation"""
         try:
-            # Connect to PCOMM automation object
-            print("Connecting to PCOMM automation interface...")
             self.pcomm_session = win32com.client.Dispatch("PCOMM.autECLSession")
-            
-            # Set the session (A, B, C, etc.)
             self.pcomm_session.SetConnectionByName(self.session_name)
-            
-            print(f"Connected to PCOMM session: {self.session_name}")
+            print("✓ Connected using PCOMM.autECLSession")
             return True
-            
         except Exception as e:
-            print(f"Error connecting to PCOMM session: {e}")
-            print("Make sure PCOMM is running and session is active")
+            print(f"Method 1 failed: {e}")
             return False
+    
+    def _connect_method_2(self):
+        """Alternative PCOMM automation object"""
+        try:
+            self.pcomm_session = win32com.client.Dispatch("PCOMM.autECLConnMgr")
+            print("✓ Connected using PCOMM.autECLConnMgr")
+            return True
+        except Exception as e:
+            print(f"Method 2 failed: {e}")
+            return False
+    
+    def _connect_method_3(self):
+        """Try ECL automation"""
+        try:
+            self.pcomm_session = win32com.client.Dispatch("ECL.autECLSession")
+            self.pcomm_session.SetConnectionByName(self.session_name)
+            print("✓ Connected using ECL.autECLSession")
+            return True
+        except Exception as e:
+            print(f"Method 3 failed: {e}")
+            return False
+    
+    def _connect_ehllapi(self):
+        """Try EHLLAPI interface"""
+        try:
+            # Try to use EHLLAPI (older but more compatible interface)
+            self.ehllapi = win32com.client.Dispatch("WinHLLAPI.WinHLLAPIClass")
+            print("✓ Connected using EHLLAPI interface")
+            return True
+        except Exception as e:
+            print(f"EHLLAPI failed: {e}")
+            return False
+    
+    def read_screen_text(self, start_row, start_col, length):
+        """Read text from screen using available interface"""
+        if self.pcomm_session:
+            return self._read_with_pcomm(start_row, start_col, length)
+        elif self.ehllapi:
+            return self._read_with_ehllapi(start_row, start_col, length)
+        else:
+            print("No active connection to PCOMM")
+            return None
+    
+    def _read_with_pcomm(self, start_row, start_col, length):
+        """Read using PCOMM automation"""
+        try:
+            text = self.pcomm_session.autECLPS.GetText(start_row, start_col, length)
+            return text.strip()
+        except Exception as e:
+            print(f"Error reading with PCOMM: {e}")
+            return None
+    
+    def _read_with_ehllapi(self, start_row, start_col, length):
+        """Read using EHLLAPI interface"""
+        try:
+            # EHLLAPI uses different positioning (0-based, linear)
+            position = ((start_row - 1) * 80) + (start_col - 1)
+            
+            # This is a simplified EHLLAPI implementation
+            # You may need to adjust based on your PCOMM version
+            text = self.ehllapi.GetText(position, length)
+            return text.strip()
+        except Exception as e:
+            print(f"Error reading with EHLLAPI: {e}")
+            return None
+    
+    def read_line(self, row, start_col=1, length=80):
+        """Read entire line or part of a line"""
+        return self.read_screen_text(row, start_col, length)
+    
+    def read_position(self, row, col, length=1):
+        """Read text at specific row/column position"""
+        return self.read_screen_text(row, col, length)
     
     def find_pcomm_window(self, max_attempts=10):
         """Find IBM PCOMM window with retry logic"""
@@ -85,89 +199,6 @@ class PCOMMAutomation:
         
         return False
     
-    def read_screen_text(self, start_row, start_col, length):
-        """Read text from screen at specific position"""
-        if not self.pcomm_session:
-            print("Not connected to PCOMM session")
-            return None
-        
-        try:
-            # Read text from specified position
-            text = self.pcomm_session.autECLPS.GetText(start_row, start_col, length)
-            return text.strip()
-            
-        except Exception as e:
-            print(f"Error reading screen text: {e}")
-            return None
-    
-    def read_line(self, row, start_col=1, length=80):
-        """Read entire line or part of a line"""
-        return self.read_screen_text(row, start_col, length)
-    
-    def read_position(self, row, col, length=1):
-        """Read text at specific row/column position"""
-        return self.read_screen_text(row, col, length)
-    
-    def read_field_at_position(self, row, col):
-        """Read the entire field starting at specific position"""
-        if not self.pcomm_session:
-            return None
-        
-        try:
-            # Get field information at position
-            field_text = ""
-            current_col = col
-            
-            # Read character by character until we hit end of field or screen
-            for i in range(80):  # Maximum line length
-                char = self.pcomm_session.autECLPS.GetText(row, current_col, 1)
-                if char == "" or char == " ":
-                    break
-                field_text += char
-                current_col += 1
-            
-            return field_text.strip()
-            
-        except Exception as e:
-            print(f"Error reading field: {e}")
-            return None
-    
-    def get_screen_dimensions(self):
-        """Get screen dimensions (rows and columns)"""
-        if not self.pcomm_session:
-            return None, None
-        
-        try:
-            rows = self.pcomm_session.autECLPS.NumRows
-            cols = self.pcomm_session.autECLPS.NumCols
-            return rows, cols
-        except Exception as e:
-            print(f"Error getting screen dimensions: {e}")
-            return None, None
-    
-    def search_text_on_screen(self, search_text):
-        """Search for text on screen and return its position"""
-        if not self.pcomm_session:
-            return None
-        
-        try:
-            rows, cols = self.get_screen_dimensions()
-            if not rows or not cols:
-                return None
-            
-            # Search through each line
-            for row in range(1, rows + 1):
-                line_text = self.read_line(row, 1, cols)
-                if line_text and search_text.upper() in line_text.upper():
-                    col_position = line_text.upper().find(search_text.upper()) + 1
-                    return row, col_position
-            
-            return None
-            
-        except Exception as e:
-            print(f"Error searching text: {e}")
-            return None
-    
     def activate_window(self):
         """Bring PCOMM window to foreground"""
         if self.window_handle:
@@ -192,116 +223,123 @@ class PCOMMAutomation:
                 print(f"Error sending text: {e}")
                 return False
         return False
-    
-    def send_enter(self):
-        """Send Enter key"""
-        return self.send_text("{ENTER}")
-    
-    def send_function_key(self, key_number):
-        """Send function key (F1-F24)"""
-        return self.send_text(f"{{F{key_number}}}")
 
-def test_screen_reading():
-    """Test function to demonstrate screen reading capabilities"""
-    print("IBM PCOMM Screen Reading Test")
-    print("=" * 35)
+def fix_pcomm_registration():
+    """Try to fix PCOMM registration issues"""
+    print("PCOMM Registration Fix Utility")
+    print("=" * 40)
     
-    # Get workspace file from user
+    print("Step 1: Trying to register PCOMM automation...")
+    
+    # Try to find and register PCOMM automation
+    pcomm_paths = [
+        r"C:\Program Files\IBM\Personal Communications\autECL32.dll",
+        r"C:\Program Files (x86)\IBM\Personal Communications\autECL32.dll",
+        r"C:\PCOMM\autECL32.dll",
+        r"C:\IBM\PCOMM\autECL32.dll"
+    ]
+    
+    registered = False
+    for dll_path in pcomm_paths:
+        if os.path.exists(dll_path):
+            try:
+                print(f"Found: {dll_path}")
+                print("Registering...")
+                
+                # Unregister first
+                subprocess.run(["regsvr32", "/u", "/s", dll_path], check=False)
+                
+                # Register
+                result = subprocess.run(["regsvr32", "/s", dll_path], check=True)
+                print("✓ Registration successful!")
+                registered = True
+                break
+                
+            except Exception as e:
+                print(f"Registration failed: {e}")
+    
+    if not registered:
+        print("\nStep 2: Manual registration instructions:")
+        print("1. Find your PCOMM installation folder")
+        print("2. Open Command Prompt as Administrator")
+        print("3. Run: regsvr32 \"C:\\path\\to\\pcomm\\autECL32.dll\"")
+        print("4. Also try: regsvr32 \"C:\\path\\to\\pcomm\\ECL32.dll\"")
+    
+    return registered
+
+def test_pcomm_connection():
+    """Test PCOMM connection with multiple methods"""
+    print("PCOMM Connection Test")
+    print("=" * 25)
+    
+    # Get workspace file
     ws_file_path = input("Enter path to your .ws file: ").strip().strip('"')
     
     if not ws_file_path:
         print("No file specified")
         return
     
+    # Try to fix registration first
+    print("\nStep 1: Checking PCOMM registration...")
+    fix_pcomm_registration()
+    
     # Create automation instance
     pcomm = PCOMMAutomation(ws_file_path)
     
     # Open PCOMM workspace
+    print("\nStep 2: Opening PCOMM workspace...")
     if not pcomm.open_pcomm_workspace():
         print("Failed to open PCOMM workspace")
         return
     
     # Find PCOMM window
+    print("\nStep 3: Finding PCOMM window...")
     if not pcomm.find_pcomm_window():
         print("Could not find PCOMM window")
         return
     
-    # Connect to PCOMM automation interface
+    # Try to connect using multiple methods
+    print("\nStep 4: Connecting to PCOMM automation...")
     if not pcomm.connect_to_pcomm_session():
         print("Could not connect to PCOMM automation interface")
+        print("\nTroubleshooting suggestions:")
+        print("1. Make sure PCOMM session is active")
+        print("2. Try running as Administrator")
+        print("3. Check if PCOMM automation is installed")
+        print("4. Try different session name (A, B, C, etc.)")
         return
     
-    print("PCOMM is ready for screen reading!")
-    time.sleep(2)
+    print("\n✓ Successfully connected to PCOMM!")
     
-    # Interactive testing
-    while True:
-        print("\n" + "="*50)
-        print("Screen Reading Options:")
-        print("1. Read specific position (row, col, length)")
-        print("2. Read entire line")
-        print("3. Read field at position")
-        print("4. Search for text")
-        print("5. Show screen dimensions")
-        print("6. Exit")
+    # Test reading
+    print("\nStep 5: Testing screen reading...")
+    try:
+        # Read first line
+        line1 = pcomm.read_line(1)
+        print(f"Line 1: '{line1}'")
         
-        choice = input("\nEnter your choice (1-6): ").strip()
+        # Read specific position
+        pos_text = pcomm.read_position(1, 1, 10)
+        print(f"Position (1,1) length 10: '{pos_text}'")
         
-        if choice == "1":
-            try:
-                row = int(input("Enter row number: "))
-                col = int(input("Enter column number: "))
-                length = int(input("Enter length to read: "))
-                
-                text = pcomm.read_position(row, col, length)
-                print(f"Text at ({row}, {col}) length {length}: '{text}'")
-                
-            except ValueError:
-                print("Please enter valid numbers")
+        print("\n✓ Screen reading test successful!")
         
-        elif choice == "2":
-            try:
-                row = int(input("Enter row number: "))
-                text = pcomm.read_line(row)
-                print(f"Line {row}: '{text}'")
-                
-            except ValueError:
-                print("Please enter a valid row number")
-        
-        elif choice == "3":
-            try:
-                row = int(input("Enter row number: "))
-                col = int(input("Enter column number: "))
-                
-                text = pcomm.read_field_at_position(row, col)
-                print(f"Field at ({row}, {col}): '{text}'")
-                
-            except ValueError:
-                print("Please enter valid numbers")
-        
-        elif choice == "4":
-            search_text = input("Enter text to search for: ")
-            result = pcomm.search_text_on_screen(search_text)
+        # Interactive mode
+        while True:
+            print("\nInteractive test:")
+            row = input("Enter row to read (or 'quit'): ").strip()
+            if row.lower() == 'quit':
+                break
             
-            if result:
-                row, col = result
-                print(f"Found '{search_text}' at row {row}, column {col}")
-            else:
-                print(f"Text '{search_text}' not found on screen")
-        
-        elif choice == "5":
-            rows, cols = pcomm.get_screen_dimensions()
-            if rows and cols:
-                print(f"Screen dimensions: {rows} rows x {cols} columns")
-            else:
-                print("Could not get screen dimensions")
-        
-        elif choice == "6":
-            print("Exiting...")
-            break
-        
-        else:
-            print("Invalid choice. Please enter 1-6.")
+            try:
+                row_num = int(row)
+                text = pcomm.read_line(row_num)
+                print(f"Row {row_num}: '{text}'")
+            except ValueError:
+                print("Please enter a valid number")
+    
+    except Exception as e:
+        print(f"Error during testing: {e}")
 
 if __name__ == "__main__":
     try:
@@ -309,7 +347,7 @@ if __name__ == "__main__":
         import win32gui
         import win32com.client
         print("All required modules loaded successfully.")
-        test_screen_reading()
+        test_pcomm_connection()
         
     except ImportError as e:
         print(f"Missing required module: {e}")
