@@ -43,7 +43,11 @@ def run_sequence(username, password, ws_file=None):
         "field3": field_values[2] if len(field_values) > 2 else ""
     }
 
-@app.route('/run', methods=['POST'])
+@app.route('/')
+def index():
+    return "Flask server running. Use /run endpoint."
+
+@app.route('/run', methods=['GET', 'POST'])
 def run_automation():
     USER = "I409841"
     PWD = "tino1202"
