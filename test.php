@@ -83,9 +83,9 @@ AbrePCOM = True
 End Function
 
 ' Main execution
-WScript.Echo "=" * 50
+WScript.Echo String(50, "=")
 WScript.Echo "PCOMM Automation - Connecting to Existing Session"
-WScript.Echo "=" * 50
+WScript.Echo String(50, "=")
 WScript.Echo ""
 WScript.Echo "PREREQUISITES:"
 WScript.Echo "1. PCOMM must be running"
