@@ -57,4 +57,56 @@ def run_automation():
     return jsonify(result)
 
 if __name__ == "__main__":
-    app.run(host='127.0.0.1', port=5000, debug=True, use_reloader=False)
+    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)
+
+
+
+----------
+
+
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Automation Runner</title>
+</head>
+<body>
+    <h2>Run Automation</h2>
+    
+    <form method="post">
+        <button type="submit" name="run">Run Sequence</button>
+    </form>
+    
+    <div id="response">
+        <?php
+        if (isset($_POST['run'])) {
+            $server_ip = "192.168.1.100"; // Change to your Python server IP
+            
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, "http://{$server_ip}:5000/run");
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 60);
+            
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            
+            if ($httpCode == 200) {
+                $data = json_decode($response, true);
+                if (isset($data['error'])) {
+                    echo "<p style='color:red'>Error: " . htmlspecialchars($data['error']) . "</p>";
+                } else {
+                    echo "<h3>Results:</h3>";
+                    echo "<p>Field 1: " . htmlspecialchars($data['field1']) . "</p>";
+                    echo "<p>Field 2: " . htmlspecialchars($data['field2']) . "</p>";
+                    echo "<p>Field 3: " . htmlspecialchars($data['field3']) . "</p>";
+                }
+            } else {
+                echo "<p style='color:red'>Connection error. Make sure Python server is running.</p>";
+            }
+        }
+        ?>
+    </div>
+</body>
+</html> 
