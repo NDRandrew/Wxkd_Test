@@ -3,9 +3,9 @@ Option Explicit
 Dim Session, OIA, PS
 
 Function AbrePCOM()
-    On Error GoTo Tratamento
-    Set Session = New AutSess
-    Set OIA = New AutOIA
+    On Error Resume Next
+    Set Session = CreateObject("AutSess")
+    Set OIA = CreateObject("AutOIA")
     Session.SetConnectionByName "A"
     If Session.autECLWinMetrics.Active Then
        Session.autECLWinMetrics.Active = False
@@ -14,32 +14,23 @@ Function AbrePCOM()
     End If
     OIA.SetConnectionByName "A"
     OIA.WaitForInputReady
-    AbrePCOM = True
-    Exit Function
-Tratamento:
     If Err = -2147352567 Then
        WScript.Echo "Sessão A do PCOM deve ser aberta !"
-    Else
+       AbrePCOM = False
+    ElseIf Err.Number <> 0 Then
        WScript.Echo "Erro: " & Err.Description
+       AbrePCOM = False
+    Else
+       AbrePCOM = True
     End If
-    AbrePCOM = False
 End Function
 
 If AbrePCOM() Then
-    Set PS = New AutPS
+    Set PS = CreateObject("AutPS")
     PS.SetConnectionByName "A"
-    
-    WScript.Echo "Texto na posição 1,1: " & PS.GetText(1, 1, 20)
-    
+    WScript.Echo "Texto: " & PS.GetText(1, 1, 20)
     PS.SetCursorPos 3, 1
-    PS.SendKeys "Teste VBS " & Now()
+    PS.SendKeys "Teste VBS"
     PS.SendKeys "[enter]"
-    
-    WScript.Echo "Automação concluída!"
-Else
-    WScript.Echo "Falha na conexão PCOM"
+    WScript.Echo "OK!"
 End If
-
-Set Session = Nothing
-Set OIA = Nothing
-Set PS = Nothing
