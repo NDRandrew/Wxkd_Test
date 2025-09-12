@@ -1,355 +1,320 @@
-import autoit
-import win32gui
-import win32con
-import win32com.client
-import time
-import os
+' IBM PCOMM Automation Script
+' This script opens a PCOMM workspace, reads from screen, and writes data
+
+Option Explicit
+
+Dim autECLSession, autECLPS, autECLOIA
+Dim wsFile, sessionId
+Dim screenText, row, col
+
+' Configuration
+wsFile = "C:\Path\To\Your\Workspace.ws"  ' Update this path
+sessionId = "A"  ' Default session ID, change if different
+row = 1          ' Row to read from (1-based)
+col = 1          ' Column to read from (1-based)
+
+' Initialize PCOMM objects
+On Error Resume Next
+
+' Create the session object
+Set autECLSession = CreateObject("PCOMM.autECLSession")
+If Err.Number <> 0 Then
+    WScript.Echo "Error: Could not create PCOMM Session object. Error: " & Err.Description
+    WScript.Quit 1
+End If
+
+' Start the session with workspace file
+autECLSession.SetConnectionByName wsFile
+If Err.Number <> 0 Then
+    WScript.Echo "Error: Could not open workspace file: " & wsFile & ". Error: " & Err.Description
+    WScript.Quit 1
+End If
+
+' Create Presentation Space object
+Set autECLPS = CreateObject("PCOMM.autECLPS")
+If Err.Number <> 0 Then
+    WScript.Echo "Error: Could not create Presentation Space object. Error: " & Err.Description
+    WScript.Quit 1
+End If
+
+' Connect to the session
+autECLPS.SetConnectionByName wsFile
+If Err.Number <> 0 Then
+    WScript.Echo "Error: Could not connect to session. Error: " & Err.Description
+    WScript.Quit 1
+End If
+
+' Create OIA (Operator Information Area) object for status checking
+Set autECLOIA = CreateObject("PCOMM.autECLOIA")
+autECLOIA.SetConnectionByName wsFile
+
+' Wait for the session to be ready
+WScript.Echo "Waiting for session to be ready..."
+Do While autECLOIA.InputInhibited <> 0
+    WScript.Sleep 500
+Loop
+
+WScript.Echo "Session is ready!"
+
+' Read text from specified position
+On Error Resume Next
+screenText = autECLPS.GetText(row, col, 20)  ' Read 20 characters from row/col
+If Err.Number <> 0 Then
+    WScript.Echo "Error reading from screen: " & Err.Description
+Else
+    WScript.Echo "Text read from row " & row & ", col " & col & ": '" & screenText & "'"
+End If
+
+' Write text to the screen at position (3, 1)
+On Error Resume Next
+autECLPS.SetCursorPos 3, 1
+autECLPS.SendKeys "Hello from VBS automation!"
+If Err.Number <> 0 Then
+    WScript.Echo "Error writing to screen: " & Err.Description
+Else
+    WScript.Echo "Successfully wrote text to screen at row 3, col 1"
+End If
+
+' Send Enter key
+autECLPS.SendKeys "[enter]"
+WScript.Sleep 1000
+
+' Read the entire screen (optional - for debugging)
+Dim fullScreen
+fullScreen = autECLPS.GetText(1, 1, autECLPS.NumRows * autECLPS.NumCols)
+WScript.Echo "Full screen content preview (first 100 chars): " & Left(fullScreen, 100)
+
+' Clean up
+Set autECLSession = Nothing
+Set autECLPS = Nothing
+Set autECLOIA = Nothing
+
+WScript.Echo "PCOMM automation completed successfully!"
+
+
+----------
+
+
+#!/usr/bin/env python3
+"""
+Python script to call IBM PCOMM automation VBScript
+This script executes the VBS file and captures output
+"""
+
 import subprocess
+import os
 import sys
+from pathlib import Path
 
-class PCOMMAutomation:
-    def __init__(self, ws_file_path=None):
-        self.window_handle = None
-        self.window_title = "IBM Personal Communications"
-        self.ws_file_path = ws_file_path
-        self.pcomm_session = None
-        self.session_name = "A"
-        self.ehllapi = None  # Alternative EHLLAPI interface
+def run_pcomm_automation(vbs_script_path):
+    """
+    Execute the PCOMM VBScript automation
     
-    def register_pcomm_automation(self):
-        """Try to register PCOMM automation components"""
-        print("Attempting to register PCOMM automation...")
-        
-        # Common PCOMM installation paths
-        pcomm_paths = [
-            r"C:\Program Files\IBM\Personal Communications",
-            r"C:\Program Files (x86)\IBM\Personal Communications", 
-            r"C:\PCOMM",
-            r"C:\IBM\PCOMM"
-        ]
-        
-        for path in pcomm_paths:
-            dll_path = os.path.join(path, "autECL32.dll")
-            if os.path.exists(dll_path):
-                try:
-                    print(f"Registering {dll_path}")
-                    subprocess.run([
-                        "regsvr32", "/s", dll_path
-                    ], check=True)
-                    print("Registration successful!")
-                    return True
-                except Exception as e:
-                    print(f"Registration failed: {e}")
-        
-        print("Could not find PCOMM automation DLL to register")
-        return False
+    Args:
+        vbs_script_path (str): Path to the VBScript file
     
-    def open_pcomm_workspace(self):
-        """Open PCOMM by launching the .ws file"""
-        if not self.ws_file_path:
-            print("No workspace file specified")
-            return False
-            
-        if not os.path.exists(self.ws_file_path):
-            print(f"Workspace file not found: {self.ws_file_path}")
-            return False
-        
-        try:
-            print(f"Opening workspace: {self.ws_file_path}")
-            os.startfile(self.ws_file_path)
-            
-            print("Waiting for PCOMM to load...")
-            time.sleep(7)  # Give more time for PCOMM to fully load
-            
-            return True
-            
-        except Exception as e:
-            print(f"Error opening workspace: {e}")
-            return False
+    Returns:
+        tuple: (return_code, stdout, stderr)
+    """
     
-    def connect_to_pcomm_session(self):
-        """Try multiple methods to connect to PCOMM"""
-        connection_methods = [
-            self._connect_method_1,
-            self._connect_method_2,
-            self._connect_method_3,
-            self._connect_ehllapi
-        ]
-        
-        for i, method in enumerate(connection_methods, 1):
-            print(f"Trying connection method {i}...")
-            if method():
-                return True
-        
-        print("All connection methods failed")
-        return False
+    # Check if VBS file exists
+    if not os.path.exists(vbs_script_path):
+        print(f"Error: VBScript file not found: {vbs_script_path}")
+        return None, None, None
     
-    def _connect_method_1(self):
-        """Standard PCOMM automation"""
-        try:
-            self.pcomm_session = win32com.client.Dispatch("PCOMM.autECLSession")
-            self.pcomm_session.SetConnectionByName(self.session_name)
-            print("✓ Connected using PCOMM.autECLSession")
-            return True
-        except Exception as e:
-            print(f"Method 1 failed: {e}")
-            return False
-    
-    def _connect_method_2(self):
-        """Alternative PCOMM automation object"""
-        try:
-            self.pcomm_session = win32com.client.Dispatch("PCOMM.autECLConnMgr")
-            print("✓ Connected using PCOMM.autECLConnMgr")
-            return True
-        except Exception as e:
-            print(f"Method 2 failed: {e}")
-            return False
-    
-    def _connect_method_3(self):
-        """Try ECL automation"""
-        try:
-            self.pcomm_session = win32com.client.Dispatch("ECL.autECLSession")
-            self.pcomm_session.SetConnectionByName(self.session_name)
-            print("✓ Connected using ECL.autECLSession")
-            return True
-        except Exception as e:
-            print(f"Method 3 failed: {e}")
-            return False
-    
-    def _connect_ehllapi(self):
-        """Try EHLLAPI interface"""
-        try:
-            # Try to use EHLLAPI (older but more compatible interface)
-            self.ehllapi = win32com.client.Dispatch("WinHLLAPI.WinHLLAPIClass")
-            print("✓ Connected using EHLLAPI interface")
-            return True
-        except Exception as e:
-            print(f"EHLLAPI failed: {e}")
-            return False
-    
-    def read_screen_text(self, start_row, start_col, length):
-        """Read text from screen using available interface"""
-        if self.pcomm_session:
-            return self._read_with_pcomm(start_row, start_col, length)
-        elif self.ehllapi:
-            return self._read_with_ehllapi(start_row, start_col, length)
-        else:
-            print("No active connection to PCOMM")
-            return None
-    
-    def _read_with_pcomm(self, start_row, start_col, length):
-        """Read using PCOMM automation"""
-        try:
-            text = self.pcomm_session.autECLPS.GetText(start_row, start_col, length)
-            return text.strip()
-        except Exception as e:
-            print(f"Error reading with PCOMM: {e}")
-            return None
-    
-    def _read_with_ehllapi(self, start_row, start_col, length):
-        """Read using EHLLAPI interface"""
-        try:
-            # EHLLAPI uses different positioning (0-based, linear)
-            position = ((start_row - 1) * 80) + (start_col - 1)
-            
-            # This is a simplified EHLLAPI implementation
-            # You may need to adjust based on your PCOMM version
-            text = self.ehllapi.GetText(position, length)
-            return text.strip()
-        except Exception as e:
-            print(f"Error reading with EHLLAPI: {e}")
-            return None
-    
-    def read_line(self, row, start_col=1, length=80):
-        """Read entire line or part of a line"""
-        return self.read_screen_text(row, start_col, length)
-    
-    def read_position(self, row, col, length=1):
-        """Read text at specific row/column position"""
-        return self.read_screen_text(row, col, length)
-    
-    def find_pcomm_window(self, max_attempts=10):
-        """Find IBM PCOMM window with retry logic"""
-        for attempt in range(max_attempts):
-            try:
-                self.window_handle = win32gui.FindWindow(None, self.window_title)
-                
-                if self.window_handle == 0:
-                    def enum_windows_proc(hwnd, lParam):
-                        window_text = win32gui.GetWindowText(hwnd)
-                        if any(keyword in window_text.upper() for keyword in 
-                              ["IBM", "PCOMM", "PERSONAL COMMUNICATIONS", "MAINFRAME"]):
-                            self.window_handle = hwnd
-                            return False
-                        return True
-                    
-                    win32gui.EnumWindows(enum_windows_proc, 0)
-                
-                if self.window_handle != 0:
-                    window_title = win32gui.GetWindowText(self.window_handle)
-                    print(f"Found PCOMM window: {window_title}")
-                    return True
-                else:
-                    print(f"Attempt {attempt + 1}: PCOMM window not found, retrying...")
-                    time.sleep(2)
-                    
-            except Exception as e:
-                print(f"Error finding PCOMM window: {e}")
-                time.sleep(2)
-        
-        return False
-    
-    def activate_window(self):
-        """Bring PCOMM window to foreground"""
-        if self.window_handle:
-            try:
-                win32gui.SetForegroundWindow(self.window_handle)
-                win32gui.ShowWindow(self.window_handle, win32con.SW_RESTORE)
-                time.sleep(1)
-                return True
-            except Exception as e:
-                print(f"Error activating window: {e}")
-                return False
-        return False
-    
-    def send_text(self, text):
-        """Send text to PCOMM terminal"""
-        if self.activate_window():
-            try:
-                autoit.send(text)
-                print(f"Sent text: {text}")
-                return True
-            except Exception as e:
-                print(f"Error sending text: {e}")
-                return False
-        return False
-
-def fix_pcomm_registration():
-    """Try to fix PCOMM registration issues"""
-    print("PCOMM Registration Fix Utility")
-    print("=" * 40)
-    
-    print("Step 1: Trying to register PCOMM automation...")
-    
-    # Try to find and register PCOMM automation
-    pcomm_paths = [
-        r"C:\Program Files\IBM\Personal Communications\autECL32.dll",
-        r"C:\Program Files (x86)\IBM\Personal Communications\autECL32.dll",
-        r"C:\PCOMM\autECL32.dll",
-        r"C:\IBM\PCOMM\autECL32.dll"
-    ]
-    
-    registered = False
-    for dll_path in pcomm_paths:
-        if os.path.exists(dll_path):
-            try:
-                print(f"Found: {dll_path}")
-                print("Registering...")
-                
-                # Unregister first
-                subprocess.run(["regsvr32", "/u", "/s", dll_path], check=False)
-                
-                # Register
-                result = subprocess.run(["regsvr32", "/s", dll_path], check=True)
-                print("✓ Registration successful!")
-                registered = True
-                break
-                
-            except Exception as e:
-                print(f"Registration failed: {e}")
-    
-    if not registered:
-        print("\nStep 2: Manual registration instructions:")
-        print("1. Find your PCOMM installation folder")
-        print("2. Open Command Prompt as Administrator")
-        print("3. Run: regsvr32 \"C:\\path\\to\\pcomm\\autECL32.dll\"")
-        print("4. Also try: regsvr32 \"C:\\path\\to\\pcomm\\ECL32.dll\"")
-    
-    return registered
-
-def test_pcomm_connection():
-    """Test PCOMM connection with multiple methods"""
-    print("PCOMM Connection Test")
-    print("=" * 25)
-    
-    # Get workspace file
-    ws_file_path = input("Enter path to your .ws file: ").strip().strip('"')
-    
-    if not ws_file_path:
-        print("No file specified")
-        return
-    
-    # Try to fix registration first
-    print("\nStep 1: Checking PCOMM registration...")
-    fix_pcomm_registration()
-    
-    # Create automation instance
-    pcomm = PCOMMAutomation(ws_file_path)
-    
-    # Open PCOMM workspace
-    print("\nStep 2: Opening PCOMM workspace...")
-    if not pcomm.open_pcomm_workspace():
-        print("Failed to open PCOMM workspace")
-        return
-    
-    # Find PCOMM window
-    print("\nStep 3: Finding PCOMM window...")
-    if not pcomm.find_pcomm_window():
-        print("Could not find PCOMM window")
-        return
-    
-    # Try to connect using multiple methods
-    print("\nStep 4: Connecting to PCOMM automation...")
-    if not pcomm.connect_to_pcomm_session():
-        print("Could not connect to PCOMM automation interface")
-        print("\nTroubleshooting suggestions:")
-        print("1. Make sure PCOMM session is active")
-        print("2. Try running as Administrator")
-        print("3. Check if PCOMM automation is installed")
-        print("4. Try different session name (A, B, C, etc.)")
-        return
-    
-    print("\n✓ Successfully connected to PCOMM!")
-    
-    # Test reading
-    print("\nStep 5: Testing screen reading...")
     try:
-        # Read first line
-        line1 = pcomm.read_line(1)
-        print(f"Line 1: '{line1}'")
+        # Execute the VBScript using cscript.exe
+        print(f"Executing PCOMM automation script: {vbs_script_path}")
         
-        # Read specific position
-        pos_text = pcomm.read_position(1, 1, 10)
-        print(f"Position (1,1) length 10: '{pos_text}'")
+        # Use cscript.exe to run VBScript in console mode
+        cmd = ["cscript.exe", "//NoLogo", vbs_script_path]
         
-        print("\n✓ Screen reading test successful!")
+        # Run the command and capture output
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=60  # 60 second timeout
+        )
         
-        # Interactive mode
-        while True:
-            print("\nInteractive test:")
-            row = input("Enter row to read (or 'quit'): ").strip()
-            if row.lower() == 'quit':
-                break
-            
-            try:
-                row_num = int(row)
-                text = pcomm.read_line(row_num)
-                print(f"Row {row_num}: '{text}'")
-            except ValueError:
-                print("Please enter a valid number")
-    
+        return result.returncode, result.stdout, result.stderr
+        
+    except subprocess.TimeoutExpired:
+        print("Error: Script execution timed out (60 seconds)")
+        return -1, "", "Timeout expired"
+    except FileNotFoundError:
+        print("Error: cscript.exe not found. Make sure you're running on Windows.")
+        return -1, "", "cscript.exe not found"
     except Exception as e:
-        print(f"Error during testing: {e}")
+        print(f"Error executing script: {str(e)}")
+        return -1, "", str(e)
+
+def main():
+    """Main function to run the PCOMM automation"""
+    
+    # Path to the VBScript file (adjust as needed)
+    script_dir = Path(__file__).parent
+    vbs_script = script_dir / "pcomm_automation.vbs"
+    
+    print("=" * 50)
+    print("IBM PCOMM Automation - Python Caller")
+    print("=" * 50)
+    
+    # Run the automation
+    return_code, stdout, stderr = run_pcomm_automation(str(vbs_script))
+    
+    if return_code is None:
+        return 1
+    
+    # Display results
+    print(f"\nScript execution completed with return code: {return_code}")
+    
+    if stdout:
+        print("\n--- Script Output ---")
+        print(stdout)
+    
+    if stderr:
+        print("\n--- Error Output ---")
+        print(stderr)
+    
+    # Return appropriate exit code
+    return return_code
 
 if __name__ == "__main__":
-    try:
-        import autoit
-        import win32gui
-        import win32com.client
-        print("All required modules loaded successfully.")
-        test_pcomm_connection()
-        
-    except ImportError as e:
-        print(f"Missing required module: {e}")
-        print("\nTo install required packages:")
-        print("pip install pyautoit pywin32")
+    exit_code = main()
+    sys.exit(exit_code)
+
+
+---------
+
+# IBM PCOMM Automation Setup Guide
+
+## Prerequisites
+
+1. **IBM Personal Communications (PCOMM)** must be installed on your system
+2. **Windows Operating System** (PCOMM automation uses COM objects)
+3. **Python 3.x** installed
+4. A valid PCOMM workspace file (`.ws`)
+
+## Files Overview
+
+- `pcomm_automation.vbs` - VBScript that handles PCOMM automation
+- `python_caller.py` - Python script that executes the VBScript
+
+## Setup Instructions
+
+### 1. Configure the VBScript
+
+Edit `pcomm_automation.vbs` and update these variables:
+
+```vbscript
+wsFile = "C:\Path\To\Your\Workspace.ws"  ' Update with your actual workspace file path
+sessionId = "A"                          ' Update if your session ID is different
+row = 1                                  ' Row to read from (1-based)
+col = 1                                  ' Column to read from (1-based)
+```
+
+### 2. Place Files in Same Directory
+
+Put both files in the same directory for easy execution.
+
+### 3. Test the Automation
+
+Run from command prompt:
+```bash
+python python_caller.py
+```
+
+Or execute the VBScript directly:
+```bash
+cscript.exe pcomm_automation.vbs
+```
+
+## What the Scripts Do
+
+### VBScript Functions:
+1. **Opens PCOMM workspace** - Connects to your mainframe/AS400 session
+2. **Waits for ready state** - Ensures the session is ready for input
+3. **Reads screen text** - Gets text from specified row/column position
+4. **Writes text** - Sends text to the terminal screen
+5. **Sends Enter key** - Simulates pressing Enter
+6. **Error handling** - Provides detailed error messages
+
+### Python Functions:
+1. **Executes VBScript** - Calls the VBS file using `cscript.exe`
+2. **Captures output** - Shows all VBS output and errors
+3. **Timeout handling** - Prevents hanging scripts
+4. **Return codes** - Proper exit codes for automation chains
+
+## Common PCOMM Methods
+
+Here are additional methods you can use in your VBScript:
+
+```vbscript
+' Screen Reading
+text = autECLPS.GetText(row, col, length)
+char = autECLPS.GetTextRect(startRow, startCol, endRow, endCol)
+
+' Writing/Input
+autECLPS.SetCursorPos row, col
+autECLPS.SendKeys "your text here"
+autECLPS.SendKeys "[enter]"    ' Special keys: [enter], [tab], [pf1], etc.
+
+' Screen Properties
+rows = autECLPS.NumRows
+cols = autECLPS.NumCols
+cursorRow = autECLPS.CursorPosRow
+cursorCol = autECLPS.CursorPosCol
+
+' Status Checking
+isConnected = autECLOIA.CommStarted
+isReady = (autECLOIA.InputInhibited = 0)
+```
+
+## Troubleshooting
+
+### Common Issues:
+
+1. **"Could not create PCOMM Session object"**
+   - Ensure PCOMM is properly installed
+   - Check if PCOMM automation is enabled
+   - Try running as Administrator
+
+2. **"Could not open workspace file"**
+   - Verify the workspace file path is correct
+   - Ensure the `.ws` file exists and is accessible
+   - Check file permissions
+
+3. **"Session not ready" / Timeout**
+   - Increase wait time in the script
+   - Check if the host system is accessible
+   - Verify network connectivity
+
+4. **"cscript.exe not found"**
+   - You're not running on Windows
+   - Windows Script Host is disabled
+
+### Debug Tips:
+
+1. **Test workspace manually** - Open your `.ws` file in PCOMM first
+2. **Check session ID** - Verify your session identifier (usually "A", "B", etc.)
+3. **Use PCOMM macro recorder** - Record actions to see exact syntax
+4. **Enable PCOMM logging** - Check PCOMM logs for connection issues
+
+## Extending the Automation
+
+You can extend this basic example to:
+
+- Read/write multiple screen fields
+- Navigate through multiple screens
+- Handle different session states
+- Parse screen data and make decisions
+- Create complex workflows
+- Add retry logic and error recovery
+
+## Security Notes
+
+- Store credentials securely (not in scripts)
+- Use proper error handling
+- Test thoroughly before production use
+- Consider using PCOMM's built-in security features
