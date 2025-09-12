@@ -4,20 +4,21 @@ Dim Session, OIA, PS
 
 Function AbrePCOM()
     On Error Resume Next
-    Set Session = CreateObject("PCOMM.autECLSession")
-    Set OIA = CreateObject("PCOMM.autECLOIA")
-    If Err.Number <> 0 Then
-       WScript.Echo "Erro criando objetos: " & Err.Description
-       AbrePCOM = False
-       Exit Function
-    End If
+    Set Session = GetObject(, "AutSess")
+    Set OIA = GetObject(, "AutOIA")
     Session.SetConnectionByName "A"
+    If Session.autECLWinMetrics.Active Then
+       Session.autECLWinMetrics.Active = False
+    Else
+       Session.autECLWinMetrics.Active = True
+    End If
     OIA.SetConnectionByName "A"
-    Do While OIA.InputInhibited <> 0
-        WScript.Sleep 500
-    Loop
-    If Err.Number <> 0 Then
+    OIA.WaitForInputReady
+    If Err = -2147352567 Then
        WScript.Echo "Sessão A do PCOM deve ser aberta !"
+       AbrePCOM = False
+    ElseIf Err.Number <> 0 Then
+       WScript.Echo "Erro: " & Err.Description
        AbrePCOM = False
     Else
        AbrePCOM = True
@@ -25,7 +26,7 @@ Function AbrePCOM()
 End Function
 
 If AbrePCOM() Then
-    Set PS = CreateObject("PCOMM.autECLPS")
+    Set PS = GetObject(, "AutPS")
     PS.SetConnectionByName "A"
     WScript.Echo "Texto: " & PS.GetText(1, 1, 20)
     PS.SetCursorPos 3, 1
