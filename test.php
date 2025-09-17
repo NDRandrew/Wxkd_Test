@@ -65,9 +65,15 @@ def run_sequence(username, password_b64, token, codigoloja, chaveloja, ws_file=N
 
 def close_session():
     try:
-        subprocess.run(["taskkill", "/f", "/im", "PCSWS.EXE"], capture_output=True)
+        subprocess.run(["taskkill", "/f", "/fi", "WINDOWTITLE:*Sessão A*"], capture_output=True)
     except:
-        pass
+        try:
+            subprocess.run(["taskkill", "/f", "/im", "pcsws.exe"], capture_output=True)
+        except:
+            try:
+                subprocess.run(["taskkill", "/f", "/im", "PCSWS.EXE"], capture_output=True)
+            except:
+                pass
 
 if __name__ == "__main__":
     USER = "i458363"
