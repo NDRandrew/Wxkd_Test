@@ -65,15 +65,26 @@ def run_sequence(username, password_b64, token, codigoloja, chaveloja, ws_file=N
 
 def close_session():
     try:
-        subprocess.run(["taskkill", "/f", "/fi", "WINDOWTITLE:*Sessão A*"], capture_output=True)
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.windll.user32
+        
+        def enum_windows_proc(hwnd, lParam):
+            length = user32.GetWindowTextLengthW(hwnd)
+            if length > 0:
+                buffer = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(hwnd, buffer, length + 1)
+                if "Sessão A" in buffer.value:
+                    user32.PostMessageW(hwnd, 0x10, 0, 0)  # WM_CLOSE
+            return True
+            
+        EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+        user32.EnumWindows(EnumWindowsProc(enum_windows_proc), 0)
     except:
         try:
-            subprocess.run(["taskkill", "/f", "/im", "pcsws.exe"], capture_output=True)
+            subprocess.run(["wmic", "process", "where", "name='pcsws.exe'", "delete"], capture_output=True)
         except:
-            try:
-                subprocess.run(["taskkill", "/f", "/im", "PCSWS.EXE"], capture_output=True)
-            except:
-                pass
+            pass
 
 if __name__ == "__main__":
     USER = "i458363"
