@@ -1,78 +1,4 @@
 <?php
-require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
-
-class AnaliseEncerramentoController {
-    private $model;
-    private $dados;
-    
-    public function __construct() {
-        $this->model = new Analise();
-        $this->loadData();
-    }
-    
-    private function loadData() {
-        // Base WHERE clause
-        $where = "AND A.COD_TIPO_SERVICO=1";
-        
-        // Add search filter if exists
-        if (isset($_GET['search']) && !empty($_GET['search'])) {
-            $search = $_GET['search'];
-            $where .= " AND (
-                CAST(A.COD_SOLICITACAO AS VARCHAR) LIKE '%$search%' OR
-                CAST(A.COD_AG AS VARCHAR) LIKE '%$search%' OR
-                CAST(A.CHAVE_LOJA AS VARCHAR) LIKE '%$search%' OR
-                F.NOME_LOJA LIKE '%$search%' OR
-                G.NR_PACB LIKE '%$search%' OR
-                F.MOTIVO_BLOQUEIO LIKE '%$search%' OR
-                F.DESC_MOTIVO_ENCERRAMENTO LIKE '%$search%'
-            )";
-        }
-        
-        // Add bloqueio filter
-        if (isset($_GET['bloqueio']) && $_GET['bloqueio'] !== '') {
-            if ($_GET['bloqueio'] === 'bloqueado') {
-                $where .= " AND F.DATA_BLOQUEIO IS NOT NULL";
-            } else if ($_GET['bloqueio'] === 'nao_bloqueado') {
-                $where .= " AND F.DATA_BLOQUEIO IS NULL";
-            }
-        }
-        
-        // Add orgao pagador filter
-        if (isset($_GET['orgao_pagador']) && !empty($_GET['orgao_pagador'])) {
-            $orgao = $_GET['orgao_pagador'];
-            $where .= " AND G.ORGAO_PAGADOR LIKE '%$orgao%'";
-        }
-        
-        // Add data range filter
-        if (isset($_GET['data_inicio']) && !empty($_GET['data_inicio'])) {
-            $where .= " AND A.DATA_CAD >= '$_GET[data_inicio]'";
-        }
-        
-        if (isset($_GET['data_fim']) && !empty($_GET['data_fim'])) {
-            $where .= " AND A.DATA_CAD <= '$_GET[data_fim]'";
-        }
-        
-        $this->dados = $this->model->solicitacoes($where);
-    }
-    
-    public function getDados() {
-        return $this->dados;
-    }
-    
-    public function getTotalRecords() {
-        return is_array($this->dados) ? count($this->dados) : 0;
-    }
-}
-
-// Initialize controller
-$controller = new AnaliseEncerramentoController();
-$dados = $controller->getDados();
-$totalRecords = $controller->getTotalRecords();
-?>
-
----------
-
-<?php
 require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\control\encerramento\analise_encerramento_control.php';
 ?>
 
@@ -287,7 +213,119 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
         </div>
     </div>
 
-    <script src="X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\encerramento\analise_encerramento\analise_encerramento.js"></script>
+    <script>
+        // analise_encerramento.js - Client-side functionality
+        (function() {
+            'use strict';
+
+            const filterForm = document.getElementById('filterForm');
+            const clearFiltersBtn = document.getElementById('clearFilters');
+            const searchInput = document.getElementById('searchInput');
+            const bloqueioFilter = document.getElementById('bloqueioFilter');
+            const orgaoPagadorFilter = document.getElementById('orgaoPagadorFilter');
+            const dataInicioFilter = document.getElementById('dataInicioFilter');
+            const dataFimFilter = document.getElementById('dataFimFilter');
+
+            document.addEventListener('DOMContentLoaded', function() {
+                initializeEventListeners();
+                highlightActiveFilters();
+            });
+
+            function initializeEventListeners() {
+                if (clearFiltersBtn) {
+                    clearFiltersBtn.addEventListener('click', clearAllFilters);
+                }
+
+                if (filterForm) {
+                    filterForm.addEventListener('submit', handleFormSubmit);
+                }
+
+                if (searchInput) {
+                    searchInput.addEventListener('keypress', function(e) {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            filterForm.submit();
+                        }
+                    });
+                }
+            }
+
+            function handleFormSubmit(e) {
+                if (!validateDateRange()) {
+                    e.preventDefault();
+                    return;
+                }
+
+                const inputs = filterForm.querySelectorAll('input, select');
+                inputs.forEach(input => {
+                    if (!input.value || input.value === '') {
+                        input.disabled = true;
+                    }
+                });
+
+                setTimeout(() => {
+                    inputs.forEach(input => {
+                        input.disabled = false;
+                    });
+                }, 100);
+            }
+
+            function clearAllFilters() {
+                if (searchInput) searchInput.value = '';
+                if (bloqueioFilter) bloqueioFilter.value = '';
+                if (orgaoPagadorFilter) orgaoPagadorFilter.value = '';
+                if (dataInicioFilter) dataInicioFilter.value = '';
+                if (dataFimFilter) dataFimFilter.value = '';
+
+                window.location.href = window.location.pathname;
+            }
+
+            function highlightActiveFilters() {
+                const urlParams = new URLSearchParams(window.location.search);
+                
+                if (searchInput && urlParams.has('search')) {
+                    searchInput.style.borderColor = '#206bc4';
+                    searchInput.style.borderWidth = '2px';
+                }
+
+                [bloqueioFilter, orgaoPagadorFilter, dataInicioFilter, dataFimFilter].forEach(filter => {
+                    if (filter && filter.value) {
+                        filter.style.borderColor = '#206bc4';
+                        filter.style.borderWidth = '2px';
+                    }
+                });
+
+                if (clearFiltersBtn) {
+                    const hasActiveFilters = urlParams.has('search') || 
+                                            urlParams.has('bloqueio') || 
+                                            urlParams.has('orgao_pagador') || 
+                                            urlParams.has('data_inicio') || 
+                                            urlParams.has('data_fim');
+                    
+                    if (hasActiveFilters) {
+                        clearFiltersBtn.classList.add('btn-warning');
+                        clearFiltersBtn.classList.remove('btn-secondary');
+                    }
+                }
+            }
+
+            function validateDateRange() {
+                const dataInicio = dataInicioFilter ? dataInicioFilter.value : null;
+                const dataFim = dataFimFilter ? dataFimFilter.value : null;
+
+                if (dataInicio && dataFim) {
+                    const inicio = new Date(dataInicio);
+                    const fim = new Date(dataFim);
+
+                    if (inicio > fim) {
+                        alert('A data de início não pode ser maior que a data fim.');
+                        return false;
+                    }
+                }
+                return true;
+            }
+        })();
+    </script>
 
     <script>
         (function () {
@@ -305,219 +343,3 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
         })();
     </script>
 </body>
-
-
-------
-
-// analise_encerramento.js - Client-side functionality for filters and search
-
-(function() {
-    'use strict';
-
-    // DOM Elements
-    const filterForm = document.getElementById('filterForm');
-    const clearFiltersBtn = document.getElementById('clearFilters');
-    const searchInput = document.getElementById('searchInput');
-    const bloqueioFilter = document.getElementById('bloqueioFilter');
-    const orgaoPagadorFilter = document.getElementById('orgaoPagadorFilter');
-    const dataInicioFilter = document.getElementById('dataInicioFilter');
-    const dataFimFilter = document.getElementById('dataFimFilter');
-
-    // Initialize on page load
-    document.addEventListener('DOMContentLoaded', function() {
-        initializeEventListeners();
-        highlightActiveFilters();
-    });
-
-    /**
-     * Initialize all event listeners
-     */
-    function initializeEventListeners() {
-        // Clear filters button
-        if (clearFiltersBtn) {
-            clearFiltersBtn.addEventListener('click', clearAllFilters);
-        }
-
-        // Form submission
-        if (filterForm) {
-            filterForm.addEventListener('submit', handleFormSubmit);
-        }
-
-        // Real-time search on Enter key
-        if (searchInput) {
-            searchInput.addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    filterForm.submit();
-                }
-            });
-        }
-
-        // Filter change handlers
-        const filterElements = [bloqueioFilter, orgaoPagadorFilter, dataInicioFilter, dataFimFilter];
-        filterElements.forEach(element => {
-            if (element) {
-                element.addEventListener('change', function() {
-                    // Auto-submit on filter change (optional - remove if not desired)
-                    // filterForm.submit();
-                });
-            }
-        });
-    }
-
-    /**
-     * Handle form submission
-     */
-    function handleFormSubmit(e) {
-        // Remove empty parameters before submitting
-        const inputs = filterForm.querySelectorAll('input, select');
-        inputs.forEach(input => {
-            if (!input.value || input.value === '') {
-                input.disabled = true;
-            }
-        });
-
-        // Allow form to submit normally
-        setTimeout(() => {
-            inputs.forEach(input => {
-                input.disabled = false;
-            });
-        }, 100);
-    }
-
-    /**
-     * Clear all filters and reload page
-     */
-    function clearAllFilters() {
-        // Clear all input values
-        if (searchInput) searchInput.value = '';
-        if (bloqueioFilter) bloqueioFilter.value = '';
-        if (orgaoPagadorFilter) orgaoPagadorFilter.value = '';
-        if (dataInicioFilter) dataInicioFilter.value = '';
-        if (dataFimFilter) dataFimFilter.value = '';
-
-        // Reload page without query parameters
-        window.location.href = window.location.pathname;
-    }
-
-    /**
-     * Highlight active filters visually
-     */
-    function highlightActiveFilters() {
-        const urlParams = new URLSearchParams(window.location.search);
-        
-        // Highlight search input if active
-        if (searchInput && urlParams.has('search')) {
-            searchInput.style.borderColor = '#206bc4';
-            searchInput.style.borderWidth = '2px';
-        }
-
-        // Highlight filter selects if active
-        [bloqueioFilter, orgaoPagadorFilter, dataInicioFilter, dataFimFilter].forEach(filter => {
-            if (filter && filter.value) {
-                filter.style.borderColor = '#206bc4';
-                filter.style.borderWidth = '2px';
-            }
-        });
-
-        // Update clear button state
-        if (clearFiltersBtn) {
-            const hasActiveFilters = urlParams.has('search') || 
-                                    urlParams.has('bloqueio') || 
-                                    urlParams.has('orgao_pagador') || 
-                                    urlParams.has('data_inicio') || 
-                                    urlParams.has('data_fim');
-            
-            if (hasActiveFilters) {
-                clearFiltersBtn.classList.add('btn-warning');
-                clearFiltersBtn.classList.remove('btn-secondary');
-            }
-        }
-    }
-
-    /**
-     * Export table to CSV (optional feature)
-     */
-    function exportTableToCSV() {
-        const table = document.getElementById('dataTable');
-        if (!table) return;
-
-        let csv = [];
-        const rows = table.querySelectorAll('tr');
-
-        for (let i = 0; i < rows.length; i++) {
-            const row = [];
-            const cols = rows[i].querySelectorAll('td, th');
-
-            for (let j = 0; j < cols.length; j++) {
-                let data = cols[j].innerText.replace(/(\r\n|\n|\r)/gm, '').replace(/(\s\s)/gm, ' ');
-                data = data.replace(/"/g, '""');
-                row.push('"' + data + '"');
-            }
-
-            csv.push(row.join(','));
-        }
-
-        const csvFile = new Blob([csv.join('\n')], { type: 'text/csv' });
-        const downloadLink = document.createElement('a');
-        downloadLink.download = 'analise_encerramento_' + new Date().getTime() + '.csv';
-        downloadLink.href = window.URL.createObjectURL(csvFile);
-        downloadLink.style.display = 'none';
-        document.body.appendChild(downloadLink);
-        downloadLink.click();
-        document.body.removeChild(downloadLink);
-    }
-
-    /**
-     * Show loading indicator
-     */
-    function showLoading() {
-        const loadingHtml = `
-            <div class="d-flex justify-content-center align-items-center" style="height: 200px;">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Carregando...</span>
-                </div>
-            </div>
-        `;
-        const tableContainer = document.querySelector('.table-responsive');
-        if (tableContainer) {
-            tableContainer.innerHTML = loadingHtml;
-        }
-    }
-
-    /**
-     * Validate date range
-     */
-    function validateDateRange() {
-        const dataInicio = dataInicioFilter ? dataInicioFilter.value : null;
-        const dataFim = dataFimFilter ? dataFimFilter.value : null;
-
-        if (dataInicio && dataFim) {
-            const inicio = new Date(dataInicio);
-            const fim = new Date(dataFim);
-
-            if (inicio > fim) {
-                alert('A data de início não pode ser maior que a data fim.');
-                return false;
-            }
-        }
-        return true;
-    }
-
-    // Add date validation to form
-    if (filterForm) {
-        filterForm.addEventListener('submit', function(e) {
-            if (!validateDateRange()) {
-                e.preventDefault();
-            }
-        });
-    }
-
-    // Expose functions globally if needed
-    window.AnaliseEncerramentoJS = {
-        exportTableToCSV: exportTableToCSV,
-        clearAllFilters: clearAllFilters,
-        validateDateRange: validateDateRange
-    };
-
-})();
