@@ -3,9 +3,6 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
 ?>
 
 <head>
-    <!-- Flatpickr CSS -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-    
     <style>
         :root {
             --thead-encerramento: #d8d8d8;
@@ -56,31 +53,24 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
             background: rgba(0, 0, 0, 0.8);
         }
         
-        /* Flatpickr dark theme support */
-        [data-theme="dark"] .flatpickr-calendar {
-            background: #1e293b;
-            border-color: #334155;
+        .date-input-wrapper {
+            position: relative;
         }
         
-        [data-theme="dark"] .flatpickr-day {
-            color: #e2e8f0;
+        .date-input-wrapper input[type="date"] {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
         }
         
-        [data-theme="dark"] .flatpickr-day:hover {
-            background: #334155;
-        }
-        
-        [data-theme="dark"] .flatpickr-day.selected {
-            background: #206bc4;
-        }
-        
-        [data-theme="dark"] .flatpickr-months {
-            background: #1e293b;
-        }
-        
-        [data-theme="dark"] .flatpickr-current-month .flatpickr-monthDropdown-months,
-        [data-theme="dark"] .flatpickr-current-month input.cur-year {
-            color: #e2e8f0;
+        .date-input-wrapper input[type="text"] {
+            position: relative;
+            z-index: 1;
+            pointer-events: none;
         }
     </style>
 </head>
@@ -130,17 +120,45 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
                     <!-- Data Inicio -->
                     <div class="col-md-3">
                         <label class="form-label">Data Início</label>
-                        <input type="text" class="form-control" name="data_inicio" id="dataInicioFilter" 
-                               placeholder="dd/mm/yyyy"
-                               value="<?php echo isset($_GET['data_inicio']) ? htmlspecialchars($_GET['data_inicio']) : ''; ?>">
+                        <div class="date-input-wrapper">
+                            <input type="text" class="form-control" id="dataInicioDisplay" 
+                                   placeholder="dd/mm/yyyy" readonly
+                                   value="<?php 
+                                   if (isset($_GET['data_inicio']) && !empty($_GET['data_inicio'])) {
+                                       $date = $_GET['data_inicio'];
+                                       if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+                                           $parts = explode('-', $date);
+                                           echo $parts[2] . '/' . $parts[1] . '/' . $parts[0];
+                                       } else {
+                                           echo htmlspecialchars($date);
+                                       }
+                                   }
+                                   ?>">
+                            <input type="date" id="dataInicioFilter" name="data_inicio"
+                                   value="<?php echo isset($_GET['data_inicio']) ? htmlspecialchars($_GET['data_inicio']) : ''; ?>">
+                        </div>
                     </div>
                     
                     <!-- Data Fim -->
                     <div class="col-md-3">
                         <label class="form-label">Data Fim</label>
-                        <input type="text" class="form-control" name="data_fim" id="dataFimFilter" 
-                               placeholder="dd/mm/yyyy"
-                               value="<?php echo isset($_GET['data_fim']) ? htmlspecialchars($_GET['data_fim']) : ''; ?>">
+                        <div class="date-input-wrapper">
+                            <input type="text" class="form-control" id="dataFimDisplay" 
+                                   placeholder="dd/mm/yyyy" readonly
+                                   value="<?php 
+                                   if (isset($_GET['data_fim']) && !empty($_GET['data_fim'])) {
+                                       $date = $_GET['data_fim'];
+                                       if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+                                           $parts = explode('-', $date);
+                                           echo $parts[2] . '/' . $parts[1] . '/' . $parts[0];
+                                       } else {
+                                           echo htmlspecialchars($date);
+                                       }
+                                   }
+                                   ?>">
+                            <input type="date" id="dataFimFilter" name="data_fim"
+                                   value="<?php echo isset($_GET['data_fim']) ? htmlspecialchars($_GET['data_fim']) : ''; ?>">
+                        </div>
                     </div>
                     
                     <!-- Action Buttons -->
@@ -222,10 +240,6 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
         </div>
     </div>
 
-    <!-- Flatpickr JS -->
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/pt.js"></script>
-
     <script>
         // analise_encerramento.js - AJAX functionality
         (function() {
@@ -239,7 +253,9 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
             const bloqueioFilter = document.getElementById('bloqueioFilter');
             const orgaoPagadorFilter = document.getElementById('orgaoPagadorFilter');
             const dataInicioFilter = document.getElementById('dataInicioFilter');
+            const dataInicioDisplay = document.getElementById('dataInicioDisplay');
             const dataFimFilter = document.getElementById('dataFimFilter');
+            const dataFimDisplay = document.getElementById('dataFimDisplay');
             const tableBody = document.getElementById('tableBody');
             const loadingOverlay = document.getElementById('loadingOverlay');
             const totalRecordsEl = document.getElementById('totalRecords');
@@ -247,47 +263,23 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
             // AJAX endpoint URL - adjust if your file structure is different
             const AJAX_URL = '/teste/Andre/tabler_portalexpresso_paginaEncerramento/ajax_encerramento.php';
 
-            // Initialize Flatpickr for date inputs
-            let dataInicioInstance = null;
-            let dataFimInstance = null;
-            
-            if (dataInicioFilter) {
-                dataInicioInstance = flatpickr(dataInicioFilter, {
-                    dateFormat: "d/m/Y",
-                    altInput: false,
-                    locale: "pt",
-                    allowInput: true,
-                    onChange: function(selectedDates, dateStr, instance) {
-                        // Auto-format as user types
+            // Setup date pickers - sync hidden date input with visible text display
+            function setupDateInput(dateInput, displayInput) {
+                if (!dateInput || !displayInput) return;
+                
+                dateInput.addEventListener('change', function() {
+                    if (this.value) {
+                        // Convert yyyy-mm-dd to dd/mm/yyyy
+                        const parts = this.value.split('-');
+                        displayInput.value = parts[2] + '/' + parts[1] + '/' + parts[0];
+                    } else {
+                        displayInput.value = '';
                     }
                 });
-                
-                // Convert existing value if in yyyy-mm-dd format
-                const inicioValue = dataInicioFilter.value;
-                if (inicioValue && inicioValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                    const parts = inicioValue.split('-');
-                    dataInicioFilter.value = parts[2] + '/' + parts[1] + '/' + parts[0];
-                }
             }
             
-            if (dataFimFilter) {
-                dataFimInstance = flatpickr(dataFimFilter, {
-                    dateFormat: "d/m/Y",
-                    altInput: false,
-                    locale: "pt",
-                    allowInput: true,
-                    onChange: function(selectedDates, dateStr, instance) {
-                        // Auto-format as user types
-                    }
-                });
-                
-                // Convert existing value if in yyyy-mm-dd format
-                const fimValue = dataFimFilter.value;
-                if (fimValue && fimValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                    const parts = fimValue.split('-');
-                    dataFimFilter.value = parts[2] + '/' + parts[1] + '/' + parts[0];
-                }
-            }
+            setupDateInput(dataInicioFilter, dataInicioDisplay);
+            setupDateInput(dataFimFilter, dataFimDisplay);
 
             // Initialize immediately
             initializeEventListeners();
@@ -340,11 +332,7 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
                 // Only add non-empty parameters
                 for (let [key, value] of formData.entries()) {
                     if (value && value.trim() !== '') {
-                        // Convert dd/mm/yyyy to yyyy-mm-dd for date fields
-                        if ((key === 'data_inicio' || key === 'data_fim') && value.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
-                            const parts = value.split('/');
-                            value = parts[2] + '-' + parts[1] + '-' + parts[0];
-                        }
+                        // Date inputs are already in yyyy-mm-dd format from hidden inputs
                         params.append(key, value);
                     }
                 }
@@ -393,14 +381,10 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
                 if (searchInput) searchInput.value = '';
                 if (bloqueioFilter) bloqueioFilter.value = '';
                 if (orgaoPagadorFilter) orgaoPagadorFilter.value = '';
-                if (dataInicioFilter) {
-                    dataInicioFilter.value = '';
-                    if (dataInicioInstance) dataInicioInstance.clear();
-                }
-                if (dataFimFilter) {
-                    dataFimFilter.value = '';
-                    if (dataFimInstance) dataFimInstance.clear();
-                }
+                if (dataInicioFilter) dataInicioFilter.value = '';
+                if (dataInicioDisplay) dataInicioDisplay.value = '';
+                if (dataFimFilter) dataFimFilter.value = '';
+                if (dataFimDisplay) dataFimDisplay.value = '';
 
                 // Reload data without filters
                 showLoading();
@@ -435,7 +419,7 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
                 const urlParams = new URLSearchParams(window.location.search);
                 
                 // Reset all borders first
-                [searchInput, bloqueioFilter, orgaoPagadorFilter, dataInicioFilter, dataFimFilter].forEach(filter => {
+                [searchInput, bloqueioFilter, orgaoPagadorFilter, dataInicioDisplay, dataFimDisplay].forEach(filter => {
                     if (filter) {
                         filter.style.borderColor = '';
                         filter.style.borderWidth = '';
@@ -447,12 +431,25 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
                     searchInput.style.borderWidth = '2px';
                 }
 
-                [bloqueioFilter, orgaoPagadorFilter, dataInicioFilter, dataFimFilter].forEach(filter => {
-                    if (filter && filter.value) {
-                        filter.style.borderColor = '#206bc4';
-                        filter.style.borderWidth = '2px';
-                    }
-                });
+                if (bloqueioFilter && bloqueioFilter.value) {
+                    bloqueioFilter.style.borderColor = '#206bc4';
+                    bloqueioFilter.style.borderWidth = '2px';
+                }
+                
+                if (orgaoPagadorFilter && orgaoPagadorFilter.value) {
+                    orgaoPagadorFilter.style.borderColor = '#206bc4';
+                    orgaoPagadorFilter.style.borderWidth = '2px';
+                }
+                
+                if (dataInicioDisplay && dataInicioFilter && dataInicioFilter.value) {
+                    dataInicioDisplay.style.borderColor = '#206bc4';
+                    dataInicioDisplay.style.borderWidth = '2px';
+                }
+                
+                if (dataFimDisplay && dataFimFilter && dataFimFilter.value) {
+                    dataFimDisplay.style.borderColor = '#206bc4';
+                    dataFimDisplay.style.borderWidth = '2px';
+                }
 
                 if (clearFiltersBtn) {
                     const hasActiveFilters = urlParams.has('search') || 
@@ -476,17 +473,9 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
                 const dataFim = dataFimFilter ? dataFimFilter.value : null;
 
                 if (dataInicio && dataFim) {
-                    // Parse dd/mm/yyyy format
-                    const parseDate = (dateStr) => {
-                        if (dateStr.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
-                            const parts = dateStr.split('/');
-                            return new Date(parts[2], parts[1] - 1, parts[0]);
-                        }
-                        return new Date(dateStr);
-                    };
-                    
-                    const inicio = parseDate(dataInicio);
-                    const fim = parseDate(dataFim);
+                    // Date inputs are in yyyy-mm-dd format, can compare directly
+                    const inicio = new Date(dataInicio);
+                    const fim = new Date(dataFim);
 
                     if (inicio > fim) {
                         alert('A data de início não pode ser maior que a data fim.');
@@ -527,11 +516,12 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
     </script>
 </body>
 
---------
 
+
+---------
 
 // analise_encerramento.js - AJAX-based filter functionality
-// NOTE: This file requires Flatpickr to be loaded first for date pickers
+// Uses native HTML5 date inputs with dd/mm/yyyy display format
 
 (function() {
     'use strict';
@@ -545,7 +535,9 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
     const bloqueioFilter = document.getElementById('bloqueioFilter');
     const orgaoPagadorFilter = document.getElementById('orgaoPagadorFilter');
     const dataInicioFilter = document.getElementById('dataInicioFilter');
+    const dataInicioDisplay = document.getElementById('dataInicioDisplay');
     const dataFimFilter = document.getElementById('dataFimFilter');
+    const dataFimDisplay = document.getElementById('dataFimDisplay');
     const tableBody = document.getElementById('tableBody');
     const loadingOverlay = document.getElementById('loadingOverlay');
     const totalRecordsEl = document.getElementById('totalRecords');
@@ -553,47 +545,23 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
     // AJAX endpoint URL - adjust this path based on your directory structure
     const AJAX_URL = '/teste/Andre/tabler_portalexpresso_paginaEncerramento/ajax_encerramento.php';
 
-    // Initialize Flatpickr for date inputs
-    let dataInicioInstance = null;
-    let dataFimInstance = null;
-    
-    if (dataInicioFilter) {
-        dataInicioInstance = flatpickr(dataInicioFilter, {
-            dateFormat: "d/m/Y",
-            altInput: false,
-            locale: "pt",
-            allowInput: true,
-            onChange: function(selectedDates, dateStr, instance) {
-                // Auto-format as user types
+    // Setup date pickers - sync hidden date input with visible text display
+    function setupDateInput(dateInput, displayInput) {
+        if (!dateInput || !displayInput) return;
+        
+        dateInput.addEventListener('change', function() {
+            if (this.value) {
+                // Convert yyyy-mm-dd to dd/mm/yyyy
+                const parts = this.value.split('-');
+                displayInput.value = parts[2] + '/' + parts[1] + '/' + parts[0];
+            } else {
+                displayInput.value = '';
             }
         });
-        
-        // Convert existing value if in yyyy-mm-dd format
-        const inicioValue = dataInicioFilter.value;
-        if (inicioValue && inicioValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
-            const parts = inicioValue.split('-');
-            dataInicioFilter.value = parts[2] + '/' + parts[1] + '/' + parts[0];
-        }
     }
     
-    if (dataFimFilter) {
-        dataFimInstance = flatpickr(dataFimFilter, {
-            dateFormat: "d/m/Y",
-            altInput: false,
-            locale: "pt",
-            allowInput: true,
-            onChange: function(selectedDates, dateStr, instance) {
-                // Auto-format as user types
-            }
-        });
-        
-        // Convert existing value if in yyyy-mm-dd format
-        const fimValue = dataFimFilter.value;
-        if (fimValue && fimValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
-            const parts = fimValue.split('-');
-            dataFimFilter.value = parts[2] + '/' + parts[1] + '/' + parts[0];
-        }
-    }
+    setupDateInput(dataInicioFilter, dataInicioDisplay);
+    setupDateInput(dataFimFilter, dataFimDisplay);
 
     // Initialize on page load
     document.addEventListener('DOMContentLoaded', function() {
@@ -725,7 +693,7 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
         const urlParams = new URLSearchParams(window.location.search);
         
         // Reset all borders first
-        [searchInput, bloqueioFilter, orgaoPagadorFilter, dataInicioFilter, dataFimFilter].forEach(filter => {
+        [searchInput, bloqueioFilter, orgaoPagadorFilter, dataInicioDisplay, dataFimDisplay].forEach(filter => {
             if (filter) {
                 filter.style.borderColor = '';
                 filter.style.borderWidth = '';
@@ -739,12 +707,25 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
         }
 
         // Highlight filter inputs if active
-        [bloqueioFilter, orgaoPagadorFilter, dataInicioFilter, dataFimFilter].forEach(filter => {
-            if (filter && filter.value) {
-                filter.style.borderColor = '#206bc4';
-                filter.style.borderWidth = '2px';
-            }
-        });
+        if (bloqueioFilter && bloqueioFilter.value) {
+            bloqueioFilter.style.borderColor = '#206bc4';
+            bloqueioFilter.style.borderWidth = '2px';
+        }
+        
+        if (orgaoPagadorFilter && orgaoPagadorFilter.value) {
+            orgaoPagadorFilter.style.borderColor = '#206bc4';
+            orgaoPagadorFilter.style.borderWidth = '2px';
+        }
+        
+        if (dataInicioDisplay && dataInicioFilter && dataInicioFilter.value) {
+            dataInicioDisplay.style.borderColor = '#206bc4';
+            dataInicioDisplay.style.borderWidth = '2px';
+        }
+        
+        if (dataFimDisplay && dataFimFilter && dataFimFilter.value) {
+            dataFimDisplay.style.borderColor = '#206bc4';
+            dataFimDisplay.style.borderWidth = '2px';
+        }
 
         // Update clear button state
         if (clearFiltersBtn) {
@@ -772,17 +753,9 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
         const dataFim = dataFimFilter ? dataFimFilter.value : null;
 
         if (dataInicio && dataFim) {
-            // Parse dd/mm/yyyy format
-            const parseDate = (dateStr) => {
-                if (dateStr.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
-                    const parts = dateStr.split('/');
-                    return new Date(parts[2], parts[1] - 1, parts[0]);
-                }
-                return new Date(dateStr);
-            };
-            
-            const inicio = parseDate(dataInicio);
-            const fim = parseDate(dataFim);
+            // Date inputs are in yyyy-mm-dd format, can compare directly
+            const inicio = new Date(dataInicio);
+            const fim = new Date(dataFim);
 
             if (inicio > fim) {
                 alert('A data de início não pode ser maior que a data fim.');
