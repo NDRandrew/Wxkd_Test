@@ -428,3 +428,148 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
         })();
     </script>
 </body>
+
+
+----------
+
+<?php
+/**
+ * ajax_encerramento.php
+ * 
+ * IMPORTANT: Place this file in your ROOT directory at:
+ * X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\ajax_encerramento.php
+ * 
+ * This file handles AJAX requests for the encerramento analysis table
+ * It is called directly by JavaScript and returns JSON responses
+ */
+
+header('Content-Type: application/json');
+header('Access-Control-Allow-Origin: *');
+
+require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
+
+class AjaxEncerramentoHandler {
+    private $model;
+    
+    public function __construct() {
+        $this->model = new Analise();
+    }
+    
+    public function loadData($filters = []) {
+        // Base WHERE clause
+        $where = "AND A.COD_TIPO_SERVICO=1";
+        
+        // Add search filter if exists
+        if (isset($filters['search']) && !empty($filters['search'])) {
+            $search = $filters['search'];
+            $where .= " AND (
+                CAST(A.COD_SOLICITACAO AS VARCHAR) LIKE '%$search%' OR
+                CAST(A.COD_AG AS VARCHAR) LIKE '%$search%' OR
+                CAST(A.CHAVE_LOJA AS VARCHAR) LIKE '%$search%' OR
+                F.NOME_LOJA LIKE '%$search%' OR
+                G.NR_PACB LIKE '%$search%' OR
+                F.MOTIVO_BLOQUEIO LIKE '%$search%' OR
+                F.DESC_MOTIVO_ENCERRAMENTO LIKE '%$search%'
+            )";
+        }
+        
+        // Add bloqueio filter
+        if (isset($filters['bloqueio']) && $filters['bloqueio'] !== '') {
+            if ($filters['bloqueio'] === 'bloqueado') {
+                $where .= " AND F.DATA_BLOQUEIO IS NOT NULL";
+            } else if ($filters['bloqueio'] === 'nao_bloqueado') {
+                $where .= " AND F.DATA_BLOQUEIO IS NULL";
+            }
+        }
+        
+        // Add orgao pagador filter
+        if (isset($filters['orgao_pagador']) && !empty($filters['orgao_pagador'])) {
+            $orgao = $filters['orgao_pagador'];
+            $where .= " AND G.ORGAO_PAGADOR LIKE '%$orgao%'";
+        }
+        
+        // Add data range filter
+        if (isset($filters['data_inicio']) && !empty($filters['data_inicio'])) {
+            $where .= " AND A.DATA_CAD >= '$filters[data_inicio]'";
+        }
+        
+        if (isset($filters['data_fim']) && !empty($filters['data_fim'])) {
+            $where .= " AND A.DATA_CAD <= '$filters[data_fim]'";
+        }
+        
+        $dados = $this->model->solicitacoes($where);
+        return $dados;
+    }
+    
+    public function renderTableRows($dados) {
+        $html = '';
+        $length = is_array($dados) ? count($dados) : 0;
+        
+        if ($length > 0) {
+            for ($i = 0; $i < $length; $i++) {
+                $html .= '<tr>';
+                $html .= '<th><span style="display: block; text-align: center;">' . htmlspecialchars($dados[$i]['COD_SOLICITACAO']) . '</span></th>';
+                $html .= '<td><span style="display: block; text-align: center;">' . htmlspecialchars($dados[$i]['COD_AG']) . htmlspecialchars($dados[$i]['NR_PACB']) . '</span></td>';
+                $html .= '<td><span style="display: block; text-align: center;">' . htmlspecialchars($dados[$i]['CHAVE_LOJA']) . '</span></td>';
+                $html .= '<td><span style="display: block; text-align: center;">' . $dados[$i]['DATA_RECEPCAO']->format('d/m/Y') . '</span></td>';
+                
+                // Data Retirada
+                if (!is_null($dados[$i]['DATA_RETIRADA_EQPTO'])) {
+                    $html .= '<td><span style="display: block; text-align: center;">' . $dados[$i]['DATA_RETIRADA_EQPTO']->format('d/m/Y') . '</span></td>';
+                } else {
+                    $html .= '<td><span class="text-red" style="display: block; text-align: center;">Sem Data</span></td>';
+                }
+                
+                // Bloqueio
+                if (!is_null($dados[$i]['DATA_BLOQUEIO'])) {
+                    $html .= '<td><span class="text-green" style="display: block; text-align: center;">Bloqueado</span></td>';
+                } else {
+                    $html .= '<td><span class="text-red" style="display: block; text-align: center;">Não Bloqueado</span></td>';
+                }
+                
+                $html .= '<td><span style="display: block; text-align: center;">' . htmlspecialchars($dados[$i]['DATA_LAST_TRANS']) . '</span></td>';
+                
+                // Motivo Bloqueio
+                if (!is_null($dados[$i]['MOTIVO_BLOQUEIO'])) {
+                    $html .= '<td><span style="display: block; text-align: center;">'. htmlspecialchars($dados[$i]['MOTIVO_BLOQUEIO']) .'</span></td>';
+                } else {
+                    $html .= '<td><span class="text-red" style="display: block; text-align: center;">Sem Motivo de Bloqueio</span></td>';
+                }
+                
+                // Motivo Encerramento
+                if (!is_null($dados[$i]['DESC_MOTIVO_ENCERRAMENTO'])) {
+                    $html .= '<td><span style="display: block; text-align: center;">'. htmlspecialchars($dados[$i]['DESC_MOTIVO_ENCERRAMENTO']) .'</span></td>';
+                } else {
+                    $html .= '<td><span class="text-red" style="display: block; text-align: center;">Sem Motivo de Encerramento</span></td>';
+                }
+                
+                $html .= '<td><span style="display: block; text-align: center;">' . htmlspecialchars($dados[$i]['ORGAO_PAGADOR']) . '</span></td>';
+                $html .= '<td><span style="display: block; text-align: center;">' . htmlspecialchars($dados[$i]['CLUSTER']) . '</span></td>';
+                $html .= '<td></td><td></td><td></td><td></td><td></td>';
+                $html .= '</tr>';
+            }
+        } else {
+            $html .= '<tr><td colspan="16" class="text-center">Nenhum registro encontrado</td></tr>';
+        }
+        
+        return $html;
+    }
+}
+
+try {
+    $handler = new AjaxEncerramentoHandler();
+    $dados = $handler->loadData($_GET);
+    $totalRecords = is_array($dados) ? count($dados) : 0;
+    
+    echo json_encode([
+        'success' => true,
+        'html' => $handler->renderTableRows($dados),
+        'totalRecords' => $totalRecords
+    ]);
+} catch (Exception $e) {
+    echo json_encode([
+        'success' => false,
+        'error' => $e->getMessage()
+    ]);
+}
+?>
