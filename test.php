@@ -1,24 +1,25 @@
 <?php
+// ajax_encerramento.php - Place this in the root directory (same level as index.php)
+// Path: tabler_portalexpresso_paginaEncerramento/ajax_encerramento.php
+
+header('Content-Type: application/json');
+
 require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
 
-class AnaliseEncerramentoController {
+class AjaxEncerramentoHandler {
     private $model;
-    private $dados;
     
     public function __construct() {
         $this->model = new Analise();
     }
     
-    public function loadData($filters = null) {
+    public function loadData($filters = []) {
         // Base WHERE clause
         $where = "AND A.COD_TIPO_SERVICO=1";
         
-        // Use filters from parameter or GET
-        $filterSource = $filters ?? $_GET;
-        
         // Add search filter if exists
-        if (isset($filterSource['search']) && !empty($filterSource['search'])) {
-            $search = $filterSource['search'];
+        if (isset($filters['search']) && !empty($filters['search'])) {
+            $search = $filters['search'];
             $where .= " AND (
                 CAST(A.COD_SOLICITACAO AS VARCHAR) LIKE '%$search%' OR
                 CAST(A.COD_AG AS VARCHAR) LIKE '%$search%' OR
@@ -31,31 +32,163 @@ class AnaliseEncerramentoController {
         }
         
         // Add bloqueio filter
-        if (isset($filterSource['bloqueio']) && $filterSource['bloqueio'] !== '') {
-            if ($filterSource['bloqueio'] === 'bloqueado') {
+        if (isset($filters['bloqueio']) && $filters['bloqueio'] !== '') {
+            if ($filters['bloqueio'] === 'bloqueado') {
                 $where .= " AND F.DATA_BLOQUEIO IS NOT NULL";
-            } else if ($filterSource['bloqueio'] === 'nao_bloqueado') {
+            } else if ($filters['bloqueio'] === 'nao_bloqueado') {
                 $where .= " AND F.DATA_BLOQUEIO IS NULL";
             }
         }
         
         // Add orgao pagador filter
-        if (isset($filterSource['orgao_pagador']) && !empty($filterSource['orgao_pagador'])) {
-            $orgao = $filterSource['orgao_pagador'];
+        if (isset($filters['orgao_pagador']) && !empty($filters['orgao_pagador'])) {
+            $orgao = $filters['orgao_pagador'];
             $where .= " AND G.ORGAO_PAGADOR LIKE '%$orgao%'";
         }
         
         // Add data range filter
-        if (isset($filterSource['data_inicio']) && !empty($filterSource['data_inicio'])) {
-            $where .= " AND A.DATA_CAD >= '$filterSource[data_inicio]'";
+        if (isset($filters['data_inicio']) && !empty($filters['data_inicio'])) {
+            $where .= " AND A.DATA_CAD >= '$filters[data_inicio]'";
         }
         
-        if (isset($filterSource['data_fim']) && !empty($filterSource['data_fim'])) {
-            $where .= " AND A.DATA_CAD <= '$filterSource[data_fim]'";
+        if (isset($filters['data_fim']) && !empty($filters['data_fim'])) {
+            $where .= " AND A.DATA_CAD <= '$filters[data_fim]'";
+        }
+        
+        $dados = $this->model->solicitacoes($where);
+        return $dados;
+    }
+    
+    public function renderTableRows($dados) {
+        $html = '';
+        $length = is_array($dados) ? count($dados) : 0;
+        
+        if ($length > 0) {
+            for ($i = 0; $i < $length; $i++) {
+                $html .= '<tr>';
+                $html .= '<th><span style="display: block; text-align: center;">' . htmlspecialchars($dados[$i]['COD_SOLICITACAO']) . '</span></th>';
+                $html .= '<td><span style="display: block; text-align: center;">' . htmlspecialchars($dados[$i]['COD_AG']) . htmlspecialchars($dados[$i]['NR_PACB']) . '</span></td>';
+                $html .= '<td><span style="display: block; text-align: center;">' . htmlspecialchars($dados[$i]['CHAVE_LOJA']) . '</span></td>';
+                $html .= '<td><span style="display: block; text-align: center;">' . $dados[$i]['DATA_RECEPCAO']->format('d/m/Y') . '</span></td>';
+                
+                // Data Retirada
+                if (!is_null($dados[$i]['DATA_RETIRADA_EQPTO'])) {
+                    $html .= '<td><span style="display: block; text-align: center;">' . $dados[$i]['DATA_RETIRADA_EQPTO']->format('d/m/Y') . '</span></td>';
+                } else {
+                    $html .= '<td><span class="text-red" style="display: block; text-align: center;">Sem Data</span></td>';
+                }
+                
+                // Bloqueio
+                if (!is_null($dados[$i]['DATA_BLOQUEIO'])) {
+                    $html .= '<td><span class="text-green" style="display: block; text-align: center;">Bloqueado</span></td>';
+                } else {
+                    $html .= '<td><span class="text-red" style="display: block; text-align: center;">Não Bloqueado</span></td>';
+                }
+                
+                $html .= '<td><span style="display: block; text-align: center;">' . htmlspecialchars($dados[$i]['DATA_LAST_TRANS']) . '</span></td>';
+                
+                // Motivo Bloqueio
+                if (!is_null($dados[$i]['MOTIVO_BLOQUEIO'])) {
+                    $html .= '<td><span style="display: block; text-align: center;">'. htmlspecialchars($dados[$i]['MOTIVO_BLOQUEIO']) .'</span></td>';
+                } else {
+                    $html .= '<td><span class="text-red" style="display: block; text-align: center;">Sem Motivo de Bloqueio</span></td>';
+                }
+                
+                // Motivo Encerramento
+                if (!is_null($dados[$i]['DESC_MOTIVO_ENCERRAMENTO'])) {
+                    $html .= '<td><span style="display: block; text-align: center;">'. htmlspecialchars($dados[$i]['DESC_MOTIVO_ENCERRAMENTO']) .'</span></td>';
+                } else {
+                    $html .= '<td><span class="text-red" style="display: block; text-align: center;">Sem Motivo de Encerramento</span></td>';
+                }
+                
+                $html .= '<td><span style="display: block; text-align: center;">' . htmlspecialchars($dados[$i]['ORGAO_PAGADOR']) . '</span></td>';
+                $html .= '<td><span style="display: block; text-align: center;">' . htmlspecialchars($dados[$i]['CLUSTER']) . '</span></td>';
+                $html .= '<td></td><td></td><td></td><td></td><td></td>';
+                $html .= '</tr>';
+            }
+        } else {
+            $html .= '<tr><td colspan="16" class="text-center">Nenhum registro encontrado</td></tr>';
+        }
+        
+        return $html;
+    }
+}
+
+try {
+    $handler = new AjaxEncerramentoHandler();
+    $dados = $handler->loadData($_GET);
+    $totalRecords = is_array($dados) ? count($dados) : 0;
+    
+    echo json_encode([
+        'success' => true,
+        'html' => $handler->renderTableRows($dados),
+        'totalRecords' => $totalRecords
+    ]);
+} catch (Exception $e) {
+    echo json_encode([
+        'success' => false,
+        'error' => $e->getMessage()
+    ]);
+}
+?>
+
+---------
+
+<?php
+require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
+
+class AnaliseEncerramentoController {
+    private $model;
+    private $dados;
+    
+    public function __construct() {
+        $this->model = new Analise();
+        $this->loadData();
+    }
+    
+    private function loadData() {
+        // Base WHERE clause
+        $where = "AND A.COD_TIPO_SERVICO=1";
+        
+        // Add search filter if exists
+        if (isset($_GET['search']) && !empty($_GET['search'])) {
+            $search = $_GET['search'];
+            $where .= " AND (
+                CAST(A.COD_SOLICITACAO AS VARCHAR) LIKE '%$search%' OR
+                CAST(A.COD_AG AS VARCHAR) LIKE '%$search%' OR
+                CAST(A.CHAVE_LOJA AS VARCHAR) LIKE '%$search%' OR
+                F.NOME_LOJA LIKE '%$search%' OR
+                G.NR_PACB LIKE '%$search%' OR
+                F.MOTIVO_BLOQUEIO LIKE '%$search%' OR
+                F.DESC_MOTIVO_ENCERRAMENTO LIKE '%$search%'
+            )";
+        }
+        
+        // Add bloqueio filter
+        if (isset($_GET['bloqueio']) && $_GET['bloqueio'] !== '') {
+            if ($_GET['bloqueio'] === 'bloqueado') {
+                $where .= " AND F.DATA_BLOQUEIO IS NOT NULL";
+            } else if ($_GET['bloqueio'] === 'nao_bloqueado') {
+                $where .= " AND F.DATA_BLOQUEIO IS NULL";
+            }
+        }
+        
+        // Add orgao pagador filter
+        if (isset($_GET['orgao_pagador']) && !empty($_GET['orgao_pagador'])) {
+            $orgao = $_GET['orgao_pagador'];
+            $where .= " AND G.ORGAO_PAGADOR LIKE '%$orgao%'";
+        }
+        
+        // Add data range filter
+        if (isset($_GET['data_inicio']) && !empty($_GET['data_inicio'])) {
+            $where .= " AND A.DATA_CAD >= '$_GET[data_inicio]'";
+        }
+        
+        if (isset($_GET['data_fim']) && !empty($_GET['data_fim'])) {
+            $where .= " AND A.DATA_CAD <= '$_GET[data_fim]'";
         }
         
         $this->dados = $this->model->solicitacoes($where);
-        return $this->dados;
     }
     
     public function getDados() {
@@ -121,30 +254,13 @@ class AnaliseEncerramentoController {
     }
 }
 
-// Check if this is an AJAX request
-if (isset($_GET['ajax']) && $_GET['ajax'] === '1') {
-    header('Content-Type: application/json');
-    
-    $controller = new AnaliseEncerramentoController();
-    $dados = $controller->loadData($_GET);
-    $totalRecords = $controller->getTotalRecords();
-    
-    echo json_encode([
-        'success' => true,
-        'html' => $controller->renderTableRows($dados),
-        'totalRecords' => $totalRecords
-    ]);
-    exit;
-}
-
-// Regular page load
+// Initialize controller for initial page load
 $controller = new AnaliseEncerramentoController();
-$dados = $controller->loadData();
+$dados = $controller->getDados();
 $totalRecords = $controller->getTotalRecords();
 ?>
 
----------
-
+--------
 
 <?php
 require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\control\encerramento\analise_encerramento_control.php';
@@ -353,6 +469,9 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
             const tableBody = document.getElementById('tableBody');
             const loadingOverlay = document.getElementById('loadingOverlay');
             const totalRecordsEl = document.getElementById('totalRecords');
+            
+            // AJAX endpoint URL - adjust if your file structure is different
+            const AJAX_URL = '/teste/Andre/tabler_portalexpresso_paginaEncerramento/ajax_encerramento.php';
 
             document.addEventListener('DOMContentLoaded', function() {
                 initializeEventListeners();
@@ -395,25 +514,24 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
                     }
                 }
                 
-                // Add AJAX flag
-                params.append('ajax', '1');
-                
                 // Show loading
                 showLoading();
                 
-                // Make AJAX request
-                fetch(window.location.pathname + '?' + params.toString())
+                // Make AJAX request to dedicated endpoint
+                fetch(AJAX_URL + '?' + params.toString())
                     .then(response => response.json())
                     .then(data => {
                         if (data.success) {
                             tableBody.innerHTML = data.html;
                             totalRecordsEl.textContent = data.totalRecords;
                             
-                            // Update URL without reloading
-                            const newUrl = window.location.pathname + (params.toString() ? '?' + params.toString().replace('&ajax=1', '') : '');
+                            // Update URL without reloading - keep index.php in URL
+                            const newUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
                             window.history.pushState({}, '', newUrl);
                             
                             highlightActiveFilters();
+                        } else {
+                            throw new Error(data.error || 'Erro ao carregar dados');
                         }
                     })
                     .catch(error => {
@@ -432,10 +550,10 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
                 if (dataInicioFilter) dataInicioFilter.value = '';
                 if (dataFimFilter) dataFimFilter.value = '';
 
-                // Trigger form submit to reload data
+                // Reload data without filters
                 showLoading();
                 
-                fetch(window.location.pathname + '?ajax=1')
+                fetch(AJAX_URL)
                     .then(response => response.json())
                     .then(data => {
                         if (data.success) {
@@ -443,10 +561,13 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
                             totalRecordsEl.textContent = data.totalRecords;
                             window.history.pushState({}, '', window.location.pathname);
                             highlightActiveFilters();
+                        } else {
+                            throw new Error(data.error || 'Erro ao limpar filtros');
                         }
                     })
                     .catch(error => {
                         console.error('Error:', error);
+                        alert('Erro ao limpar os filtros. Por favor, tente novamente.');
                     })
                     .finally(() => {
                         hideLoading();
@@ -540,7 +661,8 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
     </script>
 </body>
 
--------
+
+---------
 
 // analise_encerramento.js - AJAX-based filter functionality
 
@@ -558,6 +680,9 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
     const tableBody = document.getElementById('tableBody');
     const loadingOverlay = document.getElementById('loadingOverlay');
     const totalRecordsEl = document.getElementById('totalRecords');
+    
+    // AJAX endpoint URL - adjust this path based on your directory structure
+    const AJAX_URL = '/teste/Andre/tabler_portalexpresso_paginaEncerramento/ajax_encerramento.php';
 
     // Initialize on page load
     document.addEventListener('DOMContentLoaded', function() {
@@ -607,14 +732,11 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
             }
         }
         
-        // Add AJAX flag
-        params.append('ajax', '1');
-        
         // Show loading
         showLoading();
         
-        // Make AJAX request
-        fetch(window.location.pathname + '?' + params.toString())
+        // Make AJAX request to dedicated endpoint
+        fetch(AJAX_URL + '?' + params.toString())
             .then(response => {
                 if (!response.ok) {
                     throw new Error('Network response was not ok');
@@ -627,8 +749,8 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
                     tableBody.innerHTML = data.html;
                     totalRecordsEl.textContent = data.totalRecords;
                     
-                    // Update URL without reloading
-                    const newUrl = window.location.pathname + (params.toString() ? '?' + params.toString().replace('&ajax=1', '').replace('ajax=1&', '').replace('ajax=1', '') : '');
+                    // Update URL without reloading - keep index.php in URL
+                    const newUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
                     window.history.pushState({}, '', newUrl);
                     
                     // Update filter highlights
@@ -637,7 +759,7 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
                     // Scroll to table
                     document.getElementById('tableContainer').scrollIntoView({ behavior: 'smooth', block: 'start' });
                 } else {
-                    throw new Error('Response success was false');
+                    throw new Error(data.error || 'Response success was false');
                 }
             })
             .catch(error => {
@@ -664,7 +786,7 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
         showLoading();
         
         // Fetch data without filters
-        fetch(window.location.pathname + '?ajax=1')
+        fetch(AJAX_URL)
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
@@ -672,6 +794,8 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
                     totalRecordsEl.textContent = data.totalRecords;
                     window.history.pushState({}, '', window.location.pathname);
                     highlightActiveFilters();
+                } else {
+                    throw new Error(data.error || 'Erro ao limpar filtros');
                 }
             })
             .catch(error => {
@@ -807,4 +931,4 @@ require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\
         handleFormSubmit: handleFormSubmit
     };
 
-})(); 
+})();
