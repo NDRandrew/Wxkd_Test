@@ -1,218 +1,523 @@
-The user has a PHP 5.3 system that should download an .xls file when the "Baixar Excel" button is pressed, but it's not working. Let me analyze the code to identify the issues.
+<?php
+require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
 
-Looking at the code, I can see:
-
-1. There's a function `geraExcelEnviaEmail()` in JavaScript that makes an AJAX call when the "Baixar Excel" button is clicked.
-
-2. The AJAX call goes to the same PHP file with `acao: "excelEmail"` and the date.
-
-3. In the PHP code, when `$acao == 'excelEmail'`, it:
-   - Runs a SQL query to get data
-   - Creates a filename using a UNC path: `\\d4920S002\F\Banco Postal\Userdir\Comum\TDS\funcionario_master_dt_envio_van_'.$ano.$mes.$dia.'.xls`
-   - Opens the file with `fopen()` 
-   - Writes CSV data to it using `fputcsv()` with tab delimiter
-   - Closes the file with `fclose()`
-   - Calls `die()` to end execution
-
-4. In the JavaScript success callback, there's commented out code that was supposed to create a download link, but it's not working.
-
-The main issues I can identify:
-
-1. **File Creation vs Download**: The PHP code is creating a file on the server's filesystem (UNC path), but it's not actually sending the file to the browser for download. The code creates the file and then just dies, returning nothing to the AJAX call.
-
-2. **No HTTP Headers**: For a file download to work through an AJAX response, you need to set proper HTTP headers (Content-Type, Content-Disposition, etc.) and output the file content, but that's not happening.
-
-3. **AJAX vs Direct Download**: The current approach uses AJAX, but file downloads typically work better with direct form submissions or direct links, especially in older browsers/PHP versions.
- 
-The file format and UNC path present additional challenges. Creating a CSV with a .xls extension isn't a true Excel file, and the UNC path might have accessibility problems. With PHP 5.3 constraints limiting header modifications, the download mechanism needs a creative workaround to enable file transmission to the client.
-
-Potential solutions will require careful navigation of these technical limitations while ensuring file compatibility and accessibility.
-
-Looking at your code, I can identify several issues preventing the Excel file download from working. Let me break down the problems and provide solutions:
-
-## Main Issues:
-
-1. **File Creation vs. Download**: Your PHP code creates a file on the server filesystem but doesn't send it to the browser
-2. **AJAX Response**: The AJAX call receives no downloadable content 
-3. **Missing Download Headers**: No proper HTTP headers for file download
-4. **File Format**: Creating CSV with .xls extension (not a real Excel file)
-
-## Solutions:
-
-### Option 1: Direct Link Approach (Recommended for PHP 5.3)
-
-Modify your button to use a direct link instead of AJAX:
-
-**Change the button HTML generation:**
-```php
-$table_tds .= '<tr class="lista_tds_detalhe" data="'.$lista_tabela[$i]["DT_ENVIO_VAN"].'">
-                    <td class="td_texto tds_detalhe">'.$lista_tabela[$i]["DT_ENVIO_VAN"].'</td>
-                    <td class="td_texto tds_detalhe">'.$lista_tabela[$i]["QTD_LOJAS_ENVIO_VAN"].'</td>
-                    <td class="td_texto tds_detalhe">'.$lista_tabela[$i]["QTD_LOJAS_COM_MASTER"].'</td>
-                    <td><a class="btn btn-purple" href="relat_tds.php?acao=downloadExcel&data='.$lista_tabela[$i]["DT_ENVIO_VAN"].'" style="width: 180px; font-weight: 600;"><i class="fa fa-download"></i> &nbsp; Baixar Excel</a></td>
-               </tr>';
-```
-
-**Modify your PHP to handle the download:**
-```php
-if ($acao == "downloadExcel"){
-    list($dia, $mes, $ano) = explode('/', $data);   
-   
-    $queryEnvio = "
-       SELECT 
-            a.CHAVE_LOJA
-            ,COD_EMP, b.RZ_SOCIAL_EMP            
-            ,a.COD_LOJA
-            ,a.COD_AG_REL
-            ,a.NR_PACB
-            ,CONVERT(VARCHAR,a.DT_ENVIO_VAN,103) DT_ENVIO_VAN
-            ,A.CNPJ
-            ,A.FILIAL
-            ,A.CTRL CONTROLE
-            ,b.COD_AGENCIA
-            ,PGTOCORSP.[DBO].[DIG](b.COD_AGENCIA) [DIGITO]
-            ,b.NR_CTA
-            ,PGTOCORSP.[DBO].[DIG](b.NR_CTA) [DIGITO_CTA]
-            ,B.REPRESENTANTE1 NOME
-            ,CASE WHEN ISNULL(B.CPF1, '') != '' THEN LEFT(CONVERT(VARCHAR, REPLACE(REPLACE(B.CPF1,'.',''),'-','')), 3) +'.' + RIGHT(LEFT(CONVERT(VARCHAR, REPLACE(REPLACE(B.CPF1,'.',''),'-','')), 5),2) +'*.***-'+RIGHT(CONVERT(VARCHAR, REPLACE(REPLACE(B.CPF1,'.',''),'-','')), 2) ELSE '0' END CPF
-            ,B.EMAIL E_MAIL
-            ,PADE.dbo.zeros(B.DDD_CONTATO, 2)+'-'+PADE.dbo.zeros(REPLACE(RTRIM(LTRIM(B.TEL_CONTATO)), '-',''), 9) TELEFONE 
-            ,C.CNAE_PRINC
-        FROM 
-            MESU.DBO.TB_LOJAS A WITH (NOLOCK) 
-            LEFT JOIN 
-            MESU.DBO.TB_EMPRESAS B ON A.COD_EMPRESA=B.COD_EMP 
-            LEFT JOIN  
-            MESU.DBO.TB_CNPJ_PROSPECCAO C ON pade.dbo.zeros(a.cnpj,8)+pade.dbo.zeros(a.FILIAL,4)+pade.dbo.zeros(a.CTRL,2) = c.CNPJ
-        WHERE 
-            len(RTRIM(LTRIM(B.TEL_CONTATO)))>0
-            and A.DT_ENVIO_VAN='".$ano.$mes.$dia."'";
-
-    $dados_envio = $sql->select($queryEnvio);
-
-    // Generate filename
-    $filename = 'funcionario_master_dt_envio_van_'.$ano.$mes.$dia.'.xls';
+class AnaliseEncerramentoController {
+    private $model;
+    private $dados;
     
-    // Set headers for download
-    header('Content-Type: application/vnd.ms-excel');
-    header('Content-Disposition: attachment; filename="'.$filename.'"');
-    header('Cache-Control: max-age=0');
-    
-    // Output the content directly to browser
-    $output = fopen('php://output', 'w');
-    
-    // Add column headers
-    $colunas = array('COD_EMP','RZ_SOCIAL_EMP','COD_LOJA','CHAVE_LOJA','COD_AG_REL','NR_PACB','DT_ENVIO_VAN','CNPJ',
-            'FILIAL','CONTROLE','COD_AGENCIA','DIGITO','NR_CTA','DIGITO_CTA', 'NOME', 'CPF', 'E_MAIL', 'TELEFONE','CNAE_PRINC');
-    fputcsv($output, $colunas, "\t");
-    
-    // Add data rows
-    for ($i = 0; $i < count($dados_envio); $i++) {
-        $linha = array(
-            $dados_envio[$i]["COD_EMP"],
-            $dados_envio[$i]["RZ_SOCIAL_EMP"],
-            $dados_envio[$i]["COD_LOJA"],
-            $dados_envio[$i]["CHAVE_LOJA"],
-            $dados_envio[$i]["COD_AG_REL"],
-            $dados_envio[$i]["NR_PACB"],
-            $dados_envio[$i]["DT_ENVIO_VAN"],
-            $dados_envio[$i]["CNPJ"],
-            $dados_envio[$i]["FILIAL"],
-            $dados_envio[$i]["CONTROLE"],
-            $dados_envio[$i]["COD_AGENCIA"],
-            $dados_envio[$i]["DIGITO"],
-            $dados_envio[$i]["NR_CTA"],
-            $dados_envio[$i]["DIGITO_CTA"],
-            $dados_envio[$i]["NOME"],
-            $dados_envio[$i]["CPF"],
-            $dados_envio[$i]["E_MAIL"],
-            $dados_envio[$i]["TELEFONE"],
-            $dados_envio[$i]["CNAE_PRINC"]
-        );
-        fputcsv($output, $linha, "\t");
+    public function __construct() {
+        $this->model = new Analise();
+        $this->loadData();
     }
     
-    fclose($output);
-    exit();
-}
-```
-
-### Option 2: If you must keep AJAX (workaround)
-
-If you need to keep the AJAX approach, you can create the file and return a download URL:
-
-```php
-if ($acao == 'excelEmail'){
-    // ... your existing query code ...
-    
-    // Create file in a web-accessible directory
-    $filename = 'temp/funcionario_master_dt_envio_van_'.$ano.$mes.$dia.'_'.time().'.xls';
-    $f = fopen($filename, 'w');
-    
-    // ... your existing file writing code ...
-    
-    fclose($f);
-    
-    // Return the filename for download
-    echo $filename;
-    die();
-}
-```
-
-**Update the JavaScript:**
-```javascript
-function geraExcelEnviaEmail(date){
-    url = "relat_tds.php"
-    $.ajax({
-        url: url,
-        type: 'POST',
-        data: {
-            acao: "excelEmail",
-            data: date
-        },
-        beforeSend: function(){
-            $("#modal_loading").modal("show");
-        },
-        success: function(response){
-            // Create download link
-            window.open(response.trim(), '_blank');
-            $("#modal_loading").modal("hide");
+    private function loadData() {
+        // Base WHERE clause
+        $where = "AND A.COD_TIPO_SERVICO=1";
+        
+        // Add search filter if exists
+        if (isset($_GET['search']) && !empty($_GET['search'])) {
+            $search = $_GET['search'];
+            $where .= " AND (
+                CAST(A.COD_SOLICITACAO AS VARCHAR) LIKE '%$search%' OR
+                CAST(A.COD_AG AS VARCHAR) LIKE '%$search%' OR
+                CAST(A.CHAVE_LOJA AS VARCHAR) LIKE '%$search%' OR
+                F.NOME_LOJA LIKE '%$search%' OR
+                G.NR_PACB LIKE '%$search%' OR
+                F.MOTIVO_BLOQUEIO LIKE '%$search%' OR
+                F.DESC_MOTIVO_ENCERRAMENTO LIKE '%$search%'
+            )";
         }
-    })
+        
+        // Add bloqueio filter
+        if (isset($_GET['bloqueio']) && $_GET['bloqueio'] !== '') {
+            if ($_GET['bloqueio'] === 'bloqueado') {
+                $where .= " AND F.DATA_BLOQUEIO IS NOT NULL";
+            } else if ($_GET['bloqueio'] === 'nao_bloqueado') {
+                $where .= " AND F.DATA_BLOQUEIO IS NULL";
+            }
+        }
+        
+        // Add orgao pagador filter
+        if (isset($_GET['orgao_pagador']) && !empty($_GET['orgao_pagador'])) {
+            $orgao = $_GET['orgao_pagador'];
+            $where .= " AND G.ORGAO_PAGADOR LIKE '%$orgao%'";
+        }
+        
+        // Add data range filter
+        if (isset($_GET['data_inicio']) && !empty($_GET['data_inicio'])) {
+            $where .= " AND A.DATA_CAD >= '$_GET[data_inicio]'";
+        }
+        
+        if (isset($_GET['data_fim']) && !empty($_GET['data_fim'])) {
+            $where .= " AND A.DATA_CAD <= '$_GET[data_fim]'";
+        }
+        
+        $this->dados = $this->model->solicitacoes($where);
+    }
+    
+    public function getDados() {
+        return $this->dados;
+    }
+    
+    public function getTotalRecords() {
+        return is_array($this->dados) ? count($this->dados) : 0;
+    }
 }
-```
 
-## Key Points:
+// Initialize controller
+$controller = new AnaliseEncerramentoController();
+$dados = $controller->getDados();
+$totalRecords = $controller->getTotalRecords();
+?>
 
-1. **Option 1 is recommended** as it's more reliable for file downloads in PHP 5.3
-2. The file is output directly to the browser instead of being saved to the filesystem
-3. Proper headers are set for Excel download
-4. Remove the UNC path approach as it's likely causing permission issues
+---------
 
-The main problem was that your code was creating a server file but not delivering it to the browser. The solutions above fix this by either using direct download links or providing downloadable file URLs.
+<?php
+require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\control\encerramento\analise_encerramento_control.php';
+?>
 
-I provided a comprehensive analysis of the PHP file download issue. The main problems were:
+<head>
+    <style>
+        :root {
+            --thead-encerramento: #d8d8d8;
+            --thead-text-encerramento: #262626
+        }
 
-1. The code was creating a file on the server filesystem (UNC path) but not sending it to the browser
-2. Using AJAX for file downloads without proper response handling
-3. No HTTP headers for file download
-4. The file was created but never delivered to the user
+        :root[data-theme="light"] {
+            --thead-encerramento: #ac193d;
+            --thead-text-encerramento: #ffffffff
+        }
 
-I provided two solutions:
+        :root[data-theme="dark"] {
+            --thead-encerramento: #d8d8d8;
+            --thead-text-encerramento: #262626
+        }
 
-1. **Option 1 (Recommended)**: Convert to direct link approach - change the button to a direct link that calls a new PHP action that sets proper headers and outputs the file directly to the browser using `php://output`
+        .thead-encerramento {
+            background: var(--thead-encerramento) !important;
+            font-size: .75rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            line-height: 1rem;
+            color: var(--thead-text-encerramento) !important;
+            padding-top: .5rem;
+            padding-bottom: .5rem;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+    <!-- Filter and Search Section -->
+    <div class="card mb-3">
+        <div class="card-header">
+            <h3 class="card-title">Filtros e Busca</h3>
+        </div>
+        <div class="card-body">
+            <form method="GET" id="filterForm">
+                <div class="row g-3">
+                    <!-- Search Bar -->
+                    <div class="col-md-12">
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="searchInput" name="search" 
+                                   placeholder="Buscar por Solicitação, Agência, Chave Loja, PACB, Motivo..." 
+                                   value="<?php echo isset($_GET['search']) ? htmlspecialchars($_GET['search']) : ''; ?>">
+                            <button class="btn btn-primary" type="submit">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon">
+                                    <circle cx="11" cy="11" r="8"></circle>
+                                    <path d="m21 21-4.35-4.35"></path>
+                                </svg>
+                                Buscar
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Bloqueio Filter -->
+                    <div class="col-md-3">
+                        <label class="form-label">Status Bloqueio</label>
+                        <select class="form-select" name="bloqueio" id="bloqueioFilter">
+                            <option value="">Todos</option>
+                            <option value="bloqueado" <?php echo (isset($_GET['bloqueio']) && $_GET['bloqueio'] === 'bloqueado') ? 'selected' : ''; ?>>Bloqueado</option>
+                            <option value="nao_bloqueado" <?php echo (isset($_GET['bloqueio']) && $_GET['bloqueio'] === 'nao_bloqueado') ? 'selected' : ''; ?>>Não Bloqueado</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Orgao Pagador Filter -->
+                    <div class="col-md-3">
+                        <label class="form-label">Órgão Pagador</label>
+                        <input type="text" class="form-control" name="orgao_pagador" id="orgaoPagadorFilter" 
+                               placeholder="Filtrar por órgão"
+                               value="<?php echo isset($_GET['orgao_pagador']) ? htmlspecialchars($_GET['orgao_pagador']) : ''; ?>">
+                    </div>
+                    
+                    <!-- Data Inicio -->
+                    <div class="col-md-3">
+                        <label class="form-label">Data Início</label>
+                        <input type="date" class="form-control" name="data_inicio" id="dataInicioFilter"
+                               value="<?php echo isset($_GET['data_inicio']) ? htmlspecialchars($_GET['data_inicio']) : ''; ?>">
+                    </div>
+                    
+                    <!-- Data Fim -->
+                    <div class="col-md-3">
+                        <label class="form-label">Data Fim</label>
+                        <input type="date" class="form-control" name="data_fim" id="dataFimFilter"
+                               value="<?php echo isset($_GET['data_fim']) ? htmlspecialchars($_GET['data_fim']) : ''; ?>">
+                    </div>
+                    
+                    <!-- Action Buttons -->
+                    <div class="col-md-12">
+                        <button type="submit" class="btn btn-primary">
+                            Aplicar Filtros
+                        </button>
+                        <button type="button" class="btn btn-secondary" id="clearFilters">
+                            Limpar Filtros
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
 
-2. **Option 2**: Keep AJAX but modify it to create a temporary web-accessible file and return the URL for download
+    <!-- DataTable Section -->
+    <div class="fs-base border rounded my-5 justify-content-center overflow-auto position-relative" style="height: 50rem; width:100rem; right:100px;">
+        <table class="table table-vcenter table-nowrap" id="dataTable">
+            <thead class="sticky-top">
+                <tr>
+                    <th class="thead-encerramento" style="text-align: center;">Solicitação</th>  
+                    <th class="thead-encerramento" style="text-align: center;">Agência/PACB</th>
+                    <th class="thead-encerramento" style="text-align: center;">Chave Loja</th>
+                    <th class="thead-encerramento" style="text-align: center;">Data Recepção</th>
+                    <th class="thead-encerramento" style="text-align: center;">Data Retirada Equip.</th>
+                    <th class="thead-encerramento" style="text-align: center;">Bloqueio</th>
+                    <th class="thead-encerramento" style="text-align: center;">Data Última Tran.</th>
+                    <th class="thead-encerramento" style="text-align: center;">Motivo Bloqueio</th>
+                    <th class="thead-encerramento" style="text-align: center;">Motivo Encerramento</th>
+                    <th class="thead-encerramento" style="text-align: center;">Órgão Pagador</th>
+                    <th class="thead-encerramento" style="text-align: center;">Cluster</th>
+                    <th class="thead-encerramento" style="text-align: center;">PARM</th>
+                    <th class="thead-encerramento" style="text-align: center;">TRAG</th>
+                    <th class="thead-encerramento" style="text-align: center;">TRAG SEM TRAG</th>
+                    <th class="thead-encerramento" style="text-align: center;">Média Tran. Contábeis</th>
+                    <th class="thead-encerramento" style="text-align: center;">Média Tran. Negócio</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php 
+                $length = is_array($dados) ? count($dados) : 0;
+                if ($length > 0) {
+                    for ($i = 0; $i < $length; $i++) { ?>
+                        <tr>
+                            <th><?php echo '<span style="display: block; text-align: center;">' . htmlspecialchars($dados[$i]['COD_SOLICITACAO']) . '</span>'; ?></th>
+                            <td><?php echo '<span style="display: block; text-align: center;">' . htmlspecialchars($dados[$i]['COD_AG']) . htmlspecialchars($dados[$i]['NR_PACB']) . '</span>'; ?></td>
+                            <td><?php echo '<span style="display: block; text-align: center;">' . htmlspecialchars($dados[$i]['CHAVE_LOJA']) . '</span>'; ?></td>
+                            <td><?php echo '<span style="display: block; text-align: center;">' . $dados[$i]['DATA_RECEPCAO']->format('d/m/Y') . '</span>'; ?></td>
+                            <td><?php 
+                                if (!is_null($dados[$i]['DATA_RETIRADA_EQPTO'])) {
+                                    echo '<span style="display: block; text-align: center;">' . $dados[$i]['DATA_RETIRADA_EQPTO']->format('d/m/Y') . '</span>';
+                                } else {
+                                    echo '<span class="text-red" style="display: block; text-align: center;">Sem Data</span>';
+                                }
+                            ?></td>
+                            <td><?php 
+                                if (!is_null($dados[$i]['DATA_BLOQUEIO'])) {
+                                    echo '<span class="text-green" style="display: block; text-align: center;">Bloqueado</span>';
+                                } else {
+                                    echo '<span class="text-red" style="display: block; text-align: center;">Não Bloqueado</span>';
+                                }
+                            ?></td> 
+                            <td><?php echo '<span style="display: block; text-align: center;">' . htmlspecialchars($dados[$i]['DATA_LAST_TRANS']) . '</span>'; ?></td>
+                            <td><?php 
+                                if (!is_null($dados[$i]['MOTIVO_BLOQUEIO'])) {
+                                    echo '<span style="display: block; text-align: center;">'. htmlspecialchars($dados[$i]['MOTIVO_BLOQUEIO']) .'</span>';
+                                } else {
+                                    echo '<span class="text-red" style="display: block; text-align: center;">Sem Motivo de Bloqueio</span>';
+                                }
+                            ?></td> 
+                            <td><?php 
+                                if (!is_null($dados[$i]['DESC_MOTIVO_ENCERRAMENTO'])) {
+                                    echo '<span style="display: block; text-align: center;">'. htmlspecialchars($dados[$i]['DESC_MOTIVO_ENCERRAMENTO']) .'</span>';
+                                } else {
+                                    echo '<span class="text-red" style="display: block; text-align: center;">Sem Motivo de Encerramento</span>';
+                                }
+                            ?></td> 
+                            <td><?php echo '<span style="display: block; text-align: center;">' . htmlspecialchars($dados[$i]['ORGAO_PAGADOR']) . '</span>'; ?></td>
+                            <td><?php echo '<span style="display: block; text-align: center;">' . htmlspecialchars($dados[$i]['CLUSTER']) . '</span>'; ?></td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                        </tr>
+                    <?php }
+                } else { ?>
+                    <tr>
+                        <td colspan="16" class="text-center">Nenhum registro encontrado</td>
+                    </tr>
+                <?php } ?>
+            </tbody>
+        </table>
+    </div>
 
-Option 1 is better because:
-- More reliable for file downloads
-- Works better with older PHP versions
-- Simpler implementation
-- No temporary files needed
-- Better browser compatibility
+    <div class="card-footer">
+        <div class="row g-2 justify-content-center justify-content-sm-between">
+            <div class="col-auto d-flex align-items-center">
+                <p class="m-0 text-secondary">Mostrando <strong><?php echo $totalRecords; ?></strong> registros</p>
+            </div>
+            <div class="col-auto">
+                <ul class="pagination m-0 ms-auto">
+                    <li class="page-item disabled">
+                        <a class="page-link" href="#" tabindex="-1" aria-disabled="true">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-1">
+                                <path d="M15 6l-6 6l6 6"></path>
+                            </svg>
+                        </a>
+                    </li>
+                    <li class="page-item active">
+                        <a class="page-link" href="#">1</a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="#">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-1">
+                                <path d="M9 6l6 6l-6 6"></path>
+                            </svg>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
 
-The key insight is that the original code was saving a file to the filesystem but never actually sending it to the browser for download. My solutions fix this by either:
-1. Outputting directly to the browser with proper headers
-2. Creating a web-accessible file and providing the URL
+    <script src="X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\encerramento\analise_encerramento\analise_encerramento.js"></script>
 
-This should solve the user's problem with the Excel download functionality.
+    <script>
+        (function () {
+            const params = new URLSearchParams(window.location.search);
+            const rawTheme = (params.get("theme") || "").trim().toLowerCase();
+            const allowed = new Set(["light", "dark"]);
+
+            const storedTheme = localStorage.getItem("theme");
+            const chosen = allowed.has(rawTheme)
+                ? rawTheme
+                : (allowed.has(storedTheme) ? storedTheme : "light");
+
+            document.documentElement.setAttribute("data-theme", chosen);
+            localStorage.setItem("theme", chosen);
+        })();
+    </script>
+</body>
+
+
+------
+
+// analise_encerramento.js - Client-side functionality for filters and search
+
+(function() {
+    'use strict';
+
+    // DOM Elements
+    const filterForm = document.getElementById('filterForm');
+    const clearFiltersBtn = document.getElementById('clearFilters');
+    const searchInput = document.getElementById('searchInput');
+    const bloqueioFilter = document.getElementById('bloqueioFilter');
+    const orgaoPagadorFilter = document.getElementById('orgaoPagadorFilter');
+    const dataInicioFilter = document.getElementById('dataInicioFilter');
+    const dataFimFilter = document.getElementById('dataFimFilter');
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        initializeEventListeners();
+        highlightActiveFilters();
+    });
+
+    /**
+     * Initialize all event listeners
+     */
+    function initializeEventListeners() {
+        // Clear filters button
+        if (clearFiltersBtn) {
+            clearFiltersBtn.addEventListener('click', clearAllFilters);
+        }
+
+        // Form submission
+        if (filterForm) {
+            filterForm.addEventListener('submit', handleFormSubmit);
+        }
+
+        // Real-time search on Enter key
+        if (searchInput) {
+            searchInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    filterForm.submit();
+                }
+            });
+        }
+
+        // Filter change handlers
+        const filterElements = [bloqueioFilter, orgaoPagadorFilter, dataInicioFilter, dataFimFilter];
+        filterElements.forEach(element => {
+            if (element) {
+                element.addEventListener('change', function() {
+                    // Auto-submit on filter change (optional - remove if not desired)
+                    // filterForm.submit();
+                });
+            }
+        });
+    }
+
+    /**
+     * Handle form submission
+     */
+    function handleFormSubmit(e) {
+        // Remove empty parameters before submitting
+        const inputs = filterForm.querySelectorAll('input, select');
+        inputs.forEach(input => {
+            if (!input.value || input.value === '') {
+                input.disabled = true;
+            }
+        });
+
+        // Allow form to submit normally
+        setTimeout(() => {
+            inputs.forEach(input => {
+                input.disabled = false;
+            });
+        }, 100);
+    }
+
+    /**
+     * Clear all filters and reload page
+     */
+    function clearAllFilters() {
+        // Clear all input values
+        if (searchInput) searchInput.value = '';
+        if (bloqueioFilter) bloqueioFilter.value = '';
+        if (orgaoPagadorFilter) orgaoPagadorFilter.value = '';
+        if (dataInicioFilter) dataInicioFilter.value = '';
+        if (dataFimFilter) dataFimFilter.value = '';
+
+        // Reload page without query parameters
+        window.location.href = window.location.pathname;
+    }
+
+    /**
+     * Highlight active filters visually
+     */
+    function highlightActiveFilters() {
+        const urlParams = new URLSearchParams(window.location.search);
+        
+        // Highlight search input if active
+        if (searchInput && urlParams.has('search')) {
+            searchInput.style.borderColor = '#206bc4';
+            searchInput.style.borderWidth = '2px';
+        }
+
+        // Highlight filter selects if active
+        [bloqueioFilter, orgaoPagadorFilter, dataInicioFilter, dataFimFilter].forEach(filter => {
+            if (filter && filter.value) {
+                filter.style.borderColor = '#206bc4';
+                filter.style.borderWidth = '2px';
+            }
+        });
+
+        // Update clear button state
+        if (clearFiltersBtn) {
+            const hasActiveFilters = urlParams.has('search') || 
+                                    urlParams.has('bloqueio') || 
+                                    urlParams.has('orgao_pagador') || 
+                                    urlParams.has('data_inicio') || 
+                                    urlParams.has('data_fim');
+            
+            if (hasActiveFilters) {
+                clearFiltersBtn.classList.add('btn-warning');
+                clearFiltersBtn.classList.remove('btn-secondary');
+            }
+        }
+    }
+
+    /**
+     * Export table to CSV (optional feature)
+     */
+    function exportTableToCSV() {
+        const table = document.getElementById('dataTable');
+        if (!table) return;
+
+        let csv = [];
+        const rows = table.querySelectorAll('tr');
+
+        for (let i = 0; i < rows.length; i++) {
+            const row = [];
+            const cols = rows[i].querySelectorAll('td, th');
+
+            for (let j = 0; j < cols.length; j++) {
+                let data = cols[j].innerText.replace(/(\r\n|\n|\r)/gm, '').replace(/(\s\s)/gm, ' ');
+                data = data.replace(/"/g, '""');
+                row.push('"' + data + '"');
+            }
+
+            csv.push(row.join(','));
+        }
+
+        const csvFile = new Blob([csv.join('\n')], { type: 'text/csv' });
+        const downloadLink = document.createElement('a');
+        downloadLink.download = 'analise_encerramento_' + new Date().getTime() + '.csv';
+        downloadLink.href = window.URL.createObjectURL(csvFile);
+        downloadLink.style.display = 'none';
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+    }
+
+    /**
+     * Show loading indicator
+     */
+    function showLoading() {
+        const loadingHtml = `
+            <div class="d-flex justify-content-center align-items-center" style="height: 200px;">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Carregando...</span>
+                </div>
+            </div>
+        `;
+        const tableContainer = document.querySelector('.table-responsive');
+        if (tableContainer) {
+            tableContainer.innerHTML = loadingHtml;
+        }
+    }
+
+    /**
+     * Validate date range
+     */
+    function validateDateRange() {
+        const dataInicio = dataInicioFilter ? dataInicioFilter.value : null;
+        const dataFim = dataFimFilter ? dataFimFilter.value : null;
+
+        if (dataInicio && dataFim) {
+            const inicio = new Date(dataInicio);
+            const fim = new Date(dataFim);
+
+            if (inicio > fim) {
+                alert('A data de início não pode ser maior que a data fim.');
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // Add date validation to form
+    if (filterForm) {
+        filterForm.addEventListener('submit', function(e) {
+            if (!validateDateRange()) {
+                e.preventDefault();
+            }
+        });
+    }
+
+    // Expose functions globally if needed
+    window.AnaliseEncerramentoJS = {
+        exportTableToCSV: exportTableToCSV,
+        clearAllFilters: clearAllFilters,
+        validateDateRange: validateDateRange
+    };
+
+})();
