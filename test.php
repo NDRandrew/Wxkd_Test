@@ -1,118 +1,8 @@
-<?php
-require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
-
-class AnaliseEncerramentoController {
-    private $model;
-    private $dados;
-    private $totalRecords;
-    private $totalPages;
-    private $currentPage;
-    private $recordsPerPage;
-    
-    public function __construct() {
-        $this->model = new Analise();
-        
-        // Set default values for initial page load (no data loaded yet)
-        $this->currentPage = 1;
-        $this->recordsPerPage = 25;
-        $this->dados = [];
-        $this->totalRecords = 0;
-        $this->totalPages = 0;
-    }
-    
-    public function getDados() {
-        return $this->dados;
-    }
-    
-    public function getTotalRecords() {
-        return $this->totalRecords;
-    }
-    
-    public function getTotalPages() {
-        return $this->totalPages;
-    }
-    
-    public function getCurrentPage() {
-        return $this->currentPage;
-    }
-    
-    public function getRecordsPerPage() {
-        return $this->recordsPerPage;
-    }
-    
-    public function getStartRecord() {
-        return 0;
-    }
-    
-    public function getEndRecord() {
-        return 0;
-    }
-}
-
-// Initialize controller for initial page load (no data)
-$controller = new AnaliseEncerramentoController();
-$dados = $controller->getDados();
-$totalRecords = $controller->getTotalRecords();
-$totalPages = $controller->getTotalPages();
-$currentPage = $controller->getCurrentPage();
-$recordsPerPage = $controller->getRecordsPerPage();
-$startRecord = $controller->getStartRecord();
-$endRecord = $controller->getEndRecord();
-?>
-
-
--------
-
-<!-- Replace the <tbody> section with this -->
-<tbody id="tableBody">
-    <tr>
-        <td colspan="16" class="text-center py-5">
-            <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
-                <span class="visually-hidden">Carregando...</span>
-            </div>
-            <p class="mt-3 text-muted">Carregando registros...</p>
-        </td>
-    </tr>
-</tbody>
-
-<!-- At the end of the file, before </body>, replace all scripts with this minimal version -->
-
-<!-- Only keep variable declarations inline -->
-<script>
-    // Global variables for pagination state
-    window.pageState = {
-        currentPage: <?php echo $currentPage; ?>,
-        totalPages: <?php echo $totalPages; ?>,
-        perPage: <?php echo $recordsPerPage; ?>,
-        autoLoadData: true // Flag to trigger auto-load on page ready
-    };
-</script>
-
-<!-- External JS file -->
-<script src="analise_encerramento/analise_encerramento.js"></script>
-
-<!-- Theme handler (keep this separate as it needs to run immediately) -->
-<script>
-    (function () {
-        const params = new URLSearchParams(window.location.search);
-        const rawTheme = (params.get("theme") || "").trim().toLowerCase();
-        const allowed = new Set(["light", "dark"]);
-
-        const storedTheme = localStorage.getItem("theme");
-        const chosen = allowed.has(rawTheme)
-            ? rawTheme
-            : (allowed.has(storedTheme) ? storedTheme : "light");
-
-        document.documentElement.setAttribute("data-theme", chosen);
-        localStorage.setItem("theme", chosen);
-    })();
-</script>
-
---------
-
-// analise_encerramento.js - Complete external JavaScript file
+// analise_encerramento.js - Debug version with logging
 (function() {
     'use strict';
+
+    console.log('Script loaded');
 
     // DOM Elements
     const filterForm = document.getElementById('filterForm');
@@ -137,23 +27,32 @@ $endRecord = $controller->getEndRecord();
     const nextPageBtn = document.getElementById('nextPage');
     const modalsContainer = document.getElementById('modalsContainer');
     
+    console.log('Elements found:', {
+        filterForm: !!filterForm,
+        tableBody: !!tableBody,
+        modalsContainer: !!modalsContainer
+    });
+    
     const AJAX_URL = '/teste/Andre/tabler_portalexpresso_paginaEncerramento/control/encerramento/roteamento/ajax_encerramento.php';
 
     // Get state from global variable
-    let currentPage = window.pageState.currentPage;
-    let totalPages = window.pageState.totalPages;
-    let perPage = window.pageState.perPage;
+    let currentPage = window.pageState ? window.pageState.currentPage : 1;
+    let totalPages = window.pageState ? window.pageState.totalPages : 0;
+    let perPage = window.pageState ? window.pageState.perPage : 25;
+
+    console.log('Initial state:', { currentPage, totalPages, perPage });
 
     // Initialize on page load
     document.addEventListener('DOMContentLoaded', function() {
+        console.log('DOM Content Loaded');
         setupDateInputs();
         initializeEventListeners();
         highlightActiveFilters();
         attachPageNumberHandlers();
         
         // Auto-load data if flag is set
-        if (window.pageState.autoLoadData) {
-            // Small delay to ensure page is fully rendered
+        if (window.pageState && window.pageState.autoLoadData) {
+            console.log('Auto-loading data...');
             setTimeout(() => {
                 handleFormSubmit();
             }, 100);
@@ -167,7 +66,6 @@ $endRecord = $controller->getEndRecord();
         setupDateInput(dataInicioFilter, dataInicioDisplay);
         setupDateInput(dataFimFilter, dataFimDisplay);
         
-        // Setup date picker interactions
         setupDatePicker('dataInicioFilter', 'dataInicioDisplay');
         setupDatePicker('dataFimFilter', 'dataFimDisplay');
     }
@@ -302,7 +200,10 @@ $endRecord = $controller->getEndRecord();
      * Handle form submission via AJAX
      */
     function handleFormSubmit() {
+        console.log('handleFormSubmit called');
+        
         if (!validateDateRange()) {
+            console.log('Date validation failed');
             return;
         }
 
@@ -318,59 +219,101 @@ $endRecord = $controller->getEndRecord();
         params.append('page', currentPage);
         params.append('per_page', perPage);
         
+        const fullUrl = AJAX_URL + '?' + params.toString();
+        console.log('Fetching:', fullUrl);
+        
         showLoading();
         
-        fetch(AJAX_URL + '?' + params.toString())
+        fetch(fullUrl)
             .then(response => {
+                console.log('Response status:', response.status);
+                console.log('Response ok:', response.ok);
+                
                 if (!response.ok) {
-                    throw new Error('Network response was not ok');
+                    throw new Error('Network response was not ok: ' + response.status);
                 }
-                return response.json();
+                return response.text(); // Get as text first to see what we're getting
             })
-            .then(data => {
-                if (data.success) {
-                    // Update table content
-                    tableBody.innerHTML = data.html;
+            .then(text => {
+                console.log('Raw response:', text.substring(0, 200)); // Log first 200 chars
+                
+                try {
+                    const data = JSON.parse(text);
+                    console.log('Parsed data:', {
+                        success: data.success,
+                        hasHtml: !!data.html,
+                        hasModals: !!data.modals,
+                        totalRecords: data.totalRecords
+                    });
                     
-                    // Update modals
-                    if (modalsContainer && data.modals) {
-                        modalsContainer.innerHTML = data.modals;
+                    if (data.success) {
+                        // Update table content
+                        if (tableBody) {
+                            console.log('Updating table body');
+                            tableBody.innerHTML = data.html;
+                        } else {
+                            console.error('tableBody element not found!');
+                        }
+                        
+                        // Update modals
+                        if (modalsContainer) {
+                            if (data.modals) {
+                                console.log('Updating modals');
+                                modalsContainer.innerHTML = data.modals;
+                            } else {
+                                console.warn('No modals in response');
+                            }
+                        } else {
+                            console.error('modalsContainer element not found!');
+                        }
+                        
+                        // Update pagination info
+                        if (totalRecordsEl) totalRecordsEl.textContent = data.totalRecords;
+                        if (startRecordEl) startRecordEl.textContent = data.startRecord;
+                        if (endRecordEl) endRecordEl.textContent = data.endRecord;
+                        
+                        currentPage = data.currentPage;
+                        totalPages = data.totalPages;
+                        perPage = data.perPage;
+                        
+                        console.log('Updated state:', { currentPage, totalPages, perPage });
+                        
+                        updatePaginationControls();
+                        
+                        const newUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+                        window.history.pushState({}, '', newUrl);
+                        
+                        highlightActiveFilters();
+                        
+                        // Only scroll on user actions, not initial load
+                        if (window.pageState && !window.pageState.autoLoadData) {
+                            document.getElementById('tableContainer')?.scrollIntoView({ 
+                                behavior: 'smooth', 
+                                block: 'start' 
+                            });
+                        }
+                        
+                        // Disable auto-load after first load
+                        if (window.pageState) {
+                            window.pageState.autoLoadData = false;
+                        }
+                        
+                        console.log('Update complete');
+                    } else {
+                        throw new Error(data.error || 'Erro ao carregar dados');
                     }
-                    
-                    // Update pagination info
-                    totalRecordsEl.textContent = data.totalRecords;
-                    startRecordEl.textContent = data.startRecord;
-                    endRecordEl.textContent = data.endRecord;
-                    currentPage = data.currentPage;
-                    totalPages = data.totalPages;
-                    perPage = data.perPage;
-                    
-                    updatePaginationControls();
-                    
-                    const newUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
-                    window.history.pushState({}, '', newUrl);
-                    
-                    highlightActiveFilters();
-                    
-                    // Only scroll on user actions, not initial load
-                    if (!window.pageState.autoLoadData) {
-                        document.getElementById('tableContainer')?.scrollIntoView({ 
-                            behavior: 'smooth', 
-                            block: 'start' 
-                        });
-                    }
-                    
-                    // Disable auto-load after first load
-                    window.pageState.autoLoadData = false;
-                } else {
-                    throw new Error(data.error || 'Erro ao carregar dados');
+                } catch (parseError) {
+                    console.error('JSON Parse Error:', parseError);
+                    console.error('Response text:', text);
+                    throw new Error('Invalid JSON response');
                 }
             })
             .catch(error => {
-                console.error('Error:', error);
+                console.error('Fetch Error:', error);
                 alert('Erro ao carregar os dados: ' + error.message);
             })
             .finally(() => {
+                console.log('Hiding loading');
                 hideLoading();
             });
     }
@@ -388,47 +331,7 @@ $endRecord = $controller->getEndRecord();
         if (dataFimDisplay) dataFimDisplay.value = '';
         
         currentPage = 1;
-        showLoading();
-        
-        const params = new URLSearchParams();
-        params.append('page', currentPage);
-        params.append('per_page', perPage);
-        
-        fetch(AJAX_URL + '?' + params.toString())
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    tableBody.innerHTML = data.html;
-                    
-                    if (modalsContainer && data.modals) {
-                        modalsContainer.innerHTML = data.modals;
-                    }
-                    
-                    totalRecordsEl.textContent = data.totalRecords;
-                    startRecordEl.textContent = data.startRecord;
-                    endRecordEl.textContent = data.endRecord;
-                    currentPage = data.currentPage;
-                    totalPages = data.totalPages;
-                    
-                    updatePaginationControls();
-                    window.history.pushState({}, '', window.location.pathname);
-                    highlightActiveFilters();
-                } else {
-                    throw new Error(data.error || 'Erro ao limpar filtros');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Erro ao limpar os filtros: ' + error.message);
-            })
-            .finally(() => {
-                hideLoading();
-            });
+        handleFormSubmit();
     }
 
     /**
@@ -534,9 +437,6 @@ $endRecord = $controller->getEndRecord();
         });
     }
 
-    /**
-     * Create page item element
-     */
     function createPageItem(pageNum, isActive) {
         const li = document.createElement('li');
         li.className = 'page-item' + (isActive ? ' active' : '');
@@ -551,9 +451,6 @@ $endRecord = $controller->getEndRecord();
         return li;
     }
 
-    /**
-     * Create ellipsis item element
-     */
     function createEllipsisItem() {
         const li = document.createElement('li');
         li.className = 'page-item disabled';
@@ -566,9 +463,6 @@ $endRecord = $controller->getEndRecord();
         return li;
     }
 
-    /**
-     * Highlight active filters visually
-     */
     function highlightActiveFilters() {
         const urlParams = new URLSearchParams(window.location.search);
         
@@ -621,9 +515,6 @@ $endRecord = $controller->getEndRecord();
         }
     }
 
-    /**
-     * Validate date range
-     */
     function validateDateRange() {
         const dataInicio = dataInicioFilter ? dataInicioFilter.value : null;
         const dataFim = dataFimFilter ? dataFimFilter.value : null;
@@ -640,18 +531,12 @@ $endRecord = $controller->getEndRecord();
         return true;
     }
 
-    /**
-     * Show loading indicator
-     */
     function showLoading() {
         if (loadingOverlay) {
             loadingOverlay.classList.add('active');
         }
     }
 
-    /**
-     * Hide loading indicator
-     */
     function hideLoading() {
         if (loadingOverlay) {
             loadingOverlay.classList.remove('active');
