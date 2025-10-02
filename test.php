@@ -41,10 +41,11 @@
     let perPage = window.pageState ? window.pageState.perPage : 25;
 
     console.log('Initial state:', { currentPage, totalPages, perPage });
+    console.log('pageState.autoLoadData:', window.pageState ? window.pageState.autoLoadData : 'pageState not found');
 
-    // Initialize on page load
-    document.addEventListener('DOMContentLoaded', function() {
-        console.log('DOM Content Loaded');
+    // Initialize function
+    function initialize() {
+        console.log('Initialize called');
         setupDateInputs();
         initializeEventListeners();
         highlightActiveFilters();
@@ -56,8 +57,22 @@
             setTimeout(() => {
                 handleFormSubmit();
             }, 100);
+        } else {
+            console.log('Not auto-loading:', {
+                hasPageState: !!window.pageState,
+                autoLoadData: window.pageState ? window.pageState.autoLoadData : 'N/A'
+            });
         }
-    });
+    }
+
+    // Run initialization immediately if DOM is already loaded, otherwise wait
+    if (document.readyState === 'loading') {
+        console.log('Waiting for DOMContentLoaded...');
+        document.addEventListener('DOMContentLoaded', initialize);
+    } else {
+        console.log('DOM already loaded, initializing immediately');
+        initialize();
+    }
 
     /**
      * Setup date input synchronization
