@@ -1,40 +1,44 @@
-The user is still getting the error "Unexpected token '<', "<?..." which means PHP code is being returned instead of JSON. The issue is that when the email function is called, something is outputting PHP code before the JSON response.
+The error shows that the `mailer()` function is not defined. The issue is that when we use `ob_start()` and then `ob_end_clean()`, we're discarding the output but the file is still included and should define the function.
 
-Looking at the error, it seems like the PHP opening tag itself is being sent as output. This typically happens when:
-1. There's whitespace or BOM before <?php
-2. An included file has output
-3. The file path is wrong and PHP is showing an error
+Looking at the code:
+```php
+ob_start();
+include_once('\\\\D4920S010\D4920_2\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\erp\PHP MAILER\mail.php');
+require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
+ob_end_clean();
+```
 
-The user also provided a custom `json_encode_custom` function, suggesting they might need to use this instead of the native `json_encode`.
+The problem is likely that:
+1. The file path might be wrong
+2. The file might not contain a function called `mailer()`
 
-Let me trace through the flow:
-1. JavaScript sends POST to ajax_encerramento.php with acao=enviar_email_op
-2. ajax_encerramento.php checks for this action at the top
-3. It requires email_functions.php
-4. Calls sendOrgaoPagadorEmail()
-5. Should return JSON
+Looking at the example file (ED.txt), it shows:
+```php
+include_once('\\\\D4920S010\D4920_2\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\erp\PHP MAILER\mail.php');
+```
 
-The problem is likely in one of the included files. The mailer include or the model include might have whitespace or output.
+So the path looks correct. Let me check if the function is being included properly. The issue might be that `include_once` has already been called elsewhere, so it won't include it again.
 
-Let me provide a more robust solution that:
-1. Uses output buffering to catch any stray output
-2. Uses the custom json_encode if needed
-3. Has better error handling
-4. Ensures clean JSON output
+Let me change `include_once` to `require_once` or just `include` to ensure it's loaded.
 
-The issue is that something in the included files (likely the mailer or model) has output before the JSON. Let's use output buffering and proper error handling:
+Actually, looking more carefully, the mailer include is happening inside the if block for the email action. But the file should still be included. Let me try without the output buffering around the includes since we need the functions to be defined.
 
-## 1. Update control/encerramento/roteamento/ajax_encerramento.php
+The `mailer()` function isn't being loaded properly because of the output buffering. Let's fix this:
+
+## Update ajax_encerramento.php
 
 ```php
 <?php
 @session_start();
 
-// Start output buffering immediately to catch any stray output
+// Start output buffering to catch any stray output
 ob_start();
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
+
+// Include mailer at the top without buffering (we need the function defined)
+include_once('\\\\D4920S010\D4920_2\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\erp\PHP MAILER\mail.php');
 
 // Custom JSON encode function
 function json_encode_custom($data) {
@@ -76,18 +80,7 @@ if (isset($_POST['acao']) && $_POST['acao'] == 'enviar_email_op') {
     ob_clean();
     
     try {
-        $cod_solicitacao = isset($_POST['cod_solicitacao']) ? intval($_POST['cod_solicitacao']) : 0;
-        
-        if ($cod_solicitacao <= 0) {
-            echo json_encode_custom(['success' => false, 'message' => 'Código de solicitação inválido']);
-            exit;
-        }
-        
-        // Include files with output buffering
-        ob_start();
-        include_once('\\\\D4920S010\D4920_2\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\erp\PHP MAILER\mail.php');
         require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
-        ob_end_clean();
         
         $op_team_email_list = '
             thiago.k.silva@bradesco.com.br;
@@ -95,6 +88,13 @@ if (isset($_POST['acao']) && $_POST['acao'] == 'enviar_email_op') {
             emerson.moreira@bradesco.com.br;
             gabriel.o.rodrigues@bradesco.com.br
         ';
+        
+        $cod_solicitacao = isset($_POST['cod_solicitacao']) ? intval($_POST['cod_solicitacao']) : 0;
+        
+        if ($cod_solicitacao <= 0) {
+            echo json_encode_custom(['success' => false, 'message' => 'Código de solicitação inválido']);
+            exit;
+        }
         
         if (!isset($_SESSION['cod_usu']) || $_SESSION['cod_usu'] == '') {
             echo json_encode_custom(['success' => false, 'message' => 'Usuário não autenticado']);
@@ -147,7 +147,7 @@ if (isset($_POST['acao']) && $_POST['acao'] == 'enviar_email_op') {
         $classific = 'I';
         $email_from = '';
         
-        // Buffer mailer output
+        // Call mailer and capture output
         ob_start();
         $result = mailer($move, $move_to, $email_to, $copy_to, $hidden_copy_to, 
                          $email_title, $body, $attach, $classific, $email_from);
@@ -163,6 +163,8 @@ if (isset($_POST['acao']) && $_POST['acao'] == 'enviar_email_op') {
         ob_clean();
         echo json_encode_custom(['success' => false, 'message' => 'Erro: ' . $e->getMessage()]);
     }
+    
+    ob_end_flush();
     exit;
 }
 
@@ -237,12 +239,12 @@ class AjaxEncerramentoHandler {
     }
     
     public function renderTableRows($dados) {
-        // Your existing table rendering code
+        // Your existing code
         return '';
     }
     
     public function renderModals($dados) {
-        // Your existing modal rendering code
+        // Your existing code  
         return '';
     }
 }
@@ -269,15 +271,13 @@ try {
     ]);
 }
 
-// Clean output buffer at the end
 ob_end_flush();
 ?>
 ```
 
-The key changes:
-1. **Output buffering** wraps all include statements to catch any stray output
-2. **Uses json_encode_custom** for the email response
-3. **ob_clean()** before sending JSON to ensure clean output
-4. **Try-catch** to handle any errors gracefully
+Key changes:
+1. **Moved mailer include to the top** (outside the if block) so the function is always defined
+2. **Removed output buffering around the include** - only buffer the mailer call itself
+3. The mailer function is now available when needed
 
-This should prevent any PHP code from leaking into the JSON response.
+This ensures the `mailer()` function is properly loaded before being called.
