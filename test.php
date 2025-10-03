@@ -1,26 +1,46 @@
-The error shows that the mail.php file itself is being returned as the response instead of JSON. This is happening because the include is outputting the PHP code directly.
+The issue is that when we wrap `include_once` with `ob_start()` and `ob_end_clean()`, it discards the output but the function definition inside mail.php doesn't get executed properly. The `ob_end_clean()` is clearing the buffer, but the function should still be defined.
 
-Looking at the error, the mail.php file starts with `<?` (short PHP tags) instead of `<?php`, and it's being output as text rather than executed.
+Wait, looking at the error more carefully - the mailer function is not defined. When we do:
 
-The issue is that when we include the mail.php file, if it has any output or if the short tags aren't enabled, it will output the raw PHP code.
+```php
+ob_start();
+include_once('...mail.php');
+ob_end_clean();
+```
 
-We need to:
-1. Make sure output buffering captures EVERYTHING from the mail.php include
-2. Discard that buffer
-3. Only output our JSON
+This should still define the function. Let me think...
 
-The problem is on the initial page load - the mailer include is happening for ALL requests, not just the email ones. We need to only include it when needed.
+Oh! The issue is that `ob_end_clean()` is being called too early. The function IS being defined, but something else is wrong.
 
-The issue is clear now - the `mail.php` file is being output as text on every request. We need to only include it when sending emails, and capture all its output. Here's the fix:
+Actually, looking at the error message in the test file, the mail.php file content is being output as raw PHP code starting with `<?`. This suggests the file isn't being parsed as PHP at all - it's being output as text.
 
-## Update ajax_encerramento.php
+This could happen if:
+1. The file has a BOM or whitespace before `<?php`
+2. The file uses short tags `<?` instead of `<?php` and short tags are disabled
+3. There's something wrong with the include path
+
+Looking at the output in teste (1).txt:
+```
+<?
+//// Inicia a classe PHPMailer
+```
+
+It starts with `<?` not `<?php` - that's the problem! The mail.php file is using short tags, and short tags might not be enabled on the server.
+
+However, we can't modify mail.php since it's in a shared location. So we need to:
+1. Not use output buffering around the include (so the function gets defined)
+2. Make sure we don't include it on regular table requests
+3. Add output buffering AFTER including but BEFORE calling the function
+
+Let me revise the approach.
+
+The issue is that `mail.php` uses short PHP tags (`<?` instead of `<?php`) which are being output as text. We can't buffer the include because it prevents the function from being defined. Instead, let's only include mail.php when needed and accept that it will output, but clean it before sending our JSON:
+
+## Final Fix - ajax_encerramento.php
 
 ```php
 <?php
 @session_start();
-
-// Start output buffering immediately
-ob_start();
 
 // Custom JSON encode function
 function json_encode_custom($data) {
@@ -58,15 +78,12 @@ function json_encode_custom($data) {
 
 // Handle email sending
 if (isset($_POST['acao']) && $_POST['acao'] == 'enviar_email_op') {
-    // Clear any previous output
-    ob_clean();
+    // Start output buffering to catch everything
+    ob_start();
     
     try {
-        // Include mailer with output buffering
-        ob_start();
-        include_once('\\\\D4920S010\D4920_2\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\erp\PHP MAILER\mail.php');
-        ob_end_clean();
-        
+        // Include mailer - this will output content but we'll catch it
+        require_once('X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\erp\PHP MAILER\mail.php');
         require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
         
         $op_team_email_list = '
@@ -79,14 +96,16 @@ if (isset($_POST['acao']) && $_POST['acao'] == 'enviar_email_op') {
         $cod_solicitacao = isset($_POST['cod_solicitacao']) ? intval($_POST['cod_solicitacao']) : 0;
         
         if ($cod_solicitacao <= 0) {
+            ob_end_clean();
+            header('Content-Type: application/json');
             echo json_encode_custom(['success' => false, 'message' => 'Código de solicitação inválido']);
-            ob_end_flush();
             exit;
         }
         
         if (!isset($_SESSION['cod_usu']) || $_SESSION['cod_usu'] == '') {
+            ob_end_clean();
+            header('Content-Type: application/json');
             echo json_encode_custom(['success' => false, 'message' => 'Usuário não autenticado']);
-            ob_end_flush();
             exit;
         }
         
@@ -95,8 +114,9 @@ if (isset($_POST['acao']) && $_POST['acao'] == 'enviar_email_op') {
         $dados = $model->solicitacoes($where, 1, 0);
         
         if (empty($dados)) {
+            ob_end_clean();
+            header('Content-Type: application/json');
             echo json_encode_custom(['success' => false, 'message' => 'Solicitação não encontrada']);
-            ob_end_flush();
             exit;
         }
         
@@ -137,12 +157,15 @@ if (isset($_POST['acao']) && $_POST['acao'] == 'enviar_email_op') {
         $classific = 'I';
         $email_from = '';
         
-        // Call mailer and capture any output
-        ob_start();
+        // Call mailer - may produce additional output
         $result = mailer($move, $move_to, $email_to, $copy_to, $hidden_copy_to, 
                          $email_title, $body, $attach, $classific, $email_from);
+        
+        // Discard ALL output captured so far
         ob_end_clean();
         
+        // Now send clean JSON
+        header('Content-Type: application/json');
         if ($result) {
             echo json_encode_custom(['success' => true, 'message' => 'Email enviado com sucesso']);
         } else {
@@ -150,23 +173,17 @@ if (isset($_POST['acao']) && $_POST['acao'] == 'enviar_email_op') {
         }
         
     } catch (Exception $e) {
-        ob_clean();
+        ob_end_clean();
+        header('Content-Type: application/json');
         echo json_encode_custom(['success' => false, 'message' => 'Erro: ' . $e->getMessage()]);
     }
-    
-    ob_end_flush();
     exit;
 }
 
-// Clear buffer for regular requests
-ob_end_clean();
-ob_start();
-
-// Set headers for regular requests
+// Regular table data loading
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 
-// Regular table data loading
 require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
 
 class AjaxEncerramentoHandler {
@@ -268,15 +285,14 @@ try {
         'error' => $e->getMessage()
     ]);
 }
-
-ob_end_flush();
 ?>
 ```
 
-Key fixes:
-1. **Only includes mail.php when sending email** - not on every request
-2. **Wraps the include with ob_start/ob_end_clean** - discards any output from mail.php
-3. **Clears and restarts buffer** between email handling and regular requests
-4. **Uses json_encode_custom** for email responses
+The key strategy:
+1. **Start buffering BEFORE including mail.php** - captures all output including the broken short tags
+2. **Let the file execute normally** - so functions get defined
+3. **Call the mailer function** - which may produce more output
+4. **Discard everything with ob_end_clean()** - removes all the garbage
+5. **Send fresh JSON** - clean response
 
-This ensures the mail.php file content never leaks into the JSON response.
+This way the function gets defined (not buffered away), but all output gets discarded before we send JSON.
