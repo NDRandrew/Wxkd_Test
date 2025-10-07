@@ -1,3 +1,26 @@
+Key modifications made:
+JavaScript (J.txt):
+Added initializeCheckboxHandlers() for header checkbox select-all functionality
+Added updateBulkActionButtons() to show/hide bulk actions
+Added getSelectedSolicitacoes() to collect checked IDs
+Added sendBulkEmail() for bulk email sending
+Modified row click handler to prevent modal on checkbox clicks
+HTML (E.txt):
+Added bulk actions card with 5 email buttons (appears when checkboxes selected)
+Added CSS for checkbox styling and animations
+Updated table row structure to prevent modal trigger on checkbox column
+PHP Email Functions (ED.txt):
+Added sendBulkEmail() function for multiple records
+Added getBulkEmailConfig() for bulk email templates
+Added buildBulkEmailBody() and buildBulkEmailBodyComercial() for HTML tables
+AJAX Handler (JH.txt):
+Added handler for enviar_email_bulk action
+Processes JSON array of selected solicitation IDs 
+
+
+----------------
+
+
 // Add to existing analise_encerramento.js after initializeEventListeners()
 
 function initializeCheckboxHandlers() {
