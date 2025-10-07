@@ -1,100 +1,42 @@
-<style>
-    /* Add to existing <style> section in E.txt */
-    
-    /* Make entire checkbox cell clickable */
-    tbody tr[data-bs-toggle="modal"] th:first-child {
-        cursor: pointer;
-        pointer-events: auto !important;
-    }
-    
-    tbody tr[data-bs-toggle="modal"] th:first-child * {
-        pointer-events: auto !important;
-    }
-    
-    /* Checkbox styling */
-    .form-check-input {
-        cursor: pointer;
-        width: 18px;
-        height: 18px;
-        margin: 0 !important;
-    }
-    
-    thead .form-check-input {
-        width: 20px;
-        height: 20px;
-        cursor: pointer;
-    }
-    
-    /* Make checkbox label area larger */
-    tbody th:first-child .form-check {
-        width: 100%;
-        height: 100%;
-        display: flex !important;
-        justify-content: center;
-        align-items: center;
-        margin: 0;
-        padding: 0.5rem;
-    }
-    
-    thead th:first-child {
-        cursor: pointer;
-    }
-    
-    /* Bulk actions animation */
-    #bulkActions {
-        animation: slideDown 0.3s ease-out;
-    }
-    
-    @keyframes slideDown {
-        from {
-            opacity: 0;
-            transform: translateY(-10px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-</style>
-
-
-
----------
-
 // Add these functions to analise_encerramento.js
 
 function initializeCheckboxHandlers() {
-    // Header checkbox - select all
+    // Header checkbox handler
     const headerCheckbox = document.querySelector('thead input[type="checkbox"]');
-    const headerCell = document.querySelector('thead th:first-child');
-    
-    if (headerCell) {
-        headerCell.addEventListener('click', function(e) {
-            e.stopPropagation();
-            if (headerCheckbox) {
-                headerCheckbox.checked = !headerCheckbox.checked;
-                const isChecked = headerCheckbox.checked;
-                document.querySelectorAll('tbody input[type="checkbox"]').forEach(cb => {
-                    cb.checked = isChecked;
-                });
-                updateBulkActionButtons();
-            }
+    if (headerCheckbox) {
+        headerCheckbox.addEventListener('change', function() {
+            const isChecked = this.checked;
+            document.querySelectorAll('tbody input[type="checkbox"]').forEach(cb => {
+                cb.checked = isChecked;
+            });
+            updateBulkActionButtons();
         });
     }
 
-    // Individual row checkboxes - make entire cell clickable
-    document.querySelectorAll('tbody tr[data-bs-toggle="modal"]').forEach(row => {
-        const checkboxCell = row.querySelector('th:first-child');
-        const checkbox = checkboxCell?.querySelector('input[type="checkbox"]');
-        
-        if (checkboxCell && checkbox) {
-            checkboxCell.addEventListener('click', function(e) {
-                e.stopPropagation();
-                e.preventDefault();
-                checkbox.checked = !checkbox.checked;
-                updateBulkActionButtons();
+    // Individual checkbox handlers
+    document.querySelectorAll('tbody input[type="checkbox"]').forEach(cb => {
+        cb.addEventListener('change', function() {
+            updateBulkActionButtons();
+        });
+    });
+
+    // Modal trigger for rows (excluding checkbox cell)
+    document.querySelectorAll('tbody tr').forEach(row => {
+        const cells = row.querySelectorAll('td, th');
+        cells.forEach((cell, index) => {
+            if (index === 0) return; // Skip first cell (checkbox)
+            
+            cell.addEventListener('click', function() {
+                const modalId = row.getAttribute('data-modal-target');
+                if (modalId) {
+                    const modalElement = document.querySelector(modalId);
+                    if (modalElement) {
+                        const modal = new bootstrap.Modal(modalElement);
+                        modal.show();
+                    }
+                }
             });
-        }
+        });
     });
 }
 
@@ -107,7 +49,6 @@ function updateBulkActionButtons() {
         bulkActions.style.display = checkedBoxes.length > 0 ? 'block' : 'none';
     }
     
-    // Update header checkbox state
     if (headerCheckbox) {
         const allCheckboxes = document.querySelectorAll('tbody input[type="checkbox"]');
         headerCheckbox.checked = allCheckboxes.length > 0 && checkedBoxes.length === allCheckboxes.length;
@@ -206,3 +147,168 @@ function updateUI(data, params) {
     
     if (window.pageState) window.pageState.autoLoadData = false;
 }
+
+-----------
+
+// Replace renderTableRows() method in C.txt (analise_encerramento_control.php)
+
+public function renderTableRows($dados) {
+    $html = '';
+    $length = is_array($dados) ? count($dados) : 0;
+    
+    if ($length > 0) {
+        for ($i = 0; $i < $length; $i++) {
+            // REMOVED: data-bs-toggle="modal" data-bs-target="#AnaliseDetalhesModal..."
+            // ADDED: data-modal-target="#AnaliseDetalhesModal..."
+            $html .= '<tr data-modal-target="#AnaliseDetalhesModal' . htmlspecialchars($dados[$i]['COD_SOLICITACAO']) . '" name="' . htmlspecialchars($dados[$i]['COD_SOLICITACAO']) .'">';
+            $html .= '<th class="text-center align-middle" style="background-color: #d8d8d8; border-style:none !important;">
+                    <label class="form-check d-inline-flex justify-content-center align-items-center p-0 m-0">
+                        <input class="form-check-input position-static m-0" type="checkbox" />
+                        <span class="form-check-label d-none"></span>
+                    </label>
+                </th>';
+            $html .= '<th><span style="display: block; text-align: center;">' . htmlspecialchars($dados[$i]['COD_SOLICITACAO']) . '</span></th>';
+            $html .= '<td><span style="display: block; text-align: center;">' . htmlspecialchars($dados[$i]['COD_AG']) . htmlspecialchars($dados[$i]['NR_PACB']) . '</span></td>';
+            $html .= '<td><span style="display: block; text-align: center;">' . htmlspecialchars($dados[$i]['CHAVE_LOJA']) . '</span></td>';
+            $html .= '<td><span style="display: block; text-align: center;">' . $dados[$i]['DATA_RECEPCAO']->format('d/m/Y') . '</span></td>';
+            
+            // Data Retirada
+            if (!is_null($dados[$i]['DATA_RETIRADA_EQPTO'])) {
+                $html .= '<td><span style="display: block; text-align: center;">' . $dados[$i]['DATA_RETIRADA_EQPTO']->format('d/m/Y') . '</span></td>';
+            } else {
+                $html .= '<td><span class="text-red" style="display: block; text-align: center;">Sem Data</span></td>';
+            }
+            
+            // Bloqueio
+            if (!is_null($dados[$i]['DATA_BLOQUEIO'])) {
+                $html .= '<td><span class="text-green" style="display: block; text-align: center;">Bloqueado</span></td>';
+            } else {
+                $html .= '<td><span class="text-red" style="display: block; text-align: center;">Não Bloqueado</span></td>';
+            }
+            
+            $html .= '<td><span style="display: block; text-align: center;">' . htmlspecialchars($dados[$i]['DATA_LAST_TRANS']) . '</span></td>';
+            
+            // Motivo Bloqueio
+            if (!is_null($dados[$i]['MOTIVO_BLOQUEIO'])) {
+                $html .= '<td><span style="display: block; text-align: center;">'. htmlspecialchars($dados[$i]['MOTIVO_BLOQUEIO']) .'</span></td>';
+            } else {
+                $html .= '<td><span class="text-red" style="display: block; text-align: center;">Sem Motivo de Bloqueio</span></td>';
+            }
+            
+            // Motivo Encerramento
+            if (!is_null($dados[$i]['DESC_MOTIVO_ENCERRAMENTO'])) {
+                $html .= '<td><span style="display: block; text-align: center;">'. htmlspecialchars($dados[$i]['DESC_MOTIVO_ENCERRAMENTO']) .'</span></td>';
+            } else {
+                $html .= '<td><span class="text-red" style="display: block; text-align: center;">Sem Motivo de Encerramento</span></td>';
+            }
+            
+            $html .= '<td><span style="display: block; text-align: center;">' . htmlspecialchars($dados[$i]['ORGAO_PAGADOR']) . '</span></td>';
+            $html .= '<td><span style="display: block; text-align: center;">' . htmlspecialchars($dados[$i]['CLUSTER']) . '</span></td>';
+            
+            // PARM
+            if (!is_null($dados[$i]['PARM'])) {
+                if($dados[$i]['PARM'] == 'NÃO APTO'){
+                    $html .='<td><span class="text-red" style="display: block; text-align: center;">NÃO APTO</span></td>';
+                } else {
+                    $html .= '<td><span style="display: block; text-align: center;">'. htmlspecialchars($dados[$i]['PARM']) .'</span></td>';
+                }
+            } else {
+                $html .= '<td><span class="text-red" style="display: block; text-align: center;">NÃO APTO</span></td>';
+            }
+            
+            // TRAG
+            if (!is_null($dados[$i]['TRAG'])) {
+                if($dados[$i]['TRAG'] == 'NÃO APTO'){
+                    $html .='<td><span class="text-red" style="display: block; text-align: center;">NÃO APTO</span></td>';
+                } else {
+                    $html .= '<td><span style="display: block; text-align: center;">'. htmlspecialchars($dados[$i]['TRAG']) .'</span></td>';
+                }
+            } else {
+                $html .= '<td><span class="text-red" style="display: block; text-align: center;">NÃO APTO</span></td>';
+            }
+
+            $html .= '<td><span style="display: block; text-align: center;">' . htmlspecialchars($dados[$i]['MEDIA_CONTABEIS']) . '</span></td>';
+            $html .= '<td><span style="display: block; text-align: center;">' . htmlspecialchars($dados[$i]['MEDIA_NEGOCIO']) . '</span></td>';
+            $html .= '</tr>';
+        }
+    } else {
+        $html .= '<tr><td colspan="16" class="text-center">Nenhum registro encontrado</td></tr>';
+    }
+    
+    return $html;
+}
+
+-----------
+
+// Replace renderTableRows() method in JH.txt (ajax_encerramento.php)
+
+public function renderTableRows($dados) {
+    if (empty($dados)) {
+        return '<tr><td colspan="16" class="text-center">Nenhum registro encontrado</td></tr>';
+    }
+    
+    $html = '';
+    foreach ($dados as $row) {
+        // CHANGED: data-bs-toggle="modal" data-bs-target to data-modal-target
+        $html .= '<tr data-modal-target="#AnaliseDetalhesModal' . htmlspecialchars($row['COD_SOLICITACAO']) . '" name="' . htmlspecialchars($row['COD_SOLICITACAO']) . '">';
+        $html .= $this->renderTableCell($row);
+        $html .= '</tr>';
+    }
+    
+    return $html;
+}
+
+
+
+-------------
+
+
+<style>
+    /* Add to existing <style> section in E.txt */
+    
+    /* Checkbox styling */
+    .form-check-input {
+        cursor: pointer;
+        width: 18px;
+        height: 18px;
+    }
+    
+    thead .form-check-input {
+        width: 20px;
+        height: 20px;
+        cursor: pointer;
+    }
+    
+    /* Row hover effect */
+    tbody tr[data-modal-target]:hover {
+        background-color: var(--tr-highlight-modal) !important;
+        transition: background-color 0.2s ease;
+    }
+    
+    /* Make non-checkbox cells clickable */
+    tbody tr[data-modal-target] td,
+    tbody tr[data-modal-target] th:not(:first-child) {
+        cursor: pointer;
+    }
+    
+    /* Checkbox cell should not show pointer cursor */
+    tbody tr[data-modal-target] th:first-child {
+        cursor: default;
+    }
+    
+    /* Bulk actions animation */
+    #bulkActions {
+        animation: slideDown 0.3s ease-out;
+    }
+    
+    @keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>
