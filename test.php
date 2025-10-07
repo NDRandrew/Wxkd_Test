@@ -398,3 +398,109 @@ if (isset($_POST['acao']) && $_POST['acao'] == 'enviar_email_bulk') {
     exit;
 }
 ?>
+
+
+
+------------------
+
+
+
+<style>
+    /* Add to existing <style> section in E.txt */
+    
+    /* Prevent modal trigger on checkbox column */
+    tbody tr[data-bs-toggle="modal"] th:first-child {
+        pointer-events: auto;
+    }
+    
+    tbody tr[data-bs-toggle="modal"] th:first-child * {
+        pointer-events: auto;
+    }
+    
+    /* Checkbox styling */
+    .form-check-input {
+        cursor: pointer;
+        width: 18px;
+        height: 18px;
+    }
+    
+    thead .form-check-input {
+        width: 20px;
+        height: 20px;
+    }
+    
+    /* Bulk actions animation */
+    #bulkActions {
+        animation: slideDown 0.3s ease-out;
+    }
+    
+    @keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>
+
+
+
+
+---------------
+
+
+// Replace the tbody click handler in initializeCheckboxHandlers()
+
+function initializeCheckboxHandlers() {
+    const headerCheckbox = document.querySelector('thead input[type="checkbox"]');
+    if (headerCheckbox) {
+        headerCheckbox.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const isChecked = this.checked;
+            document.querySelectorAll('tbody input[type="checkbox"]').forEach(cb => {
+                cb.checked = isChecked;
+            });
+            updateBulkActionButtons();
+        });
+    }
+
+    // Delegate checkbox clicks on tbody
+    document.getElementById('tableBody')?.addEventListener('click', function(e) {
+        // If clicking checkbox or its label
+        if (e.target.type === 'checkbox' || e.target.closest('label.form-check')) {
+            e.stopPropagation();
+            updateBulkActionButtons();
+            return;
+        }
+        
+        // If clicking the checkbox cell
+        if (e.target.closest('th:first-child')) {
+            e.stopPropagation();
+            const checkbox = e.target.closest('th').querySelector('input[type="checkbox"]');
+            if (checkbox) {
+                checkbox.checked = !checkbox.checked;
+                updateBulkActionButtons();
+            }
+            return;
+        }
+    });
+    
+    // Remove data-bs-toggle from rows and handle manually
+    document.querySelectorAll('tbody tr[data-bs-toggle="modal"]').forEach(row => {
+        row.addEventListener('click', function(e) {
+            // Don't open modal if clicking checkbox column
+            if (e.target.closest('th:first-child') || e.target.type === 'checkbox') {
+                return;
+            }
+            
+            const modalId = this.getAttribute('data-bs-target');
+            if (modalId) {
+                const modal = new bootstrap.Modal(document.querySelector(modalId));
+                modal.show();
+            }
+        });
+    });
+}
