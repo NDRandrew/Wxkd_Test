@@ -1,379 +1,168 @@
-The user is right - I referenced `executeBulkEmail` but it doesn't exist in the original code. The original code has the bulk email logic directly in `window.sendBulkEmail`. I need to refactor this properly to separate the validation from the execution.
+The issue is that the query doesn't include a JOIN to `ENCERRAMENTO_TB_PORTAL` yet. You need to:
 
-Let me rewrite the JS part correctly, integrating with the existing code structure.
+## 1. Update Model Query (M (5).txt)
 
-## 4. JavaScript (J (4).txt) - Complete rewrite:
+Add LEFT JOIN to the `solicitacoes` method query:
 
-```javascript
-// Add to initialize()
-function initialize() {
-    setupDateInputs();
-    initializeEventListeners();
-    initializeCheckboxHandlers();
-    initializeSorting(); // ADD THIS
-    highlightActiveFilters();
-    attachPageNumberHandlers();
+```php
+public function solicitacoes($where, $limit = 25, $offset = 0) {
+    $query = "
+        SELECT
+            A.COD_SOLICITACAO COD_SOLICITACAO, 
+            A.COD_AG COD_AG, 
+            CASE WHEN A.COD_AG = F.COD_AG_LOJA THEN F.NOME_AG ELSE 'AGENCIA' END NOME_AG, 
+            A.CHAVE_LOJA CHAVE_LOJA, 
+            F.NOME_LOJA NOME_LOJA, 
+            G.NR_PACB NR_PACB, 
+            F.COD_EMPRESA COD_EMPRESA,
+            A.DATA_CAD AS DATA_RECEPCAO, 
+            F.RZ_SOCIAL_EMP NOME_EMPRESA,
+            F.DATA_RETIRADA_EQPTO,
+            F.DATA_BLOQUEIO,
+            F.MOTIVO_BLOQUEIO,
+            F.DESC_MOTIVO_ENCERRAMENTO,
+            G.ORGAO_PAGADOR ORGAO_PAGADOR,
+            A.COD_TIPO_SERVICO COD_TIPO_SERVICO,
+            F.CNPJ CNPJ,
+            F.COD_EMPRESA,
+            F.COD_EMPRESA_TEF,
+            -- ADD THESE FROM ENCERRAMENTO TABLE
+            ISNULL(ENC.STATUS_SOLIC, 'ATIVO') AS STATUS_SOLIC,
+            ISNULL(ENC.STATUS_OP, 'Não Efetuado') AS STATUS_OP,
+            ISNULL(ENC.STATUS_COM, 'Não Efetuado') AS STATUS_COM,
+            ISNULL(ENC.STATUS_VAN, 'Não Efetuado') AS STATUS_VAN,
+            ISNULL(ENC.STATUS_BLOQ, 'Não Efetuado') AS STATUS_BLOQ,
+            ISNULL(ENC.STATUS_ENCERRAMENTO, 'Não Efetuado') AS STATUS_ENCERRAMENTO,
+            ENC.MOTIVO_ENC,
+            ENC.DATA_ENC,
+            -- Rest of existing fields...
+            [KEEP ALL EXISTING CLUSTER FIELDS]
+            G.ORGAO_PAGADOR ORGAO_PAGADOR,
+            CONVERT(VARCHAR, G.DATA_LAST_TRANS, 103) DATA_LAST_TRANS,
+            ISNULL(L.QTD_CHAVE, 0)/3 AS MEDIA_CONTABEIS,
+            ISNULL(M.CONTAS, 0)/3 AS MEDIA_NEGOCIO
+        FROM 
+            TB_ACIONAMENTO_FIN_SOLICITACOES A WITH (NOLOCK) 
+            JOIN TB_ACIONAMENTO_SERVICOS B WITH (NOLOCK) ON A.COD_TIPO_SERVICO = B.COD_TIPO_SERVICO 
+            JOIN TB_ACIONAMENTO_PRESTACAO_CONTA C WITH (NOLOCK) ON A.COD_PRESTACAO_CONTA = C.COD_PRESTACAO_CONTA 
+            JOIN TB_ACIONAMENTO_STATUS D WITH (NOLOCK) ON A.COD_STATUS = D.COD_STATUS 
+            LEFT JOIN RH..TB_FUNCIONARIOS E WITH (NOLOCK) ON A.COD_SOLICITANTE = E.COD_FUNC
+            LEFT JOIN DATALAKE..DL_BRADESCO_EXPRESSO F WITH (NOLOCK) ON A.CHAVE_LOJA = F.CHAVE_LOJA 
+            JOIN TB_ACIONAMENTO_FIN_SOLICITACOES_DADOS G WITH (NOLOCK) ON A.COD_SOLICITACAO = G.COD_SOLICITACAO  
+            LEFT JOIN TB_ACIONAMENTO_RESPOSTAS H WITH (NOLOCK) ON G.COD_SOLUCAO = H.COD_RESPOSTA 
+            -- ADD THIS LEFT JOIN
+            LEFT JOIN ENCERRAMENTO_TB_PORTAL ENC WITH (NOLOCK) ON A.COD_SOLICITACAO = ENC.COD_SOLICITACAO
+            -- Keep all other existing LEFT JOINs...
+            [KEEP ALL OTHER EXISTING JOINS]
+        WHERE
+            1=1 AND F.BE_INAUGURADO = 1
+            ".$where."
+        ORDER BY A.COD_SOLICITACAO DESC
+        OFFSET ".$offset." ROWS
+        FETCH NEXT ".$limit." ROWS ONLY"; 
     
-    if (window.pageState && window.pageState.autoLoadData) {
-        setTimeout(() => handleFormSubmit(), 100);
-    }
-}
-
-// ADD: Sorting functionality
-function initializeSorting() {
-    let currentSortColumn = null;
-    let currentSortOrder = null;
-    
-    document.querySelectorAll('.sortable').forEach(th => {
-        th.addEventListener('click', function() {
-            const column = this.getAttribute('data-column');
-            
-            // Toggle order
-            if (currentSortColumn === column) {
-                currentSortOrder = currentSortOrder === 'asc' ? 'desc' : 'asc';
-            } else {
-                currentSortColumn = column;
-                currentSortOrder = 'asc';
-            }
-            
-            // Update UI
-            document.querySelectorAll('.sortable').forEach(h => {
-                h.removeAttribute('data-order');
-                const icon = h.querySelector('.sort-icon');
-                if (icon) icon.textContent = '⇅';
-            });
-            
-            this.setAttribute('data-order', currentSortOrder);
-            const icon = this.querySelector('.sort-icon');
-            if (icon) icon.textContent = currentSortOrder === 'asc' ? '↑' : '↓';
-            
-            // Reload data with sorting
-            currentPage = 1;
-            handleFormSubmit(currentSortColumn, currentSortOrder);
-        });
-    });
-}
-
-// MODIFY: Update handleFormSubmit to accept sort parameters
-function handleFormSubmit(sortColumn, sortOrder) {
-    const filterForm = document.getElementById('filterForm');
-    const formData = new FormData(filterForm);
-    const params = new URLSearchParams();
-    
-    for (let [key, value] of formData.entries()) {
-        if (value && value.trim() !== '') {
-            params.append(key, value);
-        }
-    }
-    
-    // Add sorting parameters
-    if (sortColumn) {
-        params.append('sort_column', sortColumn);
-        params.append('sort_order', sortOrder);
-    }
-    
-    params.append('page', currentPage);
-    params.append('per_page', perPage);
-    
-    showLoading();
-    
-    fetch(AJAX_URL + '?' + params.toString())
-        .then(response => {
-            if (!response.ok) throw new Error('Network error: ' + response.status);
-            return response.text();
-        })
-        .then(text => {
-            const data = JSON.parse(text);
-            
-            if (data.success) {
-                updateUI(data, params);
-            } else {
-                throw new Error(data.error || 'Erro ao carregar dados');
-            }
-        })
-        .catch(error => {
-            console.error('Fetch Error:', error);
-            showNotification('Erro ao carregar os dados: ' + error.message, 'error');
-        })
-        .finally(() => hideLoading());
-}
-
-// MODIFY: Update existing sendBulkEmail with validation
-window.sendBulkEmail = function(tipo) {
-    const solicitacoes = getSelectedSolicitacoes();
-    if (solicitacoes.length === 0) {
-        showNotification('Nenhum registro selecionado', 'error');
-        return;
-    }
-
-    const btn = event.target;
-    const originalText = btn.innerHTML;
-    
-    // Check status before sending
-    if (tipo === 'encerramento') {
-        checkBulkStatusBeforeSend(solicitacoes, tipo, btn, originalText);
-    } else {
-        sendBulkEmailRequest(solicitacoes, tipo, btn, originalText);
-    }
-};
-
-// ADD: Check bulk status
-function checkBulkStatusBeforeSend(solicitacoes, tipo, btn, originalText) {
-    const formData = new FormData();
-    formData.append('acao', 'check_bulk_status');
-    formData.append('solicitacoes', JSON.stringify(solicitacoes));
-    
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Verificando...';
-    
-    fetch(AJAX_URL, {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        btn.innerHTML = originalText;
-        btn.disabled = false;
-        
-        if (data.has_pending) {
-            const pendingList = data.pending_list.join(', ');
-            const message = 'As seguintes chaves possuem status não "Efetuado":\n\n' + 
-                          pendingList + '\n\nDeseja continuar mesmo assim?';
-            
-            if (confirm(message)) {
-                sendBulkEmailRequest(solicitacoes, tipo, btn, originalText);
-            }
-        } else {
-            sendBulkEmailRequest(solicitacoes, tipo, btn, originalText);
-        }
-    })
-    .catch(error => {
-        console.error('Status check error:', error);
-        btn.innerHTML = originalText;
-        btn.disabled = false;
-        showNotification('Erro ao verificar status', 'error');
-    });
-}
-
-// ADD: Send bulk email request
-function sendBulkEmailRequest(solicitacoes, tipo, btn, originalText) {
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Enviando...';
-
-    const formData = new FormData();
-    formData.append('acao', 'enviar_email_bulk');
-    formData.append('tipo', tipo);
-    formData.append('solicitacoes', JSON.stringify(solicitacoes));
-
-    fetch(AJAX_URL, {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showNotification('Emails enviados com sucesso!', 'success');
-            
-            // Clear selections
-            document.querySelectorAll('tbody input[type="checkbox"]:checked').forEach(cb => cb.checked = false);
-            const headerCheckbox = document.querySelector('thead input[type="checkbox"]');
-            if (headerCheckbox) headerCheckbox.checked = false;
-            updateBulkActionButtons();
-        } else {
-            showNotification('Erro: ' + data.message, 'error');
-        }
-        btn.innerHTML = originalText;
-        btn.disabled = false;
-    })
-    .catch(error => {
-        console.error('Bulk email error:', error);
-        showNotification('Erro ao enviar emails', 'error');
-        btn.innerHTML = originalText;
-        btn.disabled = false;
-    });
-}
-
-// ADD: Cancel solicitacao function
-window.cancelarSolicitacao = function(codSolicitacao) {
-    if (!confirm('Tem certeza que deseja cancelar esta solicitação?')) {
-        return;
-    }
-    
-    const formData = new FormData();
-    formData.append('acao', 'cancelar_solicitacao');
-    formData.append('cod_solicitacao', codSolicitacao);
-    
-    fetch(AJAX_URL, {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showNotification('Solicitação cancelada com sucesso', 'success');
-            
-            // Close modal
-            const modal = document.getElementById('AnaliseDetalhesModal' + codSolicitacao);
-            if (modal) {
-                const bsModal = bootstrap.Modal.getInstance(modal);
-                if (bsModal) bsModal.hide();
-            }
-            
-            // Reload table
-            handleFormSubmit();
-        } else {
-            showNotification('Erro: ' + data.message, 'error');
-        }
-    })
-    .catch(error => {
-        console.error('Cancel error:', error);
-        showNotification('Erro ao cancelar solicitação', 'error');
-    });
-};
-
-// ADD: Save motivo and data functions
-window.saveMotivoData = function(codSolicitacao) {
-    const motivo = document.getElementById('motivoEnc' + codSolicitacao).value;
-    const data = document.getElementById('dataEnc' + codSolicitacao).value;
-    
-    if (!motivo && !data) {
-        showNotification('Preencha ao menos um campo', 'error');
-        return;
-    }
-    
-    const formData = new FormData();
-    formData.append('acao', 'save_motivo_data');
-    formData.append('cod_solicitacao', codSolicitacao);
-    formData.append('motivo', motivo);
-    formData.append('data', data);
-    
-    fetch(AJAX_URL, {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showNotification('Dados salvos com sucesso', 'success');
-        } else {
-            showNotification('Erro: ' + data.message, 'error');
-        }
-    })
-    .catch(error => {
-        console.error('Save error:', error);
-        showNotification('Erro ao salvar dados', 'error');
-    });
-};
-
-// MODIFY: Update initializeEventListeners to handle new filters
-function initializeEventListeners() {
-    const elements = {
-        clearFilters: () => clearAllFilters(),
-        searchBtn: () => { currentPage = 1; handleFormSubmit(); },
-        applyFiltersBtn: () => { currentPage = 1; handleFormSubmit(); },
-        perPageSelect: function() { perPage = parseInt(this.value); currentPage = 1; handleFormSubmit(); },
-        prevPage: () => { if (currentPage > 1) { currentPage--; handleFormSubmit(); } },
-        nextPage: () => { if (currentPage < totalPages) { currentPage++; handleFormSubmit(); } }
-    };
-
-    Object.entries(elements).forEach(([id, handler]) => {
-        const el = document.getElementById(id);
-        if (el) el.addEventListener('click', handler);
-    });
-
-    const searchInput = document.getElementById('searchInput');
-    if (searchInput) {
-        searchInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                currentPage = 1;
-                handleFormSubmit();
-            }
-        });
-    }
-    
-    // ADD: Filter change listeners
-    ['statusSolicFilter', 'motivoEncFilter'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) {
-            el.addEventListener('change', () => {
-                currentPage = 1;
-                handleFormSubmit();
-            });
-        }
-    });
-}
-
-// MODIFY: Update clearAllFilters to include new filters
-function clearAllFilters() {
-    ['searchInput', 'bloqueioFilter', 'orgaoPagadorFilter', 'statusSolicFilter', 'motivoEncFilter',
-     'dataInicioFilter', 'dataInicioDisplay', 'dataFimFilter', 'dataFimDisplay']
-        .forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.value = '';
-        });
-    
-    currentPage = 1;
-    handleFormSubmit();
-}
-
-// MODIFY: Update highlightActiveFilters to include new filters
-function highlightActiveFilters() {
-    const urlParams = new URLSearchParams(window.location.search);
-    
-    ['searchInput', 'bloqueioFilter', 'orgaoPagadorFilter', 'statusSolicFilter', 'motivoEncFilter',
-     'dataInicioDisplay', 'dataFimDisplay'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) {
-            el.style.borderColor = '';
-            el.style.borderWidth = '';
-        }
-    });
-    
-    const filters = {
-        searchInput: 'search',
-        bloqueioFilter: 'bloqueio',
-        orgaoPagadorFilter: 'orgao_pagador',
-        statusSolicFilter: 'status_solic',
-        motivoEncFilter: 'motivo_enc'
-    };
-    
-    Object.entries(filters).forEach(([elId, param]) => {
-        const el = document.getElementById(elId);
-        if (el && (urlParams.has(param) || el.value)) {
-            el.style.borderColor = '#206bc4';
-            el.style.borderWidth = '2px';
-        }
-    });
-    
-    ['dataInicioDisplay', 'dataFimDisplay'].forEach(displayId => {
-        const displayEl = document.getElementById(displayId);
-        const filterId = displayId.replace('Display', '');
-        const filterEl = document.getElementById(filterId);
-        
-        if (displayEl && filterEl && filterEl.value) {
-            displayEl.style.borderColor = '#206bc4';
-            displayEl.style.borderWidth = '2px';
-        }
-    });
-
-    const clearBtn = document.getElementById('clearFilters');
-    if (clearBtn) {
-        const hasFilters = ['search', 'bloqueio', 'orgao_pagador', 'status_solic', 'motivo_enc', 
-                           'data_inicio', 'data_fim'].some(param => urlParams.has(param));
-        
-        clearBtn.classList.toggle('btn-warning', hasFilters);
-        clearBtn.classList.toggle('btn-secondary', !hasFilters);
-    }
+    $dados = $this->sql->select($query);
+    return $dados;
 }
 ```
 
-This version:
-- ✅ Removes the non-existent `executeBulkEmail` reference
-- ✅ Integrates validation into the existing `window.sendBulkEmail` function
-- ✅ Adds `sendBulkEmailRequest` as a separate helper function
-- ✅ Adds `checkBulkStatusBeforeSend` for validation
-- ✅ Adds `cancelarSolicitacao` function
-- ✅ Adds `saveMotivoData` function
-- ✅ Updates sorting to work with existing code structure
-- ✅ Updates event listeners and filters to include new fields
+## 2. Update getTotalCount method too:
+
+```php
+public function getTotalCount($where) {
+    $query = "
+        SELECT COUNT(*) as TOTAL
+        FROM 
+            TB_ACIONAMENTO_FIN_SOLICITACOES A WITH (NOLOCK) 
+            JOIN TB_ACIONAMENTO_SERVICOS B WITH (NOLOCK) ON A.COD_TIPO_SERVICO = B.COD_TIPO_SERVICO 
+            JOIN TB_ACIONAMENTO_PRESTACAO_CONTA C WITH (NOLOCK) ON A.COD_PRESTACAO_CONTA = C.COD_PRESTACAO_CONTA 
+            JOIN TB_ACIONAMENTO_STATUS D WITH (NOLOCK) ON A.COD_STATUS = D.COD_STATUS 
+            LEFT JOIN RH..TB_FUNCIONARIOS E WITH (NOLOCK) ON A.COD_SOLICITANTE = E.COD_FUNC
+            LEFT JOIN DATALAKE..DL_BRADESCO_EXPRESSO F WITH (NOLOCK) ON A.CHAVE_LOJA = F.CHAVE_LOJA 
+            JOIN TB_ACIONAMENTO_FIN_SOLICITACOES_DADOS G WITH (NOLOCK) ON A.COD_SOLICITACAO = G.COD_SOLICITACAO  
+            LEFT JOIN TB_ACIONAMENTO_RESPOSTAS H WITH (NOLOCK) ON G.COD_SOLUCAO = H.COD_RESPOSTA 
+            LEFT JOIN ENCERRAMENTO_TB_PORTAL ENC WITH (NOLOCK) ON A.COD_SOLICITACAO = ENC.COD_SOLICITACAO
+        WHERE
+            1=1 AND F.BE_INAUGURADO = 1
+            ".$where;
+    
+    $dados = $this->sql->select($query);
+    return $dados[0]['TOTAL'];
+}
+```
+
+## 3. To populate ENCERRAMENTO_TB_PORTAL with initial data:
+
+Run this SQL script to create records for existing solicitacoes:
+
+```sql
+-- Insert records for all existing solicitacoes
+INSERT INTO ENCERRAMENTO_TB_PORTAL (
+    COD_SOLICITACAO, 
+    CHAVE_LOJA, 
+    STATUS_SOLIC, 
+    STATUS_OP, 
+    STATUS_COM, 
+    STATUS_VAN, 
+    STATUS_BLOQ, 
+    STATUS_ENCERRAMENTO
+)
+SELECT 
+    A.COD_SOLICITACAO,
+    A.CHAVE_LOJA,
+    'ATIVO' AS STATUS_SOLIC,
+    'Não Efetuado' AS STATUS_OP,
+    'Não Efetuado' AS STATUS_COM,
+    'Não Efetuado' AS STATUS_VAN,
+    'Não Efetuado' AS STATUS_BLOQ,
+    'Não Efetuado' AS STATUS_ENCERRAMENTO
+FROM 
+    TB_ACIONAMENTO_FIN_SOLICITACOES A
+    LEFT JOIN ENCERRAMENTO_TB_PORTAL ENC ON A.COD_SOLICITACAO = ENC.COD_SOLICITACAO
+WHERE 
+    ENC.COD_SOLICITACAO IS NULL
+    AND A.COD_TIPO_SERVICO = 1
+```
+
+## 4. Update Controller (C (4).txt) - Fix buildStatusShow:
+
+```php
+private function buildStatusShow($row) {
+    // Data already comes from query with LEFT JOIN
+    $statusConfig = [
+        'STATUS_OP' => ['label' => 'Órgão Pagador', 'value' => $row['STATUS_OP'] ?? 'Não Efetuado'],
+        'STATUS_COM' => ['label' => 'Comercial', 'value' => $row['STATUS_COM'] ?? 'Não Efetuado'],
+        'STATUS_VAN' => ['label' => 'Van-Material', 'value' => $row['STATUS_VAN'] ?? 'Não Efetuado'],
+        'STATUS_BLOQ' => ['label' => 'Bloqueio', 'value' => $row['STATUS_BLOQ'] ?? 'Não Efetuado'],
+        'STATUS_ENCERRAMENTO' => ['label' => 'Encerramento', 'value' => $row['STATUS_ENCERRAMENTO'] ?? 'Não Efetuado']
+    ];
+    
+    $html = '<div class="card"><div class="card-header"><h3 class="card-title">Status</h3></div>';
+    $html .= '<div class="card-body"><div class="table-responsive"><table class="table table-vcenter"><thead><tr>';
+    
+    foreach ($statusConfig as $config) {
+        $html .= '<th>' . $config['label'] . '</th>';
+    }
+    
+    $html .= '</tr></thead><tbody><tr>';
+    
+    foreach ($statusConfig as $config) {
+        $statusClass = $config['value'] === 'Efetuado' ? 'green' : ($config['value'] === 'ERRO' ? 'red' : 'yellow');
+        $html .= '<td><span class="status status-' . $statusClass . '"><span class="status-dot"></span>' . $config['value'] . '</span></td>';
+    }
+    
+    $html .= '</tr></tbody></table></div></div></div>';
+    return $html;
+}
+```
+
+## Summary:
+
+**The key issue:** You're using **LEFT JOIN** so data will show even without matching records in ENCERRAMENTO_TB_PORTAL. 
+
+**To have data appear:**
+1. Add the LEFT JOIN to both `solicitacoes()` and `getTotalCount()` methods
+2. Use `ISNULL()` to provide default values
+3. Optionally run the INSERT script to populate the table with initial data
+
+**No data is required** in ENCERRAMENTO_TB_PORTAL for records to show - the LEFT JOIN will return NULL and ISNULL will provide defaults like "Não Efetuado" and "ATIVO".
