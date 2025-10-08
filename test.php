@@ -1,392 +1,172 @@
-
-# Implementation Guide
-
-## Summary of Changes
-
-### 1. Database Setup
-First, ensure the ENCERRAMENTO_TB_PORTAL table exists:
-
-```sql
--- If table doesn't exist, create it
-IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ENCERRAMENTO_TB_PORTAL' AND xtype='U')
-BEGIN
-    CREATE TABLE ENCERRAMENTO_TB_PORTAL (
-        ID INT IDENTITY(1,1) PRIMARY KEY,
-        COD_SOLICITACAO INT NOT NULL,
-        CHAVE_LOJA INT NOT NULL,
-        STATUS_SOLIC VARCHAR(30) DEFAULT 'EM ANDAMENTO',
-        STATUS_OP VARCHAR(30) DEFAULT 'Não Efetuado',
-        STATUS_COM VARCHAR(30) DEFAULT 'Não Efetuado',
-        STATUS_VAN VARCHAR(30) DEFAULT 'Não Efetuado',
-        STATUS_BLOQ VARCHAR(30) DEFAULT 'Não Efetuado',
-        STATUS_ENCERRAMENTO VARCHAR(30) DEFAULT 'Não Efetuado',
-        LOCAL_CHAT VARCHAR(255) NULL,
-        MOTIVO_ENC VARCHAR(255) NULL,
-        DATA_ENC DATE NULL,
-        DATA_CRIACAO DATETIME DEFAULT GETDATE()
-    );
-    
-    CREATE INDEX IX_COD_SOLICITACAO ON ENCERRAMENTO_TB_PORTAL(COD_SOLICITACAO);
-END
-```
-
-### 2. Files to Update
-
-#### Model (M.txt - analise_encerramento_model.class.php)
-- Add methods from artifact "Model - ENCERRAMENTO_TB_PORTAL Methods"
-- Replace existing `solicitacoes()` method with `solicitacoesWithStatus()`
-
-#### Ajax Handler (JH.txt - ajax_encerramento.php)
-- Add new endpoints from "Ajax Handler - New Endpoints"
-- Update `loadData()` method to handle sorting and new filters
-- Update render methods from "Ajax Handler - Render Methods Updates"
-
-#### Email Functions (ED.txt - email_functions.php)
-- Update `sendEmail()` and `sendBulkEmail()` functions from "Email Functions - Status Recording"
-
-#### JavaScript (J.txt - analise_encerramento.js)
-- Add all functions from "JavaScript - Sorting & Status Features"
-- Update the `initialize()` function to include `initializeColumnSort()`
-
-#### View (E.txt - analise_encerramento.php)
-- Add filter inputs from "View - Filter & Modal Updates" after existing filters
-
-### 3. Key Features Implemented
-
-**Filters:**
-- Status Solicitação dropdown (EM ANDAMENTO, CANCELADO, FINALIZADO)
-- Motivo Encerramento dropdown (placeholder values - add real ones)
-- Both filters integrated with existing filter system
-
-**Column Sorting:**
-- Click any sortable column header to toggle ASC/DESC
-- Visual indicators (▲▼) show current sort
-- Sortable columns: Solicitação, Agência/PACB, Chave Loja, dates, etc.
-
-**Modal Updates:**
-- Motivo Encerramento dropdown in Ações card
-- Data Encerramento date input
-- Save button to update both fields
-- Dynamic status display based on email sends
-- Cancel button in footer (red, bottom-left)
-
-**Status Tracking:**
-- Automatic status recording when emails are sent
-- Status values: "Não Efetuado", "Efetuado", "ERRO"
-- Color-coded status display (green=success, yellow=pending, red=error)
-- Real-time status updates after email sends
-
-**Bulk Actions Validation:**
-- Check if any selected records have pending statuses
-- Show warning modal with details of pending items
-- User can proceed or cancel based on warning
-
-**Cancel Functionality:**
-- Red "Cancelar Solicitação" button in modal footer
-- Updates STATUS_SOLIC to "CANCELADO"
-- Confirmation dialog before canceling
-
-### 4. Customization Points
-
-Replace placeholder values in these locations:
-
-**Status Solicitação Options:**
-```php
-<option value="FINALIZADO">Finalizado</option>
-// Add more as needed
-```
-
-**Motivo Encerramento Options:**
-```php
-<option value="MOTIVO_1">Motivo 1</option>
-<option value="MOTIVO_2">Motivo 2</option>
-<option value="MOTIVO_3">Motivo 3</option>
-// Replace with actual motivos
-```
-
-**Column Sort Mapping:**
-```javascript
-const sortableColumns = {
-    'COD_SOLICITACAO': 1,
-    // Add more columns if needed
-};
-```
-
-### 5. Testing Checklist
-
-- [ ] New filters appear and work correctly
-- [ ] Column sorting toggles between ASC/DESC
-- [ ] Status is created automatically for new records
-- [ ] Email sends update status correctly
-- [ ] Bulk actions validate pending statuses
-- [ ] Motivo/Data updates save successfully
-- [ ] Cancel button changes STATUS_SOLIC
-- [ ] Status colors display correctly
-- [ ] All modals open/close properly
-
-### 6. Important Notes
-
-- The system automatically creates ENCERRAMENTO_TB_PORTAL records when emails are first sent
-- Status updates happen immediately after email operations
-- Bulk validation runs before sending to warn about pending items
-- All database operations use parameterized queries for security
-- Maintain MVC separation - keep business logic in model/controller
-
-### 7. Error Handling
-
-All endpoints return JSON with:
-```json
-{
-    "success": true/false,
-    "message": "Description",
-    "data": {} // when applicable
-}
-```
-
-JavaScript catches and displays errors via `showNotification()` function. 
-
-
-
---------------
-
 <?php
-// Add these methods to analise_encerramento_model.class.php
+// Define user groups and their permissions
+define('USER_GROUPS', [
+    'OP_MANAGEMENT' => [11111, 22222], // cod_usu for OP users
+    'COM_MANAGEMENT' => [33333, 44444], // cod_usu for COM users
+    'BLOQ_MANAGEMENT' => [55555, 66666], // cod_usu for BLOQ users
+    'ENC_MANAGEMENT' => [77777, 88888] // cod_usu for ENC users (full access)
+]);
 
-public function getEncerramentoStatus($cod_solicitacao) {
-    $query = "SELECT * FROM ENCERRAMENTO_TB_PORTAL WHERE COD_SOLICITACAO = " . intval($cod_solicitacao);
-    $dados = $this->sql->select($query);
-    return $dados ? $dados[0] : null;
-}
-
-public function insertEncerramentoStatus($cod_solicitacao, $chave_loja) {
-    $query = "INSERT INTO ENCERRAMENTO_TB_PORTAL (
-        COD_SOLICITACAO, CHAVE_LOJA, STATUS_SOLIC, STATUS_OP, STATUS_COM, 
-        STATUS_VAN, STATUS_BLOQ, STATUS_ENCERRAMENTO
-    ) VALUES (
-        " . intval($cod_solicitacao) . ", 
-        " . intval($chave_loja) . ", 
-        'EM ANDAMENTO', 'Não Efetuado', 'Não Efetuado', 
-        'Não Efetuado', 'Não Efetuado', 'Não Efetuado'
-    )";
-    return $this->sql->insert($query);
-}
-
-public function updateEmailStatus($cod_solicitacao, $tipo, $status) {
-    $statusField = [
-        'orgao_pagador' => 'STATUS_OP',
-        'comercial' => 'STATUS_COM',
-        'van_material' => 'STATUS_VAN',
-        'bloqueio' => 'STATUS_BLOQ',
-        'encerramento' => 'STATUS_ENCERRAMENTO'
-    ];
-    
-    if (!isset($statusField[$tipo])) return false;
-    
-    $query = "UPDATE ENCERRAMENTO_TB_PORTAL SET " . $statusField[$tipo] . " = '" . $status . "' 
-              WHERE COD_SOLICITACAO = " . intval($cod_solicitacao);
-    return $this->sql->update($query);
-}
-
-public function updateMotivo($cod_solicitacao, $motivo, $data_enc = null) {
-    $query = "UPDATE ENCERRAMENTO_TB_PORTAL SET MOTIVO_ENC = '" . addslashes($motivo) . "'";
-    if ($data_enc) {
-        $query .= ", DATA_ENC = '" . $data_enc . "'";
+function getUserGroup($cod_usu) {
+    foreach (USER_GROUPS as $group => $users) {
+        if (in_array($cod_usu, $users)) {
+            return $group;
+        }
     }
-    $query .= " WHERE COD_SOLICITACAO = " . intval($cod_solicitacao);
-    return $this->sql->update($query);
+    return null;
 }
 
-public function cancelarSolicitacao($cod_solicitacao) {
-    $query = "UPDATE ENCERRAMENTO_TB_PORTAL SET STATUS_SOLIC = 'CANCELADO' 
-              WHERE COD_SOLICITACAO = " . intval($cod_solicitacao);
-    return $this->sql->update($query);
+function canViewBulkActions($cod_usu) {
+    $group = getUserGroup($cod_usu);
+    return $group === 'ENC_MANAGEMENT';
 }
 
-public function solicitacoesWithStatus($where, $limit = 25, $offset = 0, $orderBy = 'A.COD_SOLICITACAO DESC') {
-    $query = "
-        SELECT
-            A.COD_SOLICITACAO, A.COD_AG, A.CHAVE_LOJA, A.DATA_CAD AS DATA_RECEPCAO,
-            CASE WHEN A.COD_AG = F.COD_AG_LOJA THEN F.NOME_AG ELSE 'AGENCIA' END NOME_AG,
-            F.NOME_LOJA, F.CNPJ, F.COD_EMPRESA, F.COD_EMPRESA_TEF,
-            F.DATA_RETIRADA_EQPTO, F.DATA_BLOQUEIO, F.MOTIVO_BLOQUEIO, F.DESC_MOTIVO_ENCERRAMENTO,
-            G.NR_PACB, G.ORGAO_PAGADOR, CONVERT(VARCHAR, G.DATA_LAST_TRANS, 103) DATA_LAST_TRANS,
-            ISNULL(ES.STATUS_SOLIC, 'EM ANDAMENTO') STATUS_SOLIC,
-            ISNULL(ES.STATUS_OP, 'Não Efetuado') STATUS_OP,
-            ISNULL(ES.STATUS_COM, 'Não Efetuado') STATUS_COM,
-            ISNULL(ES.STATUS_VAN, 'Não Efetuado') STATUS_VAN,
-            ISNULL(ES.STATUS_BLOQ, 'Não Efetuado') STATUS_BLOQ,
-            ISNULL(ES.STATUS_ENCERRAMENTO, 'Não Efetuado') STATUS_ENCERRAMENTO,
-            ES.MOTIVO_ENC, ES.DATA_ENC,
-            CASE 
-                WHEN F.BE_AVANCADO = 'S' THEN 'AVANCADO,'
-                ELSE ''
-            END +
-            CASE WHEN F.BE_CLUBE = 'S' THEN 'CLUBE,' ELSE '' END +
-            CASE WHEN F.BE_COMPLETO = 'S' THEN 'COMPLETO,' ELSE '' END AS CLUSTER,
-            CASE WHEN K.QTD > 1 THEN 'APTO' ELSE 'NÃO APTO' END AS PARM,
-            CASE
-                WHEN VWATUAL.codAtual IS NOT NULL THEN 'APTO'
-                WHEN VWANTIGA.CodAnt IS NOT NULL THEN 'NÃO APTO'
-                ELSE NULL
-            END AS TRAG,
-            ISNULL(L.QTD_CHAVE, 0)/3 AS MEDIA_CONTABEIS,
-            ISNULL(M.CONTAS, 0)/3 AS MEDIA_NEGOCIO
-        FROM TB_ACIONAMENTO_FIN_SOLICITACOES A WITH (NOLOCK)
-        JOIN TB_ACIONAMENTO_SERVICOS B WITH (NOLOCK) ON A.COD_TIPO_SERVICO = B.COD_TIPO_SERVICO
-        JOIN TB_ACIONAMENTO_PRESTACAO_CONTA C WITH (NOLOCK) ON A.COD_PRESTACAO_CONTA = C.COD_PRESTACAO_CONTA
-        JOIN TB_ACIONAMENTO_STATUS D WITH (NOLOCK) ON A.COD_STATUS = D.COD_STATUS
-        LEFT JOIN RH..TB_FUNCIONARIOS E WITH (NOLOCK) ON A.COD_SOLICITANTE = E.COD_FUNC
-        LEFT JOIN DATALAKE..DL_BRADESCO_EXPRESSO F WITH (NOLOCK) ON A.CHAVE_LOJA = F.CHAVE_LOJA
-        JOIN TB_ACIONAMENTO_FIN_SOLICITACOES_DADOS G WITH (NOLOCK) ON A.COD_SOLICITACAO = G.COD_SOLICITACAO
-        LEFT JOIN ENCERRAMENTO_TB_PORTAL ES WITH (NOLOCK) ON A.COD_SOLICITACAO = ES.COD_SOLICITACAO
-        LEFT JOIN (
-            SELECT COUNT(*) AS QTD, COD_AG_LOJA
-            FROM DATALAKE..DL_BRADESCO_EXPRESSO DL WITH (NOLOCK)
-            WHERE DL.BE_INAUGURADO = 1 AND DL.CATEGORIA NOT IN ('PROCESSO DE ENCERRAMENTO', 'ENCERRADO')
-            GROUP BY COD_AG_LOJA
-        ) K ON F.COD_AG_LOJA = K.COD_AG_LOJA AND K.COD_AG_LOJA = A.COD_AG
-        LEFT JOIN (
-            SELECT CHAVE_LOJA, COUNT(*) AS QTD_CHAVE 
-            FROM PGTOCORSP..TB_EVT12_TRANS A
-            LEFT JOIN (SELECT * FROM PGTOCORSP..PGTOCORSP_SERVICOS_VANS WHERE TRX_CONTABIL=1) B 
-            ON A.DESC_TRX=B.DESC_SERVICO
-            WHERE ANO=YEAR(GETDATE()) AND MES BETWEEN MONTH(GETDATE())-4 AND MONTH(GETDATE())
-            GROUP BY A.CHAVE_LOJA
-        ) L ON F.CHAVE_LOJA = L.CHAVE_LOJA
-        LEFT JOIN (
-            SELECT CHAVE_LOJA,
-                SUM(QTD_CONTAS)+SUM(QTD_DEPOSITO)+SUM(CHEQUE_ESPECIAL) AS CONTAS
-            FROM PGTOCORSP..TB_STG2_ANALISE_CONTA_CRC
-            WHERE MES_PGTO >= CONVERT(VARCHAR(6), DATEADD(M, -4, GETDATE()), 112)
-            GROUP BY CHAVE_LOJA
-        ) M ON M.CHAVE_LOJA = L.CHAVE_LOJA
-        LEFT JOIN MESU..VW_TRAGS AS VWATUAL WITH (NOLOCK) 
-        ON VWATUAL.CodAtual = A.COD_AG AND VWATUAL.NRAtual = G.NR_PACB
-        LEFT JOIN MESU..VW_TRAGS AS VWANTIGA WITH (NOLOCK) 
-        ON VWANTIGA.CodAnt = A.COD_AG AND VWANTIGA.NRAnt = G.NR_PACB
-        WHERE 1=1 AND F.BE_INAUGURADO = 1 " . $where . "
-        ORDER BY " . $orderBy . "
-        OFFSET " . $offset . " ROWS
-        FETCH NEXT " . $limit . " ROWS ONLY";
-    
-    return $this->sql->select($query);
+function canViewModalActions($cod_usu) {
+    $group = getUserGroup($cod_usu);
+    return $group === 'ENC_MANAGEMENT';
+}
+
+function canViewStatus($cod_usu) {
+    $group = getUserGroup($cod_usu);
+    return $group === 'ENC_MANAGEMENT';
+}
+
+function canCancelRequest($cod_usu) {
+    $group = getUserGroup($cod_usu);
+    return $group === 'ENC_MANAGEMENT';
+}
+
+function getChatRecipient($cod_usu) {
+    $group = getUserGroup($cod_usu);
+    if ($group === 'ENC_MANAGEMENT') {
+        return null; // Can chat with any group
+    }
+    // Other groups can only chat with ENC_MANAGEMENT
+    return 'ENC_MANAGEMENT';
 }
 ?>
 
+-------------
 
---------------
+// Add these methods to the Analise class in analise_encerramento_model.class.php
+
+public function createChatIfNotExists($cod_solicitacao) {
+    $query = "SELECT CHAT_ID FROM MESU..ENCERRAMENTO_TB_PORTAL WHERE COD_SOLICITACAO = " . intval($cod_solicitacao);
+    $result = $this->sql->select($query);
+    
+    if (!$result || !$result[0]['CHAT_ID']) {
+        $insertQuery = "INSERT INTO MESU..ENCERRAMENTO_TB_PORTAL_CHAT DEFAULT VALUES; SELECT SCOPE_IDENTITY() as CHAT_ID";
+        $chatResult = $this->sql->select($insertQuery);
+        $chatId = $chatResult[0]['CHAT_ID'];
+        
+        $updateQuery = "UPDATE MESU..ENCERRAMENTO_TB_PORTAL SET CHAT_ID = " . $chatId . 
+                      " WHERE COD_SOLICITACAO = " . intval($cod_solicitacao);
+        $this->sql->update($updateQuery);
+        
+        return $chatId;
+    }
+    
+    return $result[0]['CHAT_ID'];
+}
+
+public function getChatMessages($chat_id) {
+    $query = "SELECT m.*, 
+              f.nome_func as REMETENTE_NOME 
+              FROM MESU..ENCERRAMENTO_TB_PORTAL_CHAT m
+              LEFT JOIN RH..TB_FUNCIONARIOS f ON m.REMETENTE = f.COD_FUNC
+              WHERE m.CHAT_ID = " . intval($chat_id) . "
+              ORDER BY m.MESSAGE_DATE ASC";
+    return $this->sql->select($query);
+}
+
+public function sendChatMessage($chat_id, $mensagem, $destinatario, $remetente, $anexo = 0) {
+    $query = "INSERT INTO MESU..ENCERRAMENTO_TB_PORTAL_CHAT 
+              (CHAT_ID, MENSAGEM, DESTINATARIO, REMETENTE, ANEXO) 
+              VALUES (" . intval($chat_id) . ", 
+                     '" . addslashes($mensagem) . "', 
+                     " . intval($destinatario) . ", 
+                     " . intval($remetente) . ", 
+                     " . intval($anexo) . ")";
+    return $this->sql->insert($query);
+}
+
+public function getLastMessageId() {
+    $query = "SELECT SCOPE_IDENTITY() as MESSAGE_ID";
+    $result = $this->sql->select($query);
+    return $result[0]['MESSAGE_ID'];
+}
 
 
-<?php
-// Add these handlers to ajax_encerramento.php before the regular data loading
+----------
 
-// Update motivo and data
-if (isset($_POST['acao']) && $_POST['acao'] == 'update_motivo') {
+
+// Add these handlers to ajax_encerramento.php (before the regular data loading section)
+
+// Load chat messages
+if (isset($_POST['acao']) && $_POST['acao'] == 'load_chat') {
     ob_start();
     try {
         require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
         
         $cod_solicitacao = isset($_POST['cod_solicitacao']) ? intval($_POST['cod_solicitacao']) : 0;
-        $motivo = isset($_POST['motivo']) ? $_POST['motivo'] : '';
-        $data_enc = isset($_POST['data_enc']) ? $_POST['data_enc'] : null;
-        
-        if ($cod_solicitacao <= 0) {
-            ob_end_clean();
-            header('Content-Type: application/json');
-            echo json_encode_custom(['success' => false, 'message' => 'Código inválido']);
-            exit;
-        }
         
         $model = new Analise();
-        $status = $model->getEncerramentoStatus($cod_solicitacao);
+        $chat_id = $model->createChatIfNotExists($cod_solicitacao);
+        $messages = $model->getChatMessages($chat_id);
         
-        if (!$status) {
-            $where = "AND A.COD_SOLICITACAO = " . $cod_solicitacao;
-            $dados = $model->solicitacoes($where, 1, 0);
-            if (!empty($dados)) {
-                $model->insertEncerramentoStatus($cod_solicitacao, $dados[0]['CHAVE_LOJA']);
+        ob_end_clean();
+        header('Content-Type: application/json');
+        echo json_encode_custom([
+            'success' => true,
+            'chat_id' => $chat_id,
+            'messages' => $messages
+        ]);
+    } catch (Exception $e) {
+        ob_end_clean();
+        header('Content-Type: application/json');
+        echo json_encode_custom(['success' => false, 'message' => $e->getMessage()]);
+    }
+    exit;
+}
+
+// Send chat message
+if (isset($_POST['acao']) && $_POST['acao'] == 'send_message') {
+    ob_start();
+    try {
+        require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
+        
+        $cod_solicitacao = isset($_POST['cod_solicitacao']) ? intval($_POST['cod_solicitacao']) : 0;
+        $mensagem = isset($_POST['mensagem']) ? $_POST['mensagem'] : '';
+        $destinatario = isset($_POST['destinatario']) ? intval($_POST['destinatario']) : 0;
+        $remetente = isset($_SESSION['cod_usu']) ? intval($_SESSION['cod_usu']) : 0;
+        
+        $model = new Analise();
+        $chat_id = $model->createChatIfNotExists($cod_solicitacao);
+        
+        $anexo = 0;
+        if (isset($_FILES['arquivo']) && $_FILES['arquivo']['error'] === UPLOAD_ERR_OK) {
+            $anexo = 1;
+        }
+        
+        $result = $model->sendChatMessage($chat_id, $mensagem, $destinatario, $remetente, $anexo);
+        
+        if ($result && $anexo) {
+            $message_id = $model->getLastMessageId();
+            $upload_dir = 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\view\encerramento\anexos\\';
+            $user_dir = $upload_dir . $remetente . '\\';
+            
+            if (!file_exists($user_dir)) {
+                mkdir($user_dir, 0777, true);
             }
-        }
-        
-        $result = $model->updateMotivo($cod_solicitacao, $motivo, $data_enc);
-        
-        ob_end_clean();
-        header('Content-Type: application/json');
-        echo json_encode_custom([
-            'success' => $result ? true : false, 
-            'message' => $result ? 'Atualizado com sucesso' : 'Erro ao atualizar'
-        ]);
-    } catch (Exception $e) {
-        ob_end_clean();
-        header('Content-Type: application/json');
-        echo json_encode_custom(['success' => false, 'message' => 'Erro: ' . $e->getMessage()]);
-    }
-    exit;
-}
-
-// Cancelar solicitação
-if (isset($_POST['acao']) && $_POST['acao'] == 'cancelar_solicitacao') {
-    ob_start();
-    try {
-        require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
-        
-        $cod_solicitacao = isset($_POST['cod_solicitacao']) ? intval($_POST['cod_solicitacao']) : 0;
-        
-        if ($cod_solicitacao <= 0) {
-            ob_end_clean();
-            header('Content-Type: application/json');
-            echo json_encode_custom(['success' => false, 'message' => 'Código inválido']);
-            exit;
-        }
-        
-        $model = new Analise();
-        $result = $model->cancelarSolicitacao($cod_solicitacao);
-        
-        ob_end_clean();
-        header('Content-Type: application/json');
-        echo json_encode_custom([
-            'success' => $result ? true : false,
-            'message' => $result ? 'Solicitação cancelada' : 'Erro ao cancelar'
-        ]);
-    } catch (Exception $e) {
-        ob_end_clean();
-        header('Content-Type: application/json');
-        echo json_encode_custom(['success' => false, 'message' => 'Erro: ' . $e->getMessage()]);
-    }
-    exit;
-}
-
-// Get status pendentes for bulk validation
-if (isset($_POST['acao']) && $_POST['acao'] == 'check_bulk_status') {
-    ob_start();
-    try {
-        require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
-        
-        $solicitacoes_json = isset($_POST['solicitacoes']) ? $_POST['solicitacoes'] : '';
-        $solicitacoes = json_decode($solicitacoes_json, true);
-        
-        if (!is_array($solicitacoes) || count($solicitacoes) === 0) {
-            ob_end_clean();
-            header('Content-Type: application/json');
-            echo json_encode_custom(['success' => false, 'message' => 'Nenhuma solicitação selecionada']);
-            exit;
-        }
-        
-        $model = new Analise();
-        $pendentes = [];
-        
-        foreach ($solicitacoes as $cod) {
-            $status = $model->getEncerramentoStatus($cod);
-            if ($status) {
-                $pendente = [];
-                if ($status['STATUS_OP'] !== 'Efetuado') $pendente[] = 'Órgão Pagador';
-                if ($status['STATUS_COM'] !== 'Efetuado') $pendente[] = 'Comercial';
-                if ($status['STATUS_VAN'] !== 'Efetuado') $pendente[] = 'Van-Material';
-                if ($status['STATUS_BLOQ'] !== 'Efetuado') $pendente[] = 'Bloqueio';
-                
-                if (!empty($pendente)) {
-                    $pendentes[$status['CHAVE_LOJA']] = $pendente;
-                }
+            
+            $file_name = $message_id . '_' . basename($_FILES['arquivo']['name']);
+            $file_path = $user_dir . $file_name;
+            
+            if (move_uploaded_file($_FILES['arquivo']['tmp_name'], $file_path)) {
+                $updateQuery = "UPDATE MESU..ENCERRAMENTO_TB_PORTAL_CHAT 
+                               SET MENSAGEM = MENSAGEM + ' [FILE:' + '" . $file_name . "' + ']' 
+                               WHERE MESSAGE_ID = " . $message_id;
+                $model->update($updateQuery);
             }
         }
         
@@ -394,1012 +174,701 @@ if (isset($_POST['acao']) && $_POST['acao'] == 'check_bulk_status') {
         header('Content-Type: application/json');
         echo json_encode_custom([
             'success' => true,
-            'pendentes' => $pendentes,
-            'has_pendentes' => !empty($pendentes)
+            'message' => 'Mensagem enviada'
         ]);
     } catch (Exception $e) {
         ob_end_clean();
         header('Content-Type: application/json');
-        echo json_encode_custom(['success' => false, 'message' => 'Erro: ' . $e->getMessage()]);
+        echo json_encode_custom(['success' => false, 'message' => $e->getMessage()]);
     }
     exit;
 }
 
-// Update in AjaxEncerramentoHandler->loadData() method to handle sorting
-public function loadData($filters = []) {
-    $where = "AND A.COD_TIPO_SERVICO=1";
-    
-    if (isset($filters['search']) && !empty($filters['search'])) {
-        $search = $filters['search'];
-        $where .= " AND (
-            CAST(A.COD_SOLICITACAO AS VARCHAR) LIKE '%$search%' OR
-            CAST(A.COD_AG AS VARCHAR) LIKE '%$search%' OR
-            CAST(A.CHAVE_LOJA AS VARCHAR) LIKE '%$search%' OR
-            F.NOME_LOJA LIKE '%$search%' OR
-            G.NR_PACB LIKE '%$search%' OR
-            F.MOTIVO_BLOQUEIO LIKE '%$search%' OR
-            F.DESC_MOTIVO_ENCERRAMENTO LIKE '%$search%'
-        )";
-    }
-    
-    if (isset($filters['bloqueio']) && $filters['bloqueio'] !== '') {
-        $where .= $filters['bloqueio'] === 'bloqueado' 
-            ? " AND F.DATA_BLOQUEIO IS NOT NULL"
-            : " AND F.DATA_BLOQUEIO IS NULL";
-    }
-    
-    if (isset($filters['orgao_pagador']) && !empty($filters['orgao_pagador'])) {
-        $where .= " AND G.ORGAO_PAGADOR LIKE '%" . $filters['orgao_pagador'] . "%'";
-    }
-    
-    if (isset($filters['status_solic']) && !empty($filters['status_solic'])) {
-        $where .= " AND ISNULL(ES.STATUS_SOLIC, 'EM ANDAMENTO') = '" . $filters['status_solic'] . "'";
-    }
-    
-    if (isset($filters['motivo_enc']) && !empty($filters['motivo_enc'])) {
-        $where .= " AND ES.MOTIVO_ENC = '" . $filters['motivo_enc'] . "'";
-    }
-    
-    if (isset($filters['data_inicio']) && !empty($filters['data_inicio'])) {
-        $where .= " AND A.DATA_CAD >= '" . $filters['data_inicio'] . "'";
-    }
-    
-    if (isset($filters['data_fim']) && !empty($filters['data_fim'])) {
-        $where .= " AND A.DATA_CAD <= '" . $filters['data_fim'] . "'";
-    }
-    
-    $orderBy = 'A.COD_SOLICITACAO DESC';
-    if (isset($filters['sort_column']) && isset($filters['sort_direction'])) {
-        $orderBy = $filters['sort_column'] . ' ' . $filters['sort_direction'];
-    }
-    
-    $page = isset($filters['page']) ? max(1, intval($filters['page'])) : 1;
-    $perPage = isset($filters['per_page']) ? intval($filters['per_page']) : 25;
-    
-    if (!in_array($perPage, [25, 50, 100, 200])) {
-        $perPage = 25;
-    }
-    
-    $totalRecords = $this->model->getTotalCount($where);
-    $totalPages = ceil($totalRecords / $perPage);
-    $offset = ($page - 1) * $perPage;
-    $dados = $this->model->solicitacoesWithStatus($where, $perPage, $offset, $orderBy);
-    
-    return [
-        'dados' => $dados,
-        'totalRecords' => $totalRecords,
-        'totalPages' => $totalPages,
-        'currentPage' => $page,
-        'perPage' => $perPage,
-        'startRecord' => $offset + 1,
-        'endRecord' => min($offset + $perPage, $totalRecords)
-    ];
-}
-?>
 
-
------------
-
+-------------
 
 <?php
-// Update in email_functions.php
+// Add at the top of analise_encerramento.php after require_once statements
 
-function sendEmail($type, $cod_solicitacao) {
-    global $EMAIL_CONFIG;
+require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\control\encerramento\permissions_config.php';
+
+$cod_usu = isset($_SESSION['cod_usu']) ? $_SESSION['cod_usu'] : 0;
+$userGroup = getUserGroup($cod_usu);
+$canViewBulk = canViewBulkActions($cod_usu);
+$canViewActions = canViewModalActions($cod_usu);
+$canViewStatusSection = canViewStatus($cod_usu);
+$canCancel = canCancelRequest($cod_usu);
+
+// Store in JavaScript for client-side use
+echo '<script>';
+echo 'window.userPermissions = {';
+echo '  canViewBulk: ' . ($canViewBulk ? 'true' : 'false') . ',';
+echo '  canViewActions: ' . ($canViewActions ? 'true' : 'false') . ',';
+echo '  canViewStatus: ' . ($canViewStatusSection ? 'true' : 'false') . ',';
+echo '  canCancel: ' . ($canCancel ? 'true' : 'false') . ',';
+echo '  userGroup: "' . $userGroup . '",';
+echo '  codUsu: ' . $cod_usu;
+echo '};';
+echo '</script>';
+?>
+
+<!-- Then wrap the bulk actions section with permission check -->
+<?php if ($canViewBulk): ?>
+<div class="card mb-3" id="bulkActions" style="display: none;">
+    <!-- existing bulk actions content -->
+</div>
+<?php endif; ?>
+
+<!-- Update the checkbox column header to only show for ENC_MANAGEMENT -->
+<th class="text-center align-middle p-0" style="background-color: #d8d8d8;">
+    <?php if ($canViewBulk): ?>
+    <label class="form-check d-inline-flex justify-content-center align-items-center p-0 m-0">
+        <input class="form-check-input position-static m-0" type="checkbox" />
+        <span class="form-check-label d-none"></span>
+    </label>
+    <?php endif; ?>
+</th>
+
+
+-------------
+
+
+private function buildModalBody($row, $codSolicitacao, $nomeLoja, $status) {
+    require_once '../permissions_config.php';
+    $cod_usu = isset($_SESSION['cod_usu']) ? $_SESSION['cod_usu'] : 0;
+    $canViewActions = canViewModalActions($cod_usu);
+    $canViewStatusSection = canViewStatus($cod_usu);
+    $canCancel = canCancelRequest($cod_usu);
     
-    ob_start();
-    include_once('\\\\D4920S010\D4920_2\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\erp\PHP_MAILER_NEW\mail.php');
-    require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
-    ob_end_clean();
-    
-    if (!isset($_SESSION['cod_usu']) || $_SESSION['cod_usu'] == '') {
-        return ['success' => false, 'message' => 'Usuário não autenticado'];
-    }
-    
-    $model = new Analise();
-    $where = "AND A.COD_SOLICITACAO = " . intval($cod_solicitacao);
-    $dados = $model->solicitacoes($where, 1, 0);
-    
-    if (empty($dados)) {
-        return ['success' => false, 'message' => 'Solicitação não encontrada'];
-    }
-    
-    // Check/create status record
-    $status = $model->getEncerramentoStatus($cod_solicitacao);
-    if (!$status) {
-        $model->insertEncerramentoStatus($cod_solicitacao, $dados[0]['CHAVE_LOJA']);
-    }
-    
-    $solicitacao = $dados[0];
-    $emailConfig = getEmailConfig($type, $solicitacao);
-    
-    $email_to = ($_SESSION['cod_usu'] == $EMAIL_CONFIG['test_user_id']) 
-        ? $EMAIL_CONFIG['test_email'] 
-        : $emailConfig['recipients'];
-    
-    ob_start();
-    $result = mailer(
-        false, '', 
-        $email_to, '', '', 
-        $emailConfig['subject'], 
-        utf8_decode($emailConfig['body']), 
-        '', 'I', ''
-    );
-    ob_end_clean();
-    
-    // Update status
-    $emailStatus = $result ? 'Efetuado' : 'ERRO';
-    $model->updateEmailStatus($cod_solicitacao, $type, $emailStatus);
-    
-    return $result 
-        ? ['success' => true, 'message' => 'Email enviado com sucesso', 'status' => $emailStatus]
-        : ['success' => false, 'message' => 'Erro ao enviar email', 'status' => $emailStatus];
+    return '
+        <div class="modal-body">
+            <div class="card">
+                <div class="card-header">
+                    <ul class="nav nav-tabs card-header-tabs" data-bs-toggle="tabs">
+                        <li class="nav-item">
+                            <a href="#tabs-home-' . $codSolicitacao . '" class="nav-link active" data-bs-toggle="tab">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="icon me-2" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                                    <polyline points="5 12 3 12 12 3 21 12 19 12" />
+                                    <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
+                                    <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
+                                </svg>
+                                Informações
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="#tabs-chat-' . $codSolicitacao . '" class="nav-link" data-bs-toggle="tab" onclick="loadChat(' . $codSolicitacao . ')">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="icon me-2" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                                    <path d="M3 20l1.3 -3.9a9 9 0 1 1 3.4 2.9l-4.7 1" />
+                                    <line x1="12" y1="12" x2="12" y2="12.01" />
+                                    <line x1="8" y1="12" x2="8" y2="12.01" />
+                                    <line x1="16" y1="12" x2="16" y2="12.01" />
+                                </svg>
+                                Chat
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+                <div class="card-body">
+                    <div class="tab-content">
+                        <div class="tab-pane active show" id="tabs-home-' . $codSolicitacao . '">
+                            ' . $this->buildInfoCards($row, $nomeLoja) . '
+                            ' . ($canViewActions ? $this->buildActionButtons($codSolicitacao) : '') . '
+                            ' . ($canViewStatusSection ? $this->buildStatusShow($status) : '') . '
+                        </div>
+                        <div class="tab-pane" id="tabs-chat-' . $codSolicitacao . '">
+                            ' . $this->buildChatInterface($codSolicitacao) . '
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    ';
 }
 
-function sendBulkEmail($type, $cod_solicitacoes) {
-    global $EMAIL_CONFIG;
+private function buildChatInterface($codSolicitacao) {
+    return '
+        <div class="card flex-fill">
+            <div class="card-body">
+                <div id="chatMessages-' . $codSolicitacao . '" class="chat-messages" style="height: 400px; overflow-y: auto; margin-bottom: 1rem;">
+                    <div class="text-center text-muted py-4">
+                        <div class="spinner-border spinner-border-sm" role="status">
+                            <span class="visually-hidden">Carregando...</span>
+                        </div>
+                        <p class="mt-2">Carregando mensagens...</p>
+                    </div>
+                </div>
+                <div class="input-group">
+                    <input type="text" class="form-control" id="chatInput-' . $codSolicitacao . '" placeholder="Digite sua mensagem..." />
+                    <input type="file" id="chatFile-' . $codSolicitacao . '" style="display: none;" />
+                    <button class="btn btn-icon" onclick="document.getElementById(\'chatFile-' . $codSolicitacao . '\').click()">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                        </svg>
+                    </button>
+                    <button class="btn btn-primary" onclick="sendChatMessage(' . $codSolicitacao . ')">Enviar</button>
+                </div>
+                <small id="chatFileName-' . $codSolicitacao . '" class="text-muted"></small>
+            </div>
+        </div>
+    ';
+}
+
+private function buildModalFooter($codSolicitacao) {
+    require_once '../permissions_config.php';
+    $cod_usu = isset($_SESSION['cod_usu']) ? $_SESSION['cod_usu'] : 0;
+    $canCancel = canCancelRequest($cod_usu);
     
-    ob_start();
-    include_once('\\\\D4920S010\D4920_2\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\erp\PHP_MAILER_NEW\mail.php');
-    require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
-    ob_end_clean();
+    return '
+        <div class="modal-footer d-flex justify-content-between">
+            ' . ($canCancel ? '<button class="btn btn-danger" onclick="cancelarSolicitacao(' . $codSolicitacao . ')">Cancelar Solicitação</button>' : '<div></div>') . '
+            <a href="#" class="btn btn-link link-secondary" data-bs-dismiss="modal">Fechar</a>
+        </div>';
+}
+
+
+-------------
+
+
+// Add these functions to analise_encerramento.js
+
+window.loadChat = function(codSolicitacao) {
+    const formData = new FormData();
+    formData.append('acao', 'load_chat');
+    formData.append('cod_solicitacao', codSolicitacao);
     
-    if (!isset($_SESSION['cod_usu']) || $_SESSION['cod_usu'] == '') {
-        return ['success' => false, 'message' => 'Usuário não autenticado'];
+    fetch(AJAX_URL, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            renderChatMessages(codSolicitacao, data.messages);
+            startChatPolling(codSolicitacao);
+        } else {
+            showNotification('Erro ao carregar chat', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Chat load error:', error);
+        showNotification('Erro ao carregar chat', 'error');
+    });
+};
+
+function renderChatMessages(codSolicitacao, messages) {
+    const container = document.getElementById('chatMessages-' + codSolicitacao);
+    if (!container) return;
+    
+    if (!messages || messages.length === 0) {
+        container.innerHTML = '<div class="text-center text-muted py-4"><p>Nenhuma mensagem ainda</p></div>';
+        return;
     }
     
-    $model = new Analise();
-    $solicitacoes = [];
-    
-    foreach ($cod_solicitacoes as $cod) {
-        $where = "AND A.COD_SOLICITACAO = " . intval($cod);
-        $dados = $model->solicitacoes($where, 1, 0);
-        if (!empty($dados)) {
-            $solicitacoes[] = $dados[0];
-            
-            // Check/create status record
-            $status = $model->getEncerramentoStatus($cod);
-            if (!$status) {
-                $model->insertEncerramentoStatus($cod, $dados[0]['CHAVE_LOJA']);
+    let html = '<div class="chat">';
+    messages.forEach(msg => {
+        const isOwnMessage = msg.REMETENTE == window.userPermissions.codUsu;
+        const messageClass = isOwnMessage ? 'chat-item-end' : 'chat-item-start';
+        const bubbleClass = isOwnMessage ? 'chat-bubble-me' : 'chat-bubble';
+        
+        const messageDate = new Date(msg.MESSAGE_DATE);
+        const formattedDate = messageDate.toLocaleString('pt-BR');
+        
+        const hasFile = msg.MENSAGEM && msg.MENSAGEM.includes('[FILE:');
+        let messageText = msg.MENSAGEM;
+        let fileName = '';
+        
+        if (hasFile) {
+            const fileMatch = msg.MENSAGEM.match(/\[FILE:(.*?)\]/);
+            if (fileMatch) {
+                fileName = fileMatch[1];
+                messageText = msg.MENSAGEM.replace(/\[FILE:.*?\]/, '').trim();
             }
         }
-    }
+        
+        html += '<div class="' + messageClass + ' mb-3">';
+        html += '<div class="' + bubbleClass + '">';
+        html += '<div class="chat-bubble-title">';
+        html += '<div class="row">';
+        html += '<div class="col chat-bubble-author">' + (msg.REMETENTE_NOME || 'Usuário') + '</div>';
+        html += '<div class="col-auto chat-bubble-date">' + formattedDate + '</div>';
+        html += '</div></div>';
+        html += '<div class="chat-bubble-body">';
+        if (messageText) html += '<p>' + messageText + '</p>';
+        if (hasFile) {
+            html += '<div class="mt-2"><a href="./anexos/' + msg.REMETENTE + '/' + fileName + '" target="_blank" class="btn btn-sm btn-outline-primary">';
+            html += '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M4.406 1.342A5.53 5.53 0 0 1 8 0c2.69 0 4.923 2 5.166 4.579C14.758 4.804 16 6.137 16 7.773 16 9.569 14.502 11 12.687 11H10a.5.5 0 0 1 0-1h2.688C13.979 10 15 8.988 15 7.773c0-1.216-1.02-2.228-2.313-2.228h-.5v-.5C12.188 2.825 10.328 1 8 1a4.53 4.53 0 0 0-2.941 1.1c-.757.652-1.153 1.438-1.153 2.055v.448l-.445.049C2.064 4.805 1 5.952 1 7.318 1 8.785 2.23 10 3.781 10H6a.5.5 0 0 1 0 1H3.781C1.708 11 0 9.366 0 7.318c0-1.763 1.266-3.223 2.942-3.593.143-.863.698-1.723 1.464-2.383z"/><path d="M7.646 15.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 14.293V5.5a.5.5 0 0 0-1 0v8.793l-2.146-2.147a.5.5 0 0 0-.708.708l3 3z"/></svg> ';
+            html += fileName + '</a></div>';
+        }
+        html += '</div></div></div>';
+    });
+    html += '</div>';
     
-    if (empty($solicitacoes)) {
-        return ['success' => false, 'message' => 'Nenhuma solicitação encontrada'];
-    }
-    
-    $emailConfig = getBulkEmailConfig($type, $solicitacoes);
-    
-    $email_to = ($_SESSION['cod_usu'] == $EMAIL_CONFIG['test_user_id']) 
-        ? $EMAIL_CONFIG['test_email'] 
-        : $emailConfig['recipients'];
-    
-    ob_start();
-    $result = mailer(
-        false, '', 
-        $email_to, '', '', 
-        $emailConfig['subject'], 
-        utf8_decode($emailConfig['body']), 
-        '', 'I', ''
-    );
-    ob_end_clean();
-    
-    // Update status for all
-    $emailStatus = $result ? 'Efetuado' : 'ERRO';
-    foreach ($cod_solicitacoes as $cod) {
-        $model->updateEmailStatus($cod, $type, $emailStatus);
-    }
-    
-    return $result 
-        ? ['success' => true, 'message' => 'Emails enviados com sucesso', 'status' => $emailStatus]
-        : ['success' => false, 'message' => 'Erro ao enviar emails', 'status' => $emailStatus];
+    container.innerHTML = html;
+    container.scrollTop = container.scrollHeight;
 }
-?>
+
+window.sendChatMessage = function(codSolicitacao) {
+    const input = document.getElementById('chatInput-' + codSolicitacao);
+    const fileInput = document.getElementById('chatFile-' + codSolicitacao);
+    const mensagem = input.value.trim();
+    
+    if (!mensagem && !fileInput.files.length) {
+        showNotification('Digite uma mensagem ou selecione um arquivo', 'error');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('acao', 'send_message');
+    formData.append('cod_solicitacao', codSolicitacao);
+    formData.append('mensagem', mensagem);
+    formData.append('remetente', window.userPermissions.codUsu);
+    
+    // Determine recipient based on user group
+    let destinatario = 0; // Will be determined on server based on group
+    formData.append('destinatario', destinatario);
+    
+    if (fileInput.files.length) {
+        formData.append('arquivo', fileInput.files[0]);
+    }
+    
+    fetch(AJAX_URL, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            input.value = '';
+            fileInput.value = '';
+            document.getElementById('chatFileName-' + codSolicitacao).textContent = '';
+            loadChat(codSolicitacao);
+        } else {
+            showNotification('Erro ao enviar mensagem', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Send message error:', error);
+        showNotification('Erro ao enviar mensagem', 'error');
+    });
+};
+
+// File selection handler
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('[id^="chatFile-"]').forEach(input => {
+        input.addEventListener('change', function() {
+            const codSolicitacao = this.id.replace('chatFile-', '');
+            const fileName = this.files.length ? this.files[0].name : '';
+            document.getElementById('chatFileName-' + codSolicitacao).textContent = fileName ? 'Arquivo: ' + fileName : '';
+        });
+    });
+});
+
+// Poll for new messages every 5 seconds
+let chatPollingIntervals = {};
+
+function startChatPolling(codSolicitacao) {
+    if (chatPollingIntervals[codSolicitacao]) {
+        clearInterval(chatPollingIntervals[codSolicitacao]);
+    }
+    
+    chatPollingIntervals[codSolicitacao] = setInterval(() => {
+        loadChat(codSolicitacao);
+    }, 5000);
+}
+
+// Stop polling when modal closes
+document.addEventListener('hidden.bs.modal', function(e) {
+    const modalId = e.target.id;
+    const match = modalId.match(/AnaliseDetalhesModal(\d+)/);
+    if (match) {
+        const codSolicitacao = match[1];
+        if (chatPollingIntervals[codSolicitacao]) {
+            clearInterval(chatPollingIntervals[codSolicitacao]);
+            delete chatPollingIntervals[codSolicitacao];
+        }
+    }
+});
+
 
 
 ------------
 
+// Update the initializeCheckboxHandlers function in analise_encerramento.js
 
-// Add to analise_encerramento.js
-
-let currentSort = {
-    column: null,
-    direction: 'ASC'
-};
-
-function initialize() {
-    setupDateInputs();
-    initializeEventListeners();
-    initializeCheckboxHandlers();
-    initializeColumnSort();
-    highlightActiveFilters();
-    attachPageNumberHandlers();
-    
-    if (window.pageState && window.pageState.autoLoadData) {
-        setTimeout(() => handleFormSubmit(), 100);
+function initializeCheckboxHandlers() {
+    // Only initialize if user has bulk permissions
+    if (!window.userPermissions || !window.userPermissions.canViewBulk) {
+        // Hide all checkboxes for non-ENC_MANAGEMENT users
+        document.querySelectorAll('tbody input[type="checkbox"]').forEach(cb => {
+            cb.style.display = 'none';
+        });
+        return;
     }
-}
-
-function initializeColumnSort() {
-    const sortableColumns = {
-        'COD_SOLICITACAO': 1,
-        'COD_AG': 2,
-        'CHAVE_LOJA': 3,
-        'DATA_RECEPCAO': 4,
-        'DATA_RETIRADA_EQPTO': 5,
-        'DATA_BLOQUEIO': 6,
-        'DATA_LAST_TRANS': 7,
-        'ORGAO_PAGADOR': 10,
-        'CLUSTER': 11,
-        'MEDIA_CONTABEIS': 14,
-        'MEDIA_NEGOCIO': 15
-    };
     
-    document.querySelectorAll('thead th.thead-encerramento').forEach((th, index) => {
-        const columnName = Object.keys(sortableColumns)[Object.values(sortableColumns).indexOf(index)];
-        if (columnName) {
-            th.style.cursor = 'pointer';
-            th.addEventListener('click', () => {
-                if (currentSort.column === columnName) {
-                    currentSort.direction = currentSort.direction === 'ASC' ? 'DESC' : 'ASC';
-                } else {
-                    currentSort.column = columnName;
-                    currentSort.direction = 'ASC';
-                }
-                
-                // Update visual indicator
-                document.querySelectorAll('thead th.thead-encerramento').forEach(h => {
-                    h.innerHTML = h.innerHTML.replace(/\s*[▲▼]/, '');
-                });
-                th.innerHTML += currentSort.direction === 'ASC' ? ' ▲' : ' ▼';
-                
-                currentPage = 1;
-                handleFormSubmit();
+    // Header checkbox handler
+    const headerCheckbox = document.querySelector('thead input[type="checkbox"]');
+    if (headerCheckbox) {
+        headerCheckbox.addEventListener('change', function() {
+            const isChecked = this.checked;
+            document.querySelectorAll('tbody input[type="checkbox"]').forEach(cb => {
+                cb.checked = isChecked;
             });
-        }
-    });
-}
-
-window.sendBulkEmail = function(tipo) {
-    const solicitacoes = getSelectedSolicitacoes();
-    if (solicitacoes.length === 0) {
-        showNotification('Nenhum registro selecionado', 'error');
-        return;
-    }
-
-    const formData = new FormData();
-    formData.append('acao', 'check_bulk_status');
-    formData.append('solicitacoes', JSON.stringify(solicitacoes));
-
-    fetch(AJAX_URL, {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.has_pendentes) {
-            showBulkWarningModal(data.pendentes, tipo, solicitacoes);
-        } else {
-            executeBulkEmail(tipo, solicitacoes);
-        }
-    })
-    .catch(error => {
-        console.error('Status check error:', error);
-        executeBulkEmail(tipo, solicitacoes);
-    });
-};
-
-function showBulkWarningModal(pendentes, tipo, solicitacoes) {
-    let message = '<div class="mb-3">As seguintes lojas possuem status pendentes:</div>';
-    message += '<div class="table-responsive" style="max-height: 300px; overflow-y: auto;">';
-    message += '<table class="table table-sm"><thead><tr><th>Chave Loja</th><th>Status Pendentes</th></tr></thead><tbody>';
-    
-    for (const [chave, status] of Object.entries(pendentes)) {
-        message += `<tr><td>${chave}</td><td class="text-danger">${status.join(', ')}</td></tr>`;
-    }
-    
-    message += '</tbody></table></div>';
-    message += '<div class="mt-3">Deseja continuar mesmo assim?</div>';
-    
-    if (confirm(message)) {
-        executeBulkEmail(tipo, solicitacoes);
-    }
-}
-
-function executeBulkEmail(tipo, solicitacoes) {
-    const btn = event.target;
-    const originalText = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Enviando...';
-
-    const formData = new FormData();
-    formData.append('acao', 'enviar_email_bulk');
-    formData.append('tipo', tipo);
-    formData.append('solicitacoes', JSON.stringify(solicitacoes));
-
-    fetch(AJAX_URL, {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showNotification('Emails enviados com sucesso!', 'success');
-            document.querySelectorAll('tbody input[type="checkbox"]:checked').forEach(cb => cb.checked = false);
-            const headerCheckbox = document.querySelector('thead input[type="checkbox"]');
-            if (headerCheckbox) headerCheckbox.checked = false;
             updateBulkActionButtons();
-            handleFormSubmit(); // Reload data
-        } else {
-            showNotification('Erro: ' + data.message, 'error');
-        }
-        btn.innerHTML = originalText;
-        btn.disabled = false;
-    })
-    .catch(error => {
-        showNotification('Erro ao enviar emails', 'error');
-        btn.innerHTML = originalText;
-        btn.disabled = false;
+        });
+    }
+
+    // Individual checkbox handlers
+    document.querySelectorAll('tbody input[type="checkbox"]').forEach(cb => {
+        cb.addEventListener('change', function() {
+            updateBulkActionButtons();
+        });
     });
-}
 
-function handleFormSubmit() {
-    const filterForm = document.getElementById('filterForm');
-    const formData = new FormData(filterForm);
-    const params = new URLSearchParams();
-    
-    for (let [key, value] of formData.entries()) {
-        if (value && value.trim() !== '') {
-            params.append(key, value);
-        }
-    }
-    
-    if (currentSort.column) {
-        params.append('sort_column', currentSort.column);
-        params.append('sort_direction', currentSort.direction);
-    }
-    
-    params.append('page', currentPage);
-    params.append('per_page', perPage);
-    
-    showLoading();
-    
-    fetch(AJAX_URL + '?' + params.toString())
-        .then(response => {
-            if (!response.ok) throw new Error('Network error: ' + response.status);
-            return response.text();
-        })
-        .then(text => {
-            const data = JSON.parse(text);
+    // Modal trigger for rows (excluding checkbox cell)
+    document.querySelectorAll('tbody tr').forEach(row => {
+        const cells = row.querySelectorAll('td, th');
+        cells.forEach((cell, index) => {
+            if (index === 0 && window.userPermissions.canViewBulk) return; // Skip first cell if checkbox visible
             
-            if (data.success) {
-                updateUI(data, params);
-            } else {
-                throw new Error(data.error || 'Erro ao carregar dados');
-            }
-        })
-        .catch(error => {
-            console.error('Fetch Error:', error);
-            showNotification('Erro ao carregar os dados: ' + error.message, 'error');
-        })
-        .finally(() => hideLoading());
-}
-
-window.updateMotivoEncerramento = function(codSolicitacao) {
-    const motivoSelect = document.getElementById('motivoEnc' + codSolicitacao);
-    const dataInput = document.getElementById('dataEnc' + codSolicitacao);
-    
-    if (!motivoSelect || !dataInput) {
-        showNotification('Elementos não encontrados', 'error');
-        return;
-    }
-    
-    const motivo = motivoSelect.value;
-    const dataEnc = dataInput.value;
-    
-    if (!motivo) {
-        showNotification('Selecione um motivo', 'error');
-        return;
-    }
-    
-    const formData = new FormData();
-    formData.append('acao', 'update_motivo');
-    formData.append('cod_solicitacao', codSolicitacao);
-    formData.append('motivo', motivo);
-    if (dataEnc) formData.append('data_enc', dataEnc);
-    
-    fetch(AJAX_URL, {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showNotification('Atualizado com sucesso!', 'success');
-        } else {
-            showNotification('Erro: ' + data.message, 'error');
-        }
-    })
-    .catch(error => {
-        showNotification('Erro ao atualizar', 'error');
-    });
-};
-
-window.cancelarSolicitacao = function(codSolicitacao) {
-    if (!confirm('Tem certeza que deseja cancelar esta solicitação?')) {
-        return;
-    }
-    
-    const formData = new FormData();
-    formData.append('acao', 'cancelar_solicitacao');
-    formData.append('cod_solicitacao', codSolicitacao);
-    
-    fetch(AJAX_URL, {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showNotification('Solicitação cancelada com sucesso!', 'success');
-            const modal = document.getElementById('AnaliseDetalhesModal' + codSolicitacao);
-            if (modal) {
-                closeModal(modal, document.querySelector('.modal-backdrop'));
-            }
-            handleFormSubmit(); // Reload data
-        } else {
-            showNotification('Erro: ' + data.message, 'error');
-        }
-    })
-    .catch(error => {
-        showNotification('Erro ao cancelar solicitação', 'error');
-    });
-};
-
-function attachEmailHandlers() {
-    document.querySelectorAll('.email-action-btn').forEach(button => {
-        button.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            const tipo = this.dataset.tipo;
-            const codSolicitacao = this.dataset.solicitacao;
-            
-            sendEmail(tipo, codSolicitacao, this);
+            cell.addEventListener('click', function() {
+                const modalId = row.getAttribute('data-modal-target');
+                if (modalId) {
+                    const modalElement = document.querySelector(modalId);
+                    if (modalElement) {
+                        openModal(modalElement);
+                    }
+                }
+            });
         });
     });
 }
 
-function sendEmail(tipo, codSolicitacao, buttonElement) {
-    const originalText = buttonElement.innerHTML;
-    buttonElement.disabled = true;
-    buttonElement.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Enviando...';
+// Update the renderTableRows to conditionally include checkbox
+function updateUI(data, params) {
+    const tableBody = document.getElementById('tableBody');
+    const modalsContainer = document.getElementById('modalsContainer');
     
-    const formData = new FormData();
-    formData.append('acao', 'enviar_email');
-    formData.append('tipo', tipo);
-    formData.append('cod_solicitacao', codSolicitacao);
-    
-    fetch(AJAX_URL, {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showNotification('Email enviado com sucesso!', 'success');
-            buttonElement.innerHTML = '<i class="bi bi-check2"></i> Enviado';
-            
-            // Update status display
-            if (data.status) {
-                updateStatusDisplay(codSolicitacao, tipo, data.status);
-            }
-            
-            setTimeout(() => {
-                buttonElement.innerHTML = originalText;
-                buttonElement.disabled = false;
-            }, 3000);
-        } else {
-            showNotification('Erro: ' + data.message, 'error');
-            buttonElement.innerHTML = originalText;
-            buttonElement.disabled = false;
-        }
-    })
-    .catch(error => {
-        console.error('Email Error:', error);
-        showNotification('Erro ao enviar email', 'error');
-        buttonElement.innerHTML = originalText;
-        buttonElement.disabled = false;
-    });
-}
-
-function updateStatusDisplay(codSolicitacao, tipo, status) {
-    const statusMap = {
-        'orgao_pagador': 'status-op',
-        'comercial': 'status-com',
-        'van_material': 'status-van',
-        'bloqueio': 'status-bloq',
-        'encerramento': 'status-enc'
-    };
-    
-    const statusElement = document.getElementById(statusMap[tipo] + '-' + codSolicitacao);
-    if (statusElement) {
-        statusElement.className = 'status ' + (status === 'Efetuado' ? 'status-green' : 'status-red');
-        statusElement.querySelector('.status-text').textContent = status;
+    if (tableBody) tableBody.innerHTML = data.html;
+    if (modalsContainer) {
+        modalsContainer.innerHTML = data.modals;
+        attachEmailHandlers();
     }
+    
+    updatePaginationInfo(data);
+    updatePaginationControls();
+    
+    const newUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+    window.history.pushState({}, '', newUrl);
+    
+    highlightActiveFilters();
+    initializeCheckboxHandlers();
+    
+    // Hide bulk actions if no permissions
+    if (!window.userPermissions || !window.userPermissions.canViewBulk) {
+        const bulkActions = document.getElementById('bulkActions');
+        if (bulkActions) bulkActions.style.display = 'none';
+    }
+    
+    if (window.pageState && !window.pageState.autoLoadData) {
+        document.getElementById('tableContainer')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    
+    if (window.pageState) window.pageState.autoLoadData = false;
+}
+
+--------------
+
+// Update the renderTableCell method in ajax_encerramento.php
+
+private function renderTableCell($row) {
+    require_once '../permissions_config.php';
+    $cod_usu = isset($_SESSION['cod_usu']) ? $_SESSION['cod_usu'] : 0;
+    $canViewBulk = canViewBulkActions($cod_usu);
+    
+    $cells = '';
+    
+    if ($canViewBulk) {
+        $cells .= '<th class="text-center align-middle" style="background-color: #d8d8d8; border-style:none !important;">
+                <label class="form-check d-inline-flex justify-content-center align-items-center p-0 m-0">
+                    <input class="form-check-input position-static m-0" type="checkbox" onclick="event.stopPropagation();" />
+                    <span class="form-check-label d-none"></span>
+                </label>
+            </th>';
+    } else {
+        $cells .= '<th class="text-center align-middle" style="background-color: #d8d8d8; border-style:none !important; width: 30px;"></th>';
+    }
+    
+    $cells .= '<th><span style="display: block; text-align: center;">' . htmlspecialchars($row['COD_SOLICITACAO']) . '</span></th>';
+    $cells .= '<td><span style="display: block; text-align: center;">' . htmlspecialchars($row['COD_AG']) . htmlspecialchars($row['NR_PACB']) . '</span></td>';
+    $cells .= '<td><span style="display: block; text-align: center;">' . htmlspecialchars($row['CHAVE_LOJA']) . '</span></td>';
+    $cells .= '<td><span style="display: block; text-align: center;">' . $row['DATA_RECEPCAO']->format('d/m/Y') . '</span></td>';
+    $cells .= $this->renderDateCell($row['DATA_RETIRADA_EQPTO']);
+    $cells .= $this->renderBloqueioCell($row['DATA_BLOQUEIO']);
+    $cells .= '<td><span style="display: block; text-align: center;">' . htmlspecialchars($row['DATA_LAST_TRANS']) . '</span></td>';
+    $cells .= $this->renderTextCell($row['MOTIVO_BLOQUEIO'], 'Sem Motivo de Bloqueio');
+    $cells .= $this->renderTextCell($row['DESC_MOTIVO_ENCERRAMENTO'], 'Sem Motivo de Encerramento');
+    $cells .= '<td><span style="display: block; text-align: center;">' . htmlspecialchars($row['ORGAO_PAGADOR']) . '</span></td>';
+    $cells .= '<td><span style="display: block; text-align: center;">' . htmlspecialchars($row['CLUSTER']) . '</span></td>';
+    $cells .= $this->renderAptoCell($row['PARM']);
+    $cells .= $this->renderAptoCell($row['TRAG']);
+    $cells .= '<td><span style="display: block; text-align: center;">' . htmlspecialchars($row['MEDIA_CONTABEIS']) . '</span></td>';
+    $cells .= '<td><span style="display: block; text-align: center;">' . htmlspecialchars($row['MEDIA_NEGOCIO']) . '</span></td>';
+    
+    return $cells;
 }
 
 
------------
+-------------
+
+.chat {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.chat-item-start {
+    display: flex;
+    justify-content: flex-start;
+}
+
+.chat-item-end {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.chat-bubble {
+    max-width: 75%;
+    background-color: #f1f3f5;
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+}
+
+.chat-bubble-me {
+    max-width: 75%;
+    background-color: #206bc4;
+    color: white;
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+}
+
+[data-theme="dark"] .chat-bubble {
+    background-color: #1f2937;
+}
+
+.chat-bubble-title {
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+}
+
+.chat-bubble-author {
+    font-weight: 600;
+}
+
+.chat-bubble-date {
+    color: #6c757d;
+    font-size: 0.75rem;
+}
+
+.chat-bubble-me .chat-bubble-date {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.chat-bubble-body {
+    word-wrap: break-word;
+}
+
+.chat-messages {
+    border: 1px solid #dee2e6;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    background-color: #f8f9fa;
+}
+
+[data-theme="dark"] .chat-messages {
+    background-color: #1a1d26;
+    border-color: #2d3748;
+}
+
+.chat-messages::-webkit-scrollbar {
+    width: 8px;
+}
+
+.chat-messages::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.chat-messages::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+.chat-messages::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
 
 
-<!-- Add these filters to the "Filtros e Busca" card in analise_encerramento.php -->
-<!-- Add after the existing filters, before Action Buttons -->
+-------------
 
-<!-- Status Solicitação Filter -->
-<div class="col-md-3">
-    <label class="form-label">Status Solicitação</label>
-    <select class="form-select" name="status_solic" id="statusSolicFilter">
-        <option value="">Todos os Status</option>
-        <option value="EM ANDAMENTO" <?php echo (isset($_GET['status_solic']) && $_GET['status_solic'] === 'EM ANDAMENTO') ? 'selected' : ''; ?>>Em Andamento</option>
-        <option value="CANCELADO" <?php echo (isset($_GET['status_solic']) && $_GET['status_solic'] === 'CANCELADO') ? 'selected' : ''; ?>>Cancelado</option>
-        <option value="FINALIZADO" <?php echo (isset($_GET['status_solic']) && $_GET['status_solic'] === 'FINALIZADO') ? 'selected' : ''; ?>>Finalizado</option>
-    </select>
+
+
+# Code Placement Quick Reference
+
+## File: permissions_config.php (NEW FILE)
+**Location:** `control/encerramento/permissions_config.php`
+- Use entire artifact: "permissions_config.php"
+- **ACTION:** Replace placeholder COD_USU values (11111, 22222, etc.) with actual user IDs
+
+---
+
+## File: analise_encerramento_model.class.php (M.txt)
+**Location:** `model/encerramento/analise_encerramento_model.class.php`
+
+### Add these methods to the `Analise` class:
+```php
+// From artifact: "Chat Methods for Model"
+public function createChatIfNotExists($cod_solicitacao) { ... }
+public function getChatMessages($chat_id) { ... }
+public function sendChatMessage(...) { ... }
+public function getLastMessageId() { ... }
+```
+**ACTION:** Copy all 4 methods into the class
+
+---
+
+## File: ajax_encerramento.php (JH.txt)
+**Location:** `control/encerramento/roteamento/ajax_encerramento.php`
+
+### 1. Add at the top (after session_start):
+```php
+require_once '../permissions_config.php';
+```
+
+### 2. Add BEFORE regular data loading (before "try { $handler = new..."):
+```php
+// From artifact: "Chat AJAX Handlers"
+// Handler for 'load_chat'
+if (isset($_POST['acao']) && $_POST['acao'] == 'load_chat') { ... }
+
+// Handler for 'send_message'  
+if (isset($_POST['acao']) && $_POST['acao'] == 'send_message') { ... }
+```
+
+### 3. In AjaxEncerramentoHandler class:
+
+#### Replace `renderTableCell()`:
+```php
+// From artifact: "Table Row with Permission Check"
+private function renderTableCell($row) { ... }
+```
+
+#### Replace `buildModalBody()`:
+```php
+// From artifact: "Updated Modal Rendering"
+private function buildModalBody($row, $codSolicitacao, $nomeLoja, $status) { ... }
+```
+
+#### Replace `buildModalFooter()`:
+```php
+// From artifact: "Updated Modal Rendering"
+private function buildModalFooter($codSolicitacao) { ... }
+```
+
+#### Add new method:
+```php
+// From artifact: "Updated Modal Rendering"
+private function buildChatInterface($codSolicitacao) { ... }
+```
+
+---
+
+## File: analise_encerramento.php (E.txt)
+**Location:** `view/encerramento/analise_encerramento.php`
+
+### 1. After existing require_once statements (top of file):
+```php
+// From artifact: "View Modifications"
+require_once 'permissions_config.php';
+$cod_usu = isset($_SESSION['cod_usu']) ? $_SESSION['cod_usu'] : 0;
+// ... rest of permission checks
+```
+
+### 2. In the <head> section (before </head>):
+```html
+<!-- From artifact: "Chat CSS Styling" -->
+<style>
+.chat { ... }
+.chat-item-start { ... }
+/* ... rest of CSS */
+</style>
+```
+
+### 3. Wrap bulk actions div:
+```php
+<?php if ($canViewBulk): ?>
+<div class="card mb-3" id="bulkActions" style="display: none;">
+    <!-- existing content -->
 </div>
+<?php endif; ?>
+```
 
-<!-- Motivo Encerramento Filter -->
-<div class="col-md-3">
-    <label class="form-label">Motivo Encerramento</label>
-    <select class="form-select" name="motivo_enc" id="motivoEncFilter">
-        <option value="">Todos os Motivos</option>
-        <option value="MOTIVO_1" <?php echo (isset($_GET['motivo_enc']) && $_GET['motivo_enc'] === 'MOTIVO_1') ? 'selected' : ''; ?>>Motivo 1</option>
-        <option value="MOTIVO_2" <?php echo (isset($_GET['motivo_enc']) && $_GET['motivo_enc'] === 'MOTIVO_2') ? 'selected' : ''; ?>>Motivo 2</option>
-        <option value="MOTIVO_3" <?php echo (isset($_GET['motivo_enc']) && $_GET['motivo_enc'] === 'MOTIVO_3') ? 'selected' : ''; ?>>Motivo 3</option>
-    </select>
-</div>
+### 4. Update table header checkbox cell:
+```html
+<th class="text-center align-middle p-0" style="background-color: #d8d8d8;">
+    <?php if ($canViewBulk): ?>
+    <label class="form-check d-inline-flex...">
+        <input class="form-check-input..." type="checkbox" />
+        ...
+    </label>
+    <?php endif; ?>
+</th>
+```
 
+---
 
+## File: analise_encerramento.js (J.txt)
+**Location:** `encerramento/analise_encerramento/analise_encerramento.js`
 
------------
+### 1. Add these functions anywhere in the file:
+```javascript
+// From artifact: "Chat JavaScript Functions"
+window.loadChat = function(codSolicitacao) { ... }
+function renderChatMessages(...) { ... }
+window.sendChatMessage = function(codSolicitacao) { ... }
+function startChatPolling(codSolicitacao) { ... }
+// ... plus event listeners
+```
 
-<?php
-// Update buildActionButtons method in analise_encerramento_control.php
-
-private function buildActionButtons($codSolicitacao) {
-    $buttons = ['orgao_pagador' => 'Órgão Pagador', 'comercial' => 'Comercial', 
-               'van_material' => 'Van-Material', 'bloqueio' => 'Bloqueio'];
-    
-    $html = '<div class="card"><div class="card-header"><h3 class="card-title">Ações</h3></div>';
-    $html .= '<div class="card-body">';
-    
-    // Motivo and Data inputs
-    $html .= '<div class="row mb-3">';
-    $html .= '<div class="col-md-6">';
-    $html .= '<label class="form-label">Motivo Encerramento</label>';
-    $html .= '<select class="form-select" id="motivoEnc' . $codSolicitacao . '">';
-    $html .= '<option value="">Selecione um motivo</option>';
-    $html .= '<option value="MOTIVO_1">Motivo 1</option>';
-    $html .= '<option value="MOTIVO_2">Motivo 2</option>';
-    $html .= '<option value="MOTIVO_3">Motivo 3</option>';
-    $html .= '</select>';
-    $html .= '</div>';
-    $html .= '<div class="col-md-6">';
-    $html .= '<label class="form-label">Data Encerramento</label>';
-    $html .= '<input type="date" class="form-control" id="dataEnc' . $codSolicitacao . '">';
-    $html .= '</div>';
-    $html .= '</div>';
-    
-    $html .= '<div class="d-flex justify-content-end mb-3">';
-    $html .= '<button class="btn btn-primary btn-sm" onclick="updateMotivoEncerramento(' . $codSolicitacao . ')">Salvar Alterações</button>';
-    $html .= '</div>';
-    
-    $html .= '<hr>';
-    
-    // Email action buttons
-    $html .= '<div class="d-flex gap-2 justify-content-center flex-wrap">';
-    foreach ($buttons as $type => $label) {
-        $html .= '<button class="btn email-action-btn" data-tipo="' . $type . '" data-solicitacao="' . $codSolicitacao . '">' . $label . '</button>';
-    }
-    $html .= '<button class="btn btn-red" data-bs-toggle="modal" data-bs-target="#AlertaEncerramento' . $codSolicitacao . '">Encerramento</button>';
-    $html .= '</div></div></div>';
-    
-    return $html;
+### 2. Replace `initializeCheckboxHandlers()`:
+```javascript
+// From artifact: "JavaScript Permission Updates"
+function initializeCheckboxHandlers() {
+    // Only initialize if user has bulk permissions
+    if (!window.userPermissions || !window.userPermissions.canViewBulk) { ... }
+    // ... rest of function
 }
+```
 
-// Update buildStatusShow method to use dynamic data
-private function buildStatusShow($status) {
-    $statusClass = [
-        'Efetuado' => 'status-green',
-        'Não Efetuado' => 'status-yellow',
-        'ERRO' => 'status-red'
-    ];
-    
-    $statusText = [
-        'Efetuado' => 'Finalizado',
-        'Não Efetuado' => 'Esperando',
-        'ERRO' => 'Erro'
-    ];
-    
-    $statusDot = [
-        'Efetuado' => 'status-dot-animated',
-        'Não Efetuado' => '',
-        'ERRO' => 'status-dot-animated'
-    ];
-    
-    $op = $status['STATUS_OP'] ?? 'Não Efetuado';
-    $com = $status['STATUS_COM'] ?? 'Não Efetuado';
-    $van = $status['STATUS_VAN'] ?? 'Não Efetuado';
-    $bloq = $status['STATUS_BLOQ'] ?? 'Não Efetuado';
-    $enc = $status['STATUS_ENCERRAMENTO'] ?? 'Não Efetuado';
-    
-    return '<div style="margin:5px;"></div>
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Status</h3>
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-vcenter">
-                            <thead>
-                                <tr>
-                                    <th>Órgão Pagador</th>
-                                    <th>Comercial</th>
-                                    <th>Van-Material</th>
-                                    <th>Bloqueio</th>
-                                    <th>Encerramento</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td id="status-op-' . $status['COD_SOLICITACAO'] . '">
-                                        <span class="status ' . $statusClass[$op] . '">
-                                        <span class="status-dot ' . $statusDot[$op] . '"></span>
-                                        <span class="status-text">' . $statusText[$op] . '</span>
-                                        </span>
-                                    </td>
-                                    <td id="status-com-' . $status['COD_SOLICITACAO'] . '">
-                                        <span class="status ' . $statusClass[$com] . '">
-                                        <span class="status-dot ' . $statusDot[$com] . '"></span>
-                                        <span class="status-text">' . $statusText[$com] . '</span>
-                                        </span>
-                                    </td>
-                                    <td id="status-van-' . $status['COD_SOLICITACAO'] . '">
-                                        <span class="status ' . $statusClass[$van] . '">
-                                        <span class="status-dot ' . $statusDot[$van] . '"></span>
-                                        <span class="status-text">' . $statusText[$van] . '</span>
-                                        </span>
-                                    </td>
-                                    <td id="status-bloq-' . $status['COD_SOLICITACAO'] . '">
-                                        <span class="status ' . $statusClass[$bloq] . '">
-                                        <span class="status-dot ' . $statusDot[$bloq] . '"></span>
-                                        <span class="status-text">' . $statusText[$bloq] . '</span>
-                                        </span>
-                                    </td>
-                                    <td id="status-enc-' . $status['COD_SOLICITACAO'] . '">
-                                        <span class="status ' . $statusClass[$enc] . '">
-                                        <span class="status-dot ' . $statusDot[$enc] . '"></span>
-                                        <span class="status-text">' . $statusText[$enc] . '</span>
-                                        </span>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>';
+### 3. In `updateUI()` function, add after `initializeCheckboxHandlers()`:
+```javascript
+// From artifact: "JavaScript Permission Updates"
+// Hide bulk actions if no permissions
+if (!window.userPermissions || !window.userPermissions.canViewBulk) {
+    const bulkActions = document.getElementById('bulkActions');
+    if (bulkActions) bulkActions.style.display = 'none';
 }
+```
 
-// Update buildModal method to include status data
-private function buildModal($row) {
-    $codSolicitacao = htmlspecialchars($row['COD_SOLICITACAO']);
-    $nomeLoja = htmlspecialchars(mb_substr($row['NOME_LOJA'], 0, 15));
-    
-    $status = [
-        'COD_SOLICITACAO' => $row['COD_SOLICITACAO'],
-        'STATUS_OP' => $row['STATUS_OP'] ?? 'Não Efetuado',
-        'STATUS_COM' => $row['STATUS_COM'] ?? 'Não Efetuado',
-        'STATUS_VAN' => $row['STATUS_VAN'] ?? 'Não Efetuado',
-        'STATUS_BLOQ' => $row['STATUS_BLOQ'] ?? 'Não Efetuado',
-        'STATUS_ENCERRAMENTO' => $row['STATUS_ENCERRAMENTO'] ?? 'Não Efetuado'
-    ];
-    
-    return '
-        <div class="modal fade" id="AnaliseDetalhesModal' . $codSolicitacao . '" tabindex="-5" aria-hidden="true">
-            <div class="modal-dialog modal-lg">
-                <div class="modal-content">
-                    ' . $this->buildModalHeader($codSolicitacao, $row['NOME_LOJA']) . '
-                    ' . $this->buildModalBody($row, $codSolicitacao, $nomeLoja, $status) . '
-                    ' . $this->buildModalFooter($codSolicitacao) . '
-                </div>
-            </div>
-        </div>
-        ' . $this->buildAlertModal($codSolicitacao, $row['CHAVE_LOJA']) . '
-    ';
-}
+---
 
-// Update buildModalBody to accept status parameter
-private function buildModalBody($row, $codSolicitacao, $nomeLoja, $status) {
-    return '
-        <div class="modal-body">
-            <div class="card">
-                <div class="card-header">
-                    <ul class="nav nav-tabs card-header-tabs" data-bs-toggle="tabs">
-                        <li class="nav-item">
-                            <a href="#tabs-home-' . $codSolicitacao . '" class="nav-link active" data-bs-toggle="tab">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="icon me-2" width="24"
-                                height="24" viewBox="0 0 24 24" stroke-width="2"
-                                stroke="currentColor" fill="none" stroke-linecap="round"
-                                stroke-linejoin="round">
-                                <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                                <polyline points="5 12 3 12 12 3 21 12 19 12" />
-                                <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
-                                <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
-                            </svg>
-                            Informações
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a href="#tabs-chat-' . $codSolicitacao . '" class="nav-link" data-bs-toggle="tab">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="icon me-2" width="24"
-                                height="24" viewBox="0 0 24 24" stroke-width="2"
-                                stroke="currentColor" fill="none" stroke-linecap="round"
-                                stroke-linejoin="round">
-                                <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                                <circle cx="12" cy="7" r="4" />
-                                <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
-                            </svg>
-                            Profile
-                            </a>
-                        </li>
-                    </ul>
-                </div>
-                <div class="card-body">
-                    <div class="tab-content">
-                        <div class="tab-pane active show" id="tabs-home-' . $codSolicitacao . '">
-                            ' . $this->buildInfoCards($row, $nomeLoja) . '
-                            ' . $this->buildActionButtons($codSolicitacao) . '
-                            ' . $this->buildStatusShow($status) . '
-                        </div>
-                        <div class="tab-pane" id="tabs-chat-' . $codSolicitacao . '">
-                            ' . $this->buildChat().'
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    ';
-}
+## Summary Checklist
 
-// Update buildModalFooter to include cancel button
-private function buildModalFooter($codSolicitacao) {
-    return '
-        <div class="modal-footer d-flex justify-content-between">
-            <button class="btn btn-danger" onclick="cancelarSolicitacao(' . $codSolicitacao . ')">Cancelar Solicitação</button>
-            <a href="#" class="btn btn-link link-secondary" data-bs-dismiss="modal">Fechar</a>
-        </div>';
-}
-?>
-
-
-------------
-
-
-<?php
-// Update these methods in ajax_encerramento.php AjaxEncerramentoHandler class
-
-private function buildActionButtons($codSolicitacao) {
-    $buttons = ['orgao_pagador' => 'Órgão Pagador', 'comercial' => 'Comercial', 
-               'van_material' => 'Van-Material', 'bloqueio' => 'Bloqueio'];
-    
-    $html = '<div class="card"><div class="card-header"><h3 class="card-title">Ações</h3></div>';
-    $html .= '<div class="card-body">';
-    
-    // Motivo and Data inputs
-    $html .= '<div class="row mb-3">';
-    $html .= '<div class="col-md-6">';
-    $html .= '<label class="form-label">Motivo Encerramento</label>';
-    $html .= '<select class="form-select" id="motivoEnc' . $codSolicitacao . '">';
-    $html .= '<option value="">Selecione um motivo</option>';
-    $html .= '<option value="MOTIVO_1">Motivo 1</option>';
-    $html .= '<option value="MOTIVO_2">Motivo 2</option>';
-    $html .= '<option value="MOTIVO_3">Motivo 3</option>';
-    $html .= '</select>';
-    $html .= '</div>';
-    $html .= '<div class="col-md-6">';
-    $html .= '<label class="form-label">Data Encerramento</label>';
-    $html .= '<input type="date" class="form-control" id="dataEnc' . $codSolicitacao . '">';
-    $html .= '</div>';
-    $html .= '</div>';
-    
-    $html .= '<div class="d-flex justify-content-end mb-3">';
-    $html .= '<button class="btn btn-primary btn-sm" onclick="updateMotivoEncerramento(' . $codSolicitacao . ')">Salvar Alterações</button>';
-    $html .= '</div>';
-    
-    $html .= '<hr>';
-    
-    // Email action buttons
-    $html .= '<div class="d-flex gap-2 justify-content-center flex-wrap">';
-    foreach ($buttons as $type => $label) {
-        $html .= '<button class="btn email-action-btn" data-tipo="' . $type . '" data-solicitacao="' . $codSolicitacao . '">' . $label . '</button>';
-    }
-    $html .= '<button class="btn btn-red" data-bs-toggle="modal" data-bs-target="#AlertaEncerramento' . $codSolicitacao . '">Encerramento</button>';
-    $html .= '</div></div></div>';
-    
-    return $html;
-}
-
-private function buildStatusShow($status) {
-    $statusClass = [
-        'Efetuado' => 'status-green',
-        'Não Efetuado' => 'status-yellow',
-        'ERRO' => 'status-red'
-    ];
-    
-    $statusText = [
-        'Efetuado' => 'Finalizado',
-        'Não Efetuado' => 'Esperando',
-        'ERRO' => 'Erro'
-    ];
-    
-    $statusDot = [
-        'Efetuado' => 'status-dot-animated',
-        'Não Efetuado' => '',
-        'ERRO' => 'status-dot-animated'
-    ];
-    
-    $op = $status['STATUS_OP'] ?? 'Não Efetuado';
-    $com = $status['STATUS_COM'] ?? 'Não Efetuado';
-    $van = $status['STATUS_VAN'] ?? 'Não Efetuado';
-    $bloq = $status['STATUS_BLOQ'] ?? 'Não Efetuado';
-    $enc = $status['STATUS_ENCERRAMENTO'] ?? 'Não Efetuado';
-    
-    return '<div style="margin:5px;"></div>
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">Status</h3>
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-vcenter">
-                            <thead>
-                                <tr>
-                                    <th>Órgão Pagador</th>
-                                    <th>Comercial</th>
-                                    <th>Van-Material</th>
-                                    <th>Bloqueio</th>
-                                    <th>Encerramento</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td id="status-op-' . $status['COD_SOLICITACAO'] . '">
-                                        <span class="status ' . $statusClass[$op] . '">
-                                        <span class="status-dot ' . $statusDot[$op] . '"></span>
-                                        <span class="status-text">' . $statusText[$op] . '</span>
-                                        </span>
-                                    </td>
-                                    <td id="status-com-' . $status['COD_SOLICITACAO'] . '">
-                                        <span class="status ' . $statusClass[$com] . '">
-                                        <span class="status-dot ' . $statusDot[$com] . '"></span>
-                                        <span class="status-text">' . $statusText[$com] . '</span>
-                                        </span>
-                                    </td>
-                                    <td id="status-van-' . $status['COD_SOLICITACAO'] . '">
-                                        <span class="status ' . $statusClass[$van] . '">
-                                        <span class="status-dot ' . $statusDot[$van] . '"></span>
-                                        <span class="status-text">' . $statusText[$van] . '</span>
-                                        </span>
-                                    </td>
-                                    <td id="status-bloq-' . $status['COD_SOLICITACAO'] . '">
-                                        <span class="status ' . $statusClass[$bloq] . '">
-                                        <span class="status-dot ' . $statusDot[$bloq] . '"></span>
-                                        <span class="status-text">' . $statusText[$bloq] . '</span>
-                                        </span>
-                                    </td>
-                                    <td id="status-enc-' . $status['COD_SOLICITACAO'] . '">
-                                        <span class="status ' . $statusClass[$enc] . '">
-                                        <span class="status-dot ' . $statusDot[$enc] . '"></span>
-                                        <span class="status-text">' . $statusText[$enc] . '</span>
-                                        </span>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>';
-}
-
-private function buildModal($row) {
-    $codSolicitacao = htmlspecialchars($row['COD_SOLICITACAO']);
-    $nomeLoja = htmlspecialchars(mb_substr($row['NOME_LOJA'], 0, 15));
-    
-    $status = [
-        'COD_SOLICITACAO' => $row['COD_SOLICITACAO'],
-        'STATUS_OP' => $row['STATUS_OP'] ?? 'Não Efetuado',
-        'STATUS_COM' => $row['STATUS_COM'] ?? 'Não Efetuado',
-        'STATUS_VAN' => $row['STATUS_VAN'] ?? 'Não Efetuado',
-        'STATUS_BLOQ' => $row['STATUS_BLOQ'] ?? 'Não Efetuado',
-        'STATUS_ENCERRAMENTO' => $row['STATUS_ENCERRAMENTO'] ?? 'Não Efetuado'
-    ];
-    
-    return '
-        <div class="modal fade" id="AnaliseDetalhesModal' . $codSolicitacao . '" tabindex="-5" aria-hidden="true">
-            <div class="modal-dialog modal-lg">
-                <div class="modal-content">
-                    ' . $this->buildModalHeader($codSolicitacao, $row['NOME_LOJA']) . '
-                    ' . $this->buildModalBody($row, $codSolicitacao, $nomeLoja, $status) . '
-                    ' . $this->buildModalFooter($codSolicitacao) . '
-                </div>
-            </div>
-        </div>
-        ' . $this->buildAlertModal($codSolicitacao, $row['CHAVE_LOJA']) . '
-    ';
-}
-
-private function buildModalBody($row, $codSolicitacao, $nomeLoja, $status) {
-    return '
-        <div class="modal-body">
-            <div class="card">
-                <div class="card-header">
-                    <ul class="nav nav-tabs card-header-tabs" data-bs-toggle="tabs">
-                        <li class="nav-item">
-                            <a href="#tabs-home-' . $codSolicitacao . '" class="nav-link active" data-bs-toggle="tab">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="icon me-2" width="24"
-                                height="24" viewBox="0 0 24 24" stroke-width="2"
-                                stroke="currentColor" fill="none" stroke-linecap="round"
-                                stroke-linejoin="round">
-                                <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                                <polyline points="5 12 3 12 12 3 21 12 19 12" />
-                                <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" />
-                                <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" />
-                            </svg>
-                            Informações
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a href="#tabs-chat-' . $codSolicitacao . '" class="nav-link" data-bs-toggle="tab">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="icon me-2" width="24"
-                                height="24" viewBox="0 0 24 24" stroke-width="2"
-                                stroke="currentColor" fill="none" stroke-linecap="round"
-                                stroke-linejoin="round">
-                                <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                                <circle cx="12" cy="7" r="4" />
-                                <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
-                            </svg>
-                            Profile
-                            </a>
-                        </li>
-                    </ul>
-                </div>
-                <div class="card-body">
-                    <div class="tab-content">
-                        <div class="tab-pane active show" id="tabs-home-' . $codSolicitacao . '">
-                            ' . $this->buildInfoCards($row, $nomeLoja) . '
-                            ' . $this->buildActionButtons($codSolicitacao) . '
-                            ' . $this->buildStatusShow($status) . '
-                        </div>
-                        <div class="tab-pane" id="tabs-chat-' . $codSolicitacao . '">
-                            ' . $this->buildChat().'
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    ';
-}
-
-private function buildModalFooter($codSolicitacao) {
-    return '
-        <div class="modal-footer d-flex justify-content-between">
-            <button class="btn btn-danger" onclick="cancelarSolicitacao(' . $codSolicitacao . ')">Cancelar Solicitação</button>
-            <a href="#" class="btn btn-link link-secondary" data-bs-dismiss="modal">Fechar</a>
-        </div>';
-}
-?>
-
-
-
------------
-
+- [ ] Create `permissions_config.php` with actual COD_USU values
+- [ ] Add 4 chat methods to Model (M.txt)
+- [ ] Update AJAX handler (JH.txt): 2 new handlers + 4 method updates
+- [ ] Update View (E.txt): permissions + CSS + conditional rendering
+- [ ] Update JavaScript (J.txt): chat functions + permission checks
+- [ ] Create `anexos` directory with write permissions
+- [ ] Test with each user group type
