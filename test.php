@@ -1,69 +1,190 @@
-// Add this helper function at the top of ajax_encerramento.php (after json_encode_custom)
+-- Add ANEXO_LOCATION column to store file paths separately from message text
 
-function formatMessagesForJson($messages) {
-    if (!is_array($messages)) {
-        return $messages;
-    }
-    
-    foreach ($messages as &$message) {
-        // Convert DateTime objects to strings
-        if (isset($message['MESSAGE_DATE'])) {
-            if (is_object($message['MESSAGE_DATE'])) {
-                // DateTime object - convert to string
-                $message['MESSAGE_DATE'] = $message['MESSAGE_DATE']->format('Y-m-d H:i:s');
-            }
-        }
-        
-        // Also handle other potential DateTime fields
-        $dateFields = ['DATA_RECEPCAO', 'DATA_RETIRADA_EQPTO', 'DATA_BLOQUEIO', 'DATA_CAD'];
-        foreach ($dateFields as $field) {
-            if (isset($message[$field]) && is_object($message[$field])) {
-                $message[$field] = $message[$field]->format('Y-m-d H:i:s');
-            }
-        }
-    }
-    
-    return $messages;
-}
+-- 1. Add the new column
+IF NOT EXISTS (
+    SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS 
+    WHERE TABLE_SCHEMA = 'MESU' 
+      AND TABLE_NAME = 'ENCERRAMENTO_TB_PORTAL_CHAT' 
+      AND COLUMN_NAME = 'ANEXO_LOCATION'
+)
+BEGIN
+    ALTER TABLE MESU..ENCERRAMENTO_TB_PORTAL_CHAT 
+    ADD ANEXO_LOCATION VARCHAR(500) NULL;
+    PRINT 'ANEXO_LOCATION column added successfully';
+END
+ELSE
+BEGIN
+    PRINT 'ANEXO_LOCATION column already exists';
+END;
 
-// Then update the load_chat handler to use this function:
+-- 2. Migrate existing file data from MENSAGEM to ANEXO_LOCATION
+-- This finds messages with [FILE:...] pattern and extracts the filename
+UPDATE MESU..ENCERRAMENTO_TB_PORTAL_CHAT
+SET ANEXO_LOCATION = SUBSTRING(
+    MENSAGEM, 
+    CHARINDEX('[FILE:', MENSAGEM) + 6, 
+    CHARINDEX(']', MENSAGEM, CHARINDEX('[FILE:', MENSAGEM)) - CHARINDEX('[FILE:', MENSAGEM) - 6
+),
+MENSAGEM = LTRIM(RTRIM(REPLACE(MENSAGEM, 
+    SUBSTRING(MENSAGEM, CHARINDEX('[FILE:', MENSAGEM), 
+    CHARINDEX(']', MENSAGEM, CHARINDEX('[FILE:', MENSAGEM)) - CHARINDEX('[FILE:', MENSAGEM) + 1), 
+    '')))
+WHERE MENSAGEM LIKE '%[FILE:%]%'
+  AND ANEXO_LOCATION IS NULL;
 
-// Load chat messages for specific group
-if (isset($_POST['acao']) && $_POST['acao'] == 'load_chat') {
+PRINT 'Migrated ' + CAST(@@ROWCOUNT AS VARCHAR) + ' existing file references';
+
+-- 3. Verify the structure
+SELECT 
+    COLUMN_NAME, 
+    DATA_TYPE, 
+    IS_NULLABLE,
+    CHARACTER_MAXIMUM_LENGTH
+FROM INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_SCHEMA = 'MESU' 
+  AND TABLE_NAME = 'ENCERRAMENTO_TB_PORTAL_CHAT'
+  AND COLUMN_NAME IN ('MENSAGEM', 'ANEXO', 'ANEXO_LOCATION')
+ORDER BY ORDINAL_POSITION;
+
+-- 4. Check migrated data
+SELECT TOP 10
+    MESSAGE_ID,
+    CHAT_ID,
+    REMETENTE,
+    LEFT(MENSAGEM, 50) as MENSAGEM_PREVIEW,
+    ANEXO,
+    ANEXO_LOCATION,
+    MESSAGE_DATE
+FROM MESU..ENCERRAMENTO_TB_PORTAL_CHAT
+WHERE ANEXO = 1
+ORDER BY MESSAGE_DATE DESC;
+
+-- 5. Create index for better performance
+IF NOT EXISTS (
+    SELECT 1 FROM sys.indexes 
+    WHERE name = 'IDX_ANEXO' 
+      AND object_id = OBJECT_ID('MESU..ENCERRAMENTO_TB_PORTAL_CHAT')
+)
+BEGIN
+    CREATE INDEX IDX_ANEXO 
+    ON MESU..ENCERRAMENTO_TB_PORTAL_CHAT(ANEXO, ANEXO_LOCATION);
+    PRINT 'Index on ANEXO created';
+END;
+
+PRINT '';
+PRINT '=== Summary ===';
+PRINT 'Column ANEXO_LOCATION added to store file paths';
+PRINT 'Messages with [FILE:...] patterns have been migrated';
+PRINT 'File location now stored separately from message text';
+PRINT '';
+PRINT 'Table structure:';
+PRINT '- MENSAGEM: Message text only (no file references)';
+PRINT '- ANEXO: 1 if file attached, 0 if not';
+PRINT '- ANEXO_LOCATION: Filename (e.g., "123_document.pdf")';
+
+---------
+
+// Send chat message to specific group - UPDATED to use ANEXO_LOCATION
+if (isset($_POST['acao']) && $_POST['acao'] == 'send_message') {
     ob_start();
     try {
         require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
         require_once '../permissions_config.php';
         
         $cod_solicitacao = isset($_POST['cod_solicitacao']) ? intval($_POST['cod_solicitacao']) : 0;
+        $mensagem = isset($_POST['mensagem']) ? trim($_POST['mensagem']) : '';
         $target_group = isset($_POST['target_group']) ? $_POST['target_group'] : '';
         $cod_usu = isset($_SESSION['cod_usu']) ? intval($_SESSION['cod_usu']) : 0;
         $userGroup = getUserGroup($cod_usu);
         
+        // Check if message or file exists
+        $hasFile = isset($_FILES['arquivo']) && $_FILES['arquivo']['error'] === UPLOAD_ERR_OK;
+        
+        if (empty($mensagem) && !$hasFile) {
+            ob_end_clean();
+            header('Content-Type: application/json');
+            echo json_encode_custom(['success' => false, 'message' => 'Mensagem vazia']);
+            exit;
+        }
+        
+        // Validate target group
+        $valid_targets = ['OP_MANAGEMENT', 'COM_MANAGEMENT', 'BLOQ_MANAGEMENT', 'ENC_MANAGEMENT'];
+        if (!in_array($target_group, $valid_targets)) {
+            ob_end_clean();
+            header('Content-Type: application/json');
+            echo json_encode_custom(['success' => false, 'message' => 'Grupo inválido']);
+            exit;
+        }
+        
+        // Validate permissions
+        if ($userGroup !== 'ENC_MANAGEMENT' && $target_group !== 'ENC_MANAGEMENT') {
+            ob_end_clean();
+            header('Content-Type: application/json');
+            echo json_encode_custom(['success' => false, 'message' => 'Sem permissão para enviar para este grupo']);
+            exit;
+        }
+        
         $model = new Analise();
         $chat_id = $model->createChatIfNotExists($cod_solicitacao);
         
-        // Get messages filtered by group
-        $messages = $model->getChatMessagesByGroup($chat_id, $userGroup, $target_group);
-        
-        // Ensure messages is always an array
-        if (!$messages) {
-            $messages = [];
-        } else if (!is_array($messages)) {
-            $messages = [$messages];
+        // Handle file upload first if present
+        $anexo_location = null;
+        if ($hasFile) {
+            $upload_dir = 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\view\encerramento\anexos\\';
+            $user_dir = $upload_dir . $cod_usu . '\\';
+            
+            if (!file_exists($user_dir)) {
+                mkdir($user_dir, 0777, true);
+            }
+            
+            // Generate temporary filename for now (will update with MESSAGE_ID after insert)
+            $temp_file_name = time() . '_' . basename($_FILES['arquivo']['name']);
+            $temp_file_path = $user_dir . $temp_file_name;
+            
+            if (move_uploaded_file($_FILES['arquivo']['tmp_name'], $temp_file_path)) {
+                $anexo_location = $temp_file_name;
+            } else {
+                ob_end_clean();
+                header('Content-Type: application/json');
+                echo json_encode_custom(['success' => false, 'message' => 'Erro ao fazer upload do arquivo']);
+                exit;
+            }
         }
         
-        // *** ADD THIS LINE ***
-        // Convert DateTime objects to strings
-        $messages = formatMessagesForJson($messages);
+        // Determine sender and recipient groups
+        $sender_group = $userGroup;
+        $recipient_group = $target_group;
+        
+        // Send message with file info
+        $anexo = $hasFile ? 1 : 0;
+        $result = $model->sendChatMessageToGroup($chat_id, $mensagem, $cod_usu, $sender_group, $recipient_group, $anexo);
+        
+        // Update with proper filename including MESSAGE_ID
+        if ($result && $hasFile && $anexo_location) {
+            $message_id = $model->getLastMessageId();
+            
+            // Rename file to include MESSAGE_ID
+            $final_file_name = $message_id . '_' . basename($_FILES['arquivo']['name']);
+            $user_dir = $upload_dir . $cod_usu . '\\';
+            $old_path = $user_dir . $anexo_location;
+            $new_path = $user_dir . $final_file_name;
+            
+            if (file_exists($old_path)) {
+                rename($old_path, $new_path);
+            }
+            
+            // Update database with final filename
+            $updateQuery = "UPDATE MESU..ENCERRAMENTO_TB_PORTAL_CHAT 
+                           SET ANEXO_LOCATION = '" . addslashes($final_file_name) . "'
+                           WHERE MESSAGE_ID = " . $message_id;
+            $model->update($updateQuery);
+        }
         
         ob_end_clean();
         header('Content-Type: application/json');
         echo json_encode_custom([
             'success' => true,
-            'chat_id' => $chat_id,
-            'messages' => $messages,
-            'target_group' => $target_group
+            'message' => 'Mensagem enviada'
         ]);
     } catch (Exception $e) {
         ob_end_clean();
@@ -73,9 +194,379 @@ if (isset($_POST['acao']) && $_POST['acao'] == 'load_chat') {
     exit;
 }
 
+----------
 
----------
+// Replace the chat functions in analise_encerramento.js
 
+// Initialize chat when tab is opened
+window.initializeChat = function(codSolicitacao) {
+    // Get the first contact's group
+    const firstContact = document.querySelector('.chat-contact[data-solicitacao="' + codSolicitacao + '"]');
+    if (firstContact) {
+        const targetGroup = firstContact.getAttribute('data-group');
+        loadChatForGroup(codSolicitacao, targetGroup);
+        startChatPolling(codSolicitacao);
+    }
+};
+
+// Select a chat contact
+window.selectChatContact = function(event, targetGroup, codSolicitacao) {
+    event.preventDefault();
+    
+    // Update active state
+    document.querySelectorAll('.chat-contact[data-solicitacao="' + codSolicitacao + '"]').forEach(contact => {
+        contact.classList.remove('active');
+    });
+    event.currentTarget.classList.add('active');
+    
+    // Update selected group
+    const selectedGroupInput = document.getElementById('chatSelectedGroup-' + codSolicitacao);
+    if (selectedGroupInput) {
+        selectedGroupInput.value = targetGroup;
+    }
+    
+    // Update contact name in header
+    const contactNameEl = document.getElementById('chatContactName-' + codSolicitacao);
+    if (contactNameEl) {
+        const contactName = event.currentTarget.querySelector('.fw-bold').textContent;
+        contactNameEl.textContent = contactName;
+    }
+    
+    // Load messages for this group
+    loadChatForGroup(codSolicitacao, targetGroup);
+};
+
+// Load chat messages for specific group
+function loadChatForGroup(codSolicitacao, targetGroup) {
+    const formData = new FormData();
+    formData.append('acao', 'load_chat');
+    formData.append('cod_solicitacao', codSolicitacao);
+    formData.append('target_group', targetGroup);
+    
+    fetch(AJAX_URL, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log('Chat response:', data);
+        if (data.success) {
+            renderChatMessages(codSolicitacao, data.messages);
+        } else {
+            console.error('Chat error:', data.message);
+            const container = document.getElementById('chatMessages-' + codSolicitacao);
+            if (container) {
+                container.innerHTML = '<div class="text-center text-danger py-4"><p>Erro ao carregar chat: ' + (data.message || 'Erro desconhecido') + '</p></div>';
+            }
+        }
+    })
+    .catch(error => {
+        console.error('Chat load error:', error);
+        const container = document.getElementById('chatMessages-' + codSolicitacao);
+        if (container) {
+            container.innerHTML = '<div class="text-center text-danger py-4"><p>Erro ao carregar chat</p></div>';
+        }
+    });
+}
+
+function renderChatMessages(codSolicitacao, messages) {
+    const container = document.getElementById('chatMessages-' + codSolicitacao);
+    if (!container) return;
+    
+    // Ensure messages is an array
+    if (!messages || !Array.isArray(messages)) {
+        messages = [];
+    }
+    
+    if (messages.length === 0) {
+        container.innerHTML = '<div class="text-center text-muted py-4"><p>Nenhuma mensagem ainda. Seja o primeiro a enviar!</p></div>';
+        return;
+    }
+    
+    let html = '<div class="chat">';
+    messages.forEach(msg => {
+        const isOwnMessage = msg.REMETENTE == window.userPermissions.codUsu;
+        
+        html += '<div class="chat-item mb-3">';
+        html += '<div class="row align-items-end ' + (isOwnMessage ? 'justify-content-end' : '') + '">';
+        
+        if (!isOwnMessage) {
+            html += '<div class="col-auto"><span class="avatar avatar-sm">' + (msg.REMETENTE_NOME ? msg.REMETENTE_NOME.substring(0, 2).toUpperCase() : 'U') + '</span></div>';
+        }
+        
+        html += '<div class="col col-lg-6">';
+        html += '<div class="chat-bubble ' + (isOwnMessage ? 'chat-bubble-me' : '') + '">';
+        html += '<div class="chat-bubble-title">';
+        html += '<div class="row">';
+        html += '<div class="col chat-bubble-author">' + (msg.REMETENTE_NOME || 'Usuário') + '</div>';
+        
+        // Parse SQL Server datetime format (YYYY-MM-DD HH:MM:SS)
+        let formattedDate = '';
+        if (msg.MESSAGE_DATE) {
+            try {
+                // SQL Server datetime comes as string: "2025-01-15 14:30:45"
+                // Replace space with 'T' for proper ISO format, or parse manually
+                let dateStr = msg.MESSAGE_DATE;
+                
+                // Handle SQL Server datetime format
+                if (typeof dateStr === 'string') {
+                    // Replace space with T for ISO format: "2025-01-15T14:30:45"
+                    dateStr = dateStr.replace(' ', 'T');
+                }
+                
+                const messageDate = new Date(dateStr);
+                
+                // Check if date is valid
+                if (!isNaN(messageDate.getTime())) {
+                    const day = String(messageDate.getDate()).padStart(2, '0');
+                    const month = String(messageDate.getMonth() + 1).padStart(2, '0');
+                    const hours = String(messageDate.getHours()).padStart(2, '0');
+                    const minutes = String(messageDate.getMinutes()).padStart(2, '0');
+                    formattedDate = day + '/' + month + ' ' + hours + ':' + minutes;
+                } else {
+                    formattedDate = dateStr; // Show raw string if parsing fails
+                }
+            } catch (e) {
+                console.error('Date parsing error:', e, msg.MESSAGE_DATE);
+                formattedDate = msg.MESSAGE_DATE || '';
+            }
+        }
+        
+        html += '<div class="col-auto chat-bubble-date">' + formattedDate + '</div>';
+        html += '</div></div>';
+        
+        html += '<div class="chat-bubble-body">';
+        
+        const hasFile = msg.MENSAGEM && msg.MENSAGEM.includes('[FILE:');
+        let messageText = msg.MENSAGEM || '';
+        let fileName = '';
+        
+        if (hasFile) {
+            const fileMatch = msg.MENSAGEM.match(/\[FILE:(.*?)\]/);
+            if (fileMatch) {
+                fileName = fileMatch[1];
+                messageText = msg.MENSAGEM.replace(/\[FILE:.*?\]/, '').trim();
+            }
+        }
+        
+        if (messageText) {
+            html += '<p class="mb-0">' + escapeHtml(messageText) + '</p>';
+        }
+        
+        if (hasFile && fileName) {
+            html += '<div class="mt-2">';
+            html += '<a href="./view/encerramento/anexos/' + msg.REMETENTE + '/' + fileName + '" target="_blank" class="btn btn-sm ' + (isOwnMessage ? 'btn-light' : 'btn-outline-primary') + '">';
+            html += '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-sm me-1">';
+            html += '<path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>';
+            html += '</svg>';
+            html += fileName;
+            html += '</a></div>';
+        }
+        
+        html += '</div></div></div>';
+        
+        if (isOwnMessage) {
+            html += '<div class="col-auto"><span class="avatar avatar-sm bg-primary-lt">' + (msg.REMETENTE_NOME ? msg.REMETENTE_NOME.substring(0, 2).toUpperCase() : 'EU') + '</span></div>';
+        }
+        
+        html += '</div></div>';
+    });
+    html += '</div>';
+    
+    container.innerHTML = html;
+    container.scrollTop = container.scrollHeight;
+}
+
+window.sendChatMessage = function(codSolicitacao) {
+    const input = document.getElementById('chatInput-' + codSolicitacao);
+    const fileInput = document.getElementById('chatFile-' + codSolicitacao);
+    const selectedGroupInput = document.getElementById('chatSelectedGroup-' + codSolicitacao);
+    
+    const mensagem = input.value.trim();
+    const targetGroup = selectedGroupInput ? selectedGroupInput.value : '';
+    
+    if (!mensagem && !fileInput.files.length) {
+        showNotification('Digite uma mensagem ou selecione um arquivo', 'error');
+        return;
+    }
+    
+    if (!targetGroup) {
+        showNotification('Selecione um contato', 'error');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('acao', 'send_message');
+    formData.append('cod_solicitacao', codSolicitacao);
+    formData.append('mensagem', mensagem);
+    formData.append('target_group', targetGroup);
+    
+    if (fileInput.files.length) {
+        formData.append('arquivo', fileInput.files[0]);
+    }
+    
+    // Disable input while sending
+    input.disabled = true;
+    
+    fetch(AJAX_URL, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            input.value = '';
+            fileInput.value = '';
+            document.getElementById('chatFileName-' + codSolicitacao).textContent = '';
+            loadChatForGroup(codSolicitacao, targetGroup);
+        } else {
+            showNotification('Erro ao enviar mensagem: ' + data.message, 'error');
+        }
+        input.disabled = false;
+        input.focus();
+    })
+    .catch(error => {
+        console.error('Send message error:', error);
+        showNotification('Erro ao enviar mensagem', 'error');
+        input.disabled = false;
+    });
+};
+
+window.handleFileSelect = function(codSolicitacao) {
+    const fileInput = document.getElementById('chatFile-' + codSolicitacao);
+    const fileNameDisplay = document.getElementById('chatFileName-' + codSolicitacao);
+    
+    if (fileInput.files.length > 0) {
+        const fileName = fileInput.files[0].name;
+        const fileSize = (fileInput.files[0].size / 1024 / 1024).toFixed(2);
+        fileNameDisplay.textContent = 'Arquivo: ' + fileName + ' (' + fileSize + ' MB)';
+    } else {
+        fileNameDisplay.textContent = '';
+    }
+};
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Poll for new messages every 5 seconds
+let chatPollingIntervals = {};
+
+function startChatPolling(codSolicitacao) {
+    if (chatPollingIntervals[codSolicitacao]) {
+        clearInterval(chatPollingIntervals[codSolicitacao]);
+    }
+    
+    chatPollingIntervals[codSolicitacao] = setInterval(() => {
+        const selectedGroupInput = document.getElementById('chatSelectedGroup-' + codSolicitacao);
+        if (selectedGroupInput) {
+            const targetGroup = selectedGroupInput.value;
+            loadChatForGroup(codSolicitacao, targetGroup);
+        }
+    }, 5000);
+}
+
+// Stop polling when modal closes
+document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('hidden.bs.modal', function(e) {
+        const modalId = e.target.id;
+        const match = modalId.match(/AnaliseDetalhesModal(\d+)/);
+        if (match) {
+            const codSolicitacao = match[1];
+            if (chatPollingIntervals[codSolicitacao]) {
+                clearInterval(chatPollingIntervals[codSolicitacao]);
+                delete chatPollingIntervals[codSolicitacao];
+            }
+        }
+    });
+});
+
+----------
+
+// Replace the chat methods in analise_encerramento_model.class.php
+
+public function createChatIfNotExists($cod_solicitacao) {
+    $query = "SELECT CHAT_ID FROM MESU..ENCERRAMENTO_TB_PORTAL WHERE COD_SOLICITACAO = " . intval($cod_solicitacao);
+    $result = $this->sql->select($query);
+    
+    if (!$result || !isset($result[0]['CHAT_ID']) || !$result[0]['CHAT_ID']) {
+        // Use COD_SOLICITACAO as CHAT_ID (each solicitacao has one chat)
+        $chatId = intval($cod_solicitacao);
+        
+        // Update main table with chat_id
+        $updateQuery = "UPDATE MESU..ENCERRAMENTO_TB_PORTAL SET CHAT_ID = " . $chatId . 
+                      " WHERE COD_SOLICITACAO = " . intval($cod_solicitacao);
+        $this->sql->update($updateQuery);
+        
+        return $chatId;
+    }
+    
+    return intval($result[0]['CHAT_ID']);
+}
+
+public function getChatMessagesByGroup($chat_id, $user_group, $target_group) {
+    // Messages are visible if:
+    // 1. User is sender and target is recipient_group OR
+    // 2. User's group is recipient_group and sender_group is target
+    
+    $query = "SELECT m.*, 
+              f.nome_func as REMETENTE_NOME,
+              m.SENDER_GROUP,
+              m.RECIPIENT_GROUP,
+              m.ANEXO,
+              m.ANEXO_LOCATION
+              FROM MESU..ENCERRAMENTO_TB_PORTAL_CHAT m
+              LEFT JOIN RH..TB_FUNCIONARIOS f ON m.REMETENTE = f.COD_FUNC
+              WHERE m.CHAT_ID = " . intval($chat_id) . "
+              AND (
+                  (m.SENDER_GROUP = '" . addslashes($user_group) . "' AND m.RECIPIENT_GROUP = '" . addslashes($target_group) . "')
+                  OR
+                  (m.SENDER_GROUP = '" . addslashes($target_group) . "' AND m.RECIPIENT_GROUP = '" . addslashes($user_group) . "')
+              )
+              ORDER BY m.MESSAGE_DATE ASC";
+    
+    $result = $this->sql->select($query);
+    
+    // Ensure we always return an array
+    if (!$result) {
+        return [];
+    }
+    
+    return $result;
+}
+
+public function sendChatMessageToGroup($chat_id, $mensagem, $remetente, $sender_group, $recipient_group, $anexo = 0) {
+    // Allow empty message if file is attached
+    if (empty($mensagem)) {
+        $mensagem = ''; // Ensure it's empty string, not NULL
+    }
+    
+    $query = "INSERT INTO MESU..ENCERRAMENTO_TB_PORTAL_CHAT 
+              (CHAT_ID, MENSAGEM, DESTINATARIO, REMETENTE, SENDER_GROUP, RECIPIENT_GROUP, ANEXO) 
+              VALUES (" . intval($chat_id) . ", 
+                     '" . addslashes($mensagem) . "', 
+                     0, 
+                     " . intval($remetente) . ", 
+                     '" . addslashes($sender_group) . "',
+                     '" . addslashes($recipient_group) . "',
+                     " . intval($anexo) . ")";
+    return $this->sql->insert($query);
+}
+
+public function getLastMessageId() {
+    $query = "SELECT IDENT_CURRENT('MESU.ENCERRAMENTO_TB_PORTAL_CHAT') as MESSAGE_ID";
+    $result = $this->sql->select($query);
+    return intval($result[0]['MESSAGE_ID']);
+}
+
+// Keep old method for backward compatibility if needed
+public function getChatMessages($chat_id) {
+    return $this->getChatMessagesByGroup($chat_id, '', '');
+}
+
+----------
 
 // Add this helper function at the top (after json_encode_custom function)
 
@@ -142,7 +633,7 @@ if (isset($_POST['acao']) && $_POST['acao'] == 'load_chat') {
     exit;
 }
 
-// Send chat message to specific group
+// Send chat message to specific group - UPDATED to use ANEXO_LOCATION
 if (isset($_POST['acao']) && $_POST['acao'] == 'send_message') {
     ob_start();
     try {
@@ -150,12 +641,15 @@ if (isset($_POST['acao']) && $_POST['acao'] == 'send_message') {
         require_once '../permissions_config.php';
         
         $cod_solicitacao = isset($_POST['cod_solicitacao']) ? intval($_POST['cod_solicitacao']) : 0;
-        $mensagem = isset($_POST['mensagem']) ? $_POST['mensagem'] : '';
+        $mensagem = isset($_POST['mensagem']) ? trim($_POST['mensagem']) : '';
         $target_group = isset($_POST['target_group']) ? $_POST['target_group'] : '';
         $cod_usu = isset($_SESSION['cod_usu']) ? intval($_SESSION['cod_usu']) : 0;
         $userGroup = getUserGroup($cod_usu);
         
-        if (empty($mensagem) && (!isset($_FILES['arquivo']) || $_FILES['arquivo']['error'] !== UPLOAD_ERR_OK)) {
+        // Check if message or file exists
+        $hasFile = isset($_FILES['arquivo']) && $_FILES['arquivo']['error'] === UPLOAD_ERR_OK;
+        
+        if (empty($mensagem) && !$hasFile) {
             ob_end_clean();
             header('Content-Type: application/json');
             echo json_encode_custom(['success' => false, 'message' => 'Mensagem vazia']);
@@ -182,19 +676,9 @@ if (isset($_POST['acao']) && $_POST['acao'] == 'send_message') {
         $model = new Analise();
         $chat_id = $model->createChatIfNotExists($cod_solicitacao);
         
-        $anexo = 0;
-        if (isset($_FILES['arquivo']) && $_FILES['arquivo']['error'] === UPLOAD_ERR_OK) {
-            $anexo = 1;
-        }
-        
-        // Determine sender and recipient groups
-        $sender_group = $userGroup;
-        $recipient_group = $target_group;
-        
-        $result = $model->sendChatMessageToGroup($chat_id, $mensagem, $cod_usu, $sender_group, $recipient_group, $anexo);
-        
-        if ($result && $anexo) {
-            $message_id = $model->getLastMessageId();
+        // Handle file upload first if present
+        $anexo_location = null;
+        if ($hasFile) {
             $upload_dir = 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\view\encerramento\anexos\\';
             $user_dir = $upload_dir . $cod_usu . '\\';
             
@@ -202,18 +686,47 @@ if (isset($_POST['acao']) && $_POST['acao'] == 'send_message') {
                 mkdir($user_dir, 0777, true);
             }
             
-            $file_name = $message_id . '_' . basename($_FILES['arquivo']['name']);
-            $file_path = $user_dir . $file_name;
+            // Generate temporary filename for now (will update with MESSAGE_ID after insert)
+            $temp_file_name = time() . '_' . basename($_FILES['arquivo']['name']);
+            $temp_file_path = $user_dir . $temp_file_name;
             
-            if (move_uploaded_file($_FILES['arquivo']['tmp_name'], $file_path)) {
-                $updateQuery = "UPDATE MESU..ENCERRAMENTO_TB_PORTAL_CHAT 
-                               SET MENSAGEM = CASE WHEN MENSAGEM IS NULL OR MENSAGEM = '' 
-                                                   THEN '[FILE:" . addslashes($file_name) . "]' 
-                                                   ELSE MENSAGEM + ' [FILE:" . addslashes($file_name) . "]' 
-                                              END
-                               WHERE MESSAGE_ID = " . $message_id;
-                $model->update($updateQuery);
+            if (move_uploaded_file($_FILES['arquivo']['tmp_name'], $temp_file_path)) {
+                $anexo_location = $temp_file_name;
+            } else {
+                ob_end_clean();
+                header('Content-Type: application/json');
+                echo json_encode_custom(['success' => false, 'message' => 'Erro ao fazer upload do arquivo']);
+                exit;
             }
+        }
+        
+        // Determine sender and recipient groups
+        $sender_group = $userGroup;
+        $recipient_group = $target_group;
+        
+        // Send message with file info
+        $anexo = $hasFile ? 1 : 0;
+        $result = $model->sendChatMessageToGroup($chat_id, $mensagem, $cod_usu, $sender_group, $recipient_group, $anexo);
+        
+        // Update with proper filename including MESSAGE_ID
+        if ($result && $hasFile && $anexo_location) {
+            $message_id = $model->getLastMessageId();
+            
+            // Rename file to include MESSAGE_ID
+            $final_file_name = $message_id . '_' . basename($_FILES['arquivo']['name']);
+            $user_dir = $upload_dir . $cod_usu . '\\';
+            $old_path = $user_dir . $anexo_location;
+            $new_path = $user_dir . $final_file_name;
+            
+            if (file_exists($old_path)) {
+                rename($old_path, $new_path);
+            }
+            
+            // Update database with final filename in ANEXO_LOCATION column
+            $updateQuery = "UPDATE MESU..ENCERRAMENTO_TB_PORTAL_CHAT 
+                           SET ANEXO_LOCATION = '" . addslashes($final_file_name) . "'
+                           WHERE MESSAGE_ID = " . $message_id;
+            $model->update($updateQuery);
         }
         
         ob_end_clean();
@@ -230,254 +743,6 @@ if (isset($_POST['acao']) && $_POST['acao'] == 'send_message') {
     exit;
 }
 
-
 ---------
 
-# DateTime Object Fix - [object Object] Issue
 
-## Problem
-Chat dates appearing as `[object Object]` instead of formatted dates.
-
-## Root Cause
-
-### SQL Server → PHP → JSON → JavaScript Flow
-
-1. **SQL Server** returns `MESSAGE_DATE` as datetime type
-2. **PHP** converts it to a `DateTime` object
-3. **json_encode()** serializes DateTime object as:
-   ```json
-   {
-     "date": "2025-01-15 14:30:45.000000",
-     "timezone_type": 3,
-     "timezone": "America/Sao_Paulo"
-   }
-   ```
-4. **JavaScript** receives an object, not a string
-5. **Date display** tries to show the object → `[object Object]`
-
-## Solution
-
-Convert DateTime objects to strings in PHP BEFORE sending to JavaScript.
-
-### Step 1: Add Helper Function
-
-Add this at the top of `ajax_encerramento.php` (after `json_encode_custom`):
-
-```php
-function formatMessagesForJson($messages) {
-    if (!is_array($messages)) {
-        return $messages;
-    }
-    
-    foreach ($messages as &$message) {
-        // Convert MESSAGE_DATE from DateTime object to string
-        if (isset($message['MESSAGE_DATE'])) {
-            if (is_object($message['MESSAGE_DATE'])) {
-                // Convert to 'YYYY-MM-DD HH:MM:SS' format
-                $message['MESSAGE_DATE'] = $message['MESSAGE_DATE']->format('Y-m-d H:i:s');
-            }
-        }
-    }
-    
-    return $messages;
-}
-```
-
-### Step 2: Use Helper in load_chat Handler
-
-Find the `load_chat` handler and add the conversion:
-
-```php
-if (isset($_POST['acao']) && $_POST['acao'] == 'load_chat') {
-    // ... existing code ...
-    
-    $messages = $model->getChatMessagesByGroup($chat_id, $userGroup, $target_group);
-    
-    // Ensure messages is array
-    if (!$messages) {
-        $messages = [];
-    } else if (!is_array($messages)) {
-        $messages = [$messages];
-    }
-    
-    // *** ADD THIS LINE ***
-    $messages = formatMessagesForJson($messages);
-    
-    // Send response
-    echo json_encode_custom([
-        'success' => true,
-        'messages' => $messages,
-        // ...
-    ]);
-}
-```
-
-## How It Works
-
-### Before Fix
-```
-PHP DateTime Object → JSON:
-{
-  "MESSAGE_DATE": {
-    "date": "2025-01-15 14:30:45.000000",
-    "timezone_type": 3,
-    "timezone": "America/Sao_Paulo"
-  }
-}
-
-JavaScript receives: Object
-Display shows: [object Object]
-```
-
-### After Fix
-```
-PHP DateTime Object → Convert to String → JSON:
-{
-  "MESSAGE_DATE": "2025-01-15 14:30:45"
-}
-
-JavaScript receives: String "2025-01-15 14:30:45"
-Parse with .replace(' ', 'T') → Valid Date
-Display shows: 15/01 14:30
-```
-
-## Testing
-
-### 1. Check PHP Output
-Add debug before JSON response:
-```php
-error_log('First message: ' . print_r($messages[0], true));
-```
-
-**Before fix:**
-```
-MESSAGE_DATE => DateTime Object (...)
-```
-
-**After fix:**
-```
-MESSAGE_DATE => 2025-01-15 14:30:45
-```
-
-### 2. Check JavaScript Console
-```javascript
-console.log('MESSAGE_DATE:', data.messages[0]?.MESSAGE_DATE);
-console.log('Type:', typeof data.messages[0]?.MESSAGE_DATE);
-```
-
-**Before fix:**
-```
-MESSAGE_DATE: {date: "2025-01-15 14:30:45.000000", ...}
-Type: object
-```
-
-**After fix:**
-```
-MESSAGE_DATE: 2025-01-15 14:30:45
-Type: string
-```
-
-### 3. Visual Check
-Chat should now show:
-```
-✅ 15/01 14:30
-✅ 16/01 09:15
-
-NOT:
-❌ [object Object]
-```
-
-## Alternative Solutions
-
-### Option A: Cast in SQL Query (Not Used)
-```php
-// In Model's getChatMessagesByGroup()
-$query = "SELECT 
-            CONVERT(VARCHAR, m.MESSAGE_DATE, 120) as MESSAGE_DATE,
-            ...";
-```
-**Pros:** Handles at database level  
-**Cons:** Must modify all queries, loses DateTime features
-
-### Option B: JSON Serializable Class (Overkill)
-```php
-class Message implements JsonSerializable {
-    public function jsonSerialize() {
-        return ['MESSAGE_DATE' => $this->date->format('Y-m-d H:i:s')];
-    }
-}
-```
-**Pros:** Object-oriented, reusable  
-**Cons:** Too complex for this use case
-
-### Option C: Helper Function (Our Choice) ✅
-```php
-function formatMessagesForJson($messages) {
-    // Convert DateTime to string
-}
-```
-**Pros:** Simple, maintainable, one place to fix  
-**Cons:** Must remember to call it
-
-## Why This Happens
-
-PHP's `DateTime` class implements `JsonSerializable` interface by default, which makes it serialize as an object with internal properties rather than as a simple string.
-
-### Default Behavior:
-```php
-$date = new DateTime('2025-01-15 14:30:45');
-echo json_encode(['date' => $date]);
-// Output: {"date":{"date":"2025-01-15 14:30:45.000000","timezone_type":3,"timezone":"UTC"}}
-```
-
-### Fixed Behavior:
-```php
-$date = new DateTime('2025-01-15 14:30:45');
-echo json_encode(['date' => $date->format('Y-m-d H:i:s')]);
-// Output: {"date":"2025-01-15 14:30:45"}
-```
-
-## Complete File Location
-
-**File:** `control/encerramento/roteamento/ajax_encerramento.php`
-
-**Add at top:** (after `json_encode_custom` function)
-```php
-function formatMessagesForJson($messages) { ... }
-```
-
-**Use in handler:** (inside `load_chat` if block)
-```php
-$messages = formatMessagesForJson($messages);
-```
-
-## If Still Showing [object Object]
-
-### Check 1: Function Added?
-```php
-// In ajax_encerramento.php
-if (!function_exists('formatMessagesForJson')) {
-    die('ERROR: formatMessagesForJson not defined');
-}
-```
-
-### Check 2: Function Called?
-```php
-// In load_chat handler
-error_log('Before format: ' . gettype($messages[0]['MESSAGE_DATE']));
-$messages = formatMessagesForJson($messages);
-error_log('After format: ' . gettype($messages[0]['MESSAGE_DATE']));
-// Should show: object → string
-```
-
-### Check 3: Correct Handler?
-Make sure you're updating the NEW `load_chat` handler with groups, not the old one.
-
-### Check 4: Cache?
-Clear browser cache and do a hard refresh (Ctrl + F5)
-
-## Summary
-
-The `[object Object]` issue occurs because PHP DateTime objects get serialized as complex objects in JSON. The fix converts them to simple strings (`Y-m-d H:i:s` format) before JSON encoding, which JavaScript can then properly parse and display.
-
-**Add one function, call it once, problem solved!** ✅
