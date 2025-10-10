@@ -1,748 +1,662 @@
--- Add ANEXO_LOCATION column to store file paths separately from message text
+<?php
+@session_start();
+require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
 
--- 1. Add the new column
-IF NOT EXISTS (
-    SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS 
-    WHERE TABLE_SCHEMA = 'MESU' 
-      AND TABLE_NAME = 'ENCERRAMENTO_TB_PORTAL_CHAT' 
-      AND COLUMN_NAME = 'ANEXO_LOCATION'
-)
-BEGIN
-    ALTER TABLE MESU..ENCERRAMENTO_TB_PORTAL_CHAT 
-    ADD ANEXO_LOCATION VARCHAR(500) NULL;
-    PRINT 'ANEXO_LOCATION column added successfully';
-END
-ELSE
-BEGIN
-    PRINT 'ANEXO_LOCATION column already exists';
-END;
-
--- 2. Migrate existing file data from MENSAGEM to ANEXO_LOCATION
--- This finds messages with [FILE:...] pattern and extracts the filename
-UPDATE MESU..ENCERRAMENTO_TB_PORTAL_CHAT
-SET ANEXO_LOCATION = SUBSTRING(
-    MENSAGEM, 
-    CHARINDEX('[FILE:', MENSAGEM) + 6, 
-    CHARINDEX(']', MENSAGEM, CHARINDEX('[FILE:', MENSAGEM)) - CHARINDEX('[FILE:', MENSAGEM) - 6
-),
-MENSAGEM = LTRIM(RTRIM(REPLACE(MENSAGEM, 
-    SUBSTRING(MENSAGEM, CHARINDEX('[FILE:', MENSAGEM), 
-    CHARINDEX(']', MENSAGEM, CHARINDEX('[FILE:', MENSAGEM)) - CHARINDEX('[FILE:', MENSAGEM) + 1), 
-    '')))
-WHERE MENSAGEM LIKE '%[FILE:%]%'
-  AND ANEXO_LOCATION IS NULL;
-
-PRINT 'Migrated ' + CAST(@@ROWCOUNT AS VARCHAR) + ' existing file references';
-
--- 3. Verify the structure
-SELECT 
-    COLUMN_NAME, 
-    DATA_TYPE, 
-    IS_NULLABLE,
-    CHARACTER_MAXIMUM_LENGTH
-FROM INFORMATION_SCHEMA.COLUMNS
-WHERE TABLE_SCHEMA = 'MESU' 
-  AND TABLE_NAME = 'ENCERRAMENTO_TB_PORTAL_CHAT'
-  AND COLUMN_NAME IN ('MENSAGEM', 'ANEXO', 'ANEXO_LOCATION')
-ORDER BY ORDINAL_POSITION;
-
--- 4. Check migrated data
-SELECT TOP 10
-    MESSAGE_ID,
-    CHAT_ID,
-    REMETENTE,
-    LEFT(MENSAGEM, 50) as MENSAGEM_PREVIEW,
-    ANEXO,
-    ANEXO_LOCATION,
-    MESSAGE_DATE
-FROM MESU..ENCERRAMENTO_TB_PORTAL_CHAT
-WHERE ANEXO = 1
-ORDER BY MESSAGE_DATE DESC;
-
--- 5. Create index for better performance
-IF NOT EXISTS (
-    SELECT 1 FROM sys.indexes 
-    WHERE name = 'IDX_ANEXO' 
-      AND object_id = OBJECT_ID('MESU..ENCERRAMENTO_TB_PORTAL_CHAT')
-)
-BEGIN
-    CREATE INDEX IDX_ANEXO 
-    ON MESU..ENCERRAMENTO_TB_PORTAL_CHAT(ANEXO, ANEXO_LOCATION);
-    PRINT 'Index on ANEXO created';
-END;
-
-PRINT '';
-PRINT '=== Summary ===';
-PRINT 'Column ANEXO_LOCATION added to store file paths';
-PRINT 'Messages with [FILE:...] patterns have been migrated';
-PRINT 'File location now stored separately from message text';
-PRINT '';
-PRINT 'Table structure:';
-PRINT '- MENSAGEM: Message text only (no file references)';
-PRINT '- ANEXO: 1 if file attached, 0 if not';
-PRINT '- ANEXO_LOCATION: Filename (e.g., "123_document.pdf")';
-
----------
-
-// Send chat message to specific group - UPDATED to use ANEXO_LOCATION
-if (isset($_POST['acao']) && $_POST['acao'] == 'send_message') {
-    ob_start();
-    try {
-        require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
-        require_once '../permissions_config.php';
-        
-        $cod_solicitacao = isset($_POST['cod_solicitacao']) ? intval($_POST['cod_solicitacao']) : 0;
-        $mensagem = isset($_POST['mensagem']) ? trim($_POST['mensagem']) : '';
-        $target_group = isset($_POST['target_group']) ? $_POST['target_group'] : '';
-        $cod_usu = isset($_SESSION['cod_usu']) ? intval($_SESSION['cod_usu']) : 0;
-        $userGroup = getUserGroup($cod_usu);
-        
-        // Check if message or file exists
-        $hasFile = isset($_FILES['arquivo']) && $_FILES['arquivo']['error'] === UPLOAD_ERR_OK;
-        
-        if (empty($mensagem) && !$hasFile) {
-            ob_end_clean();
-            header('Content-Type: application/json');
-            echo json_encode_custom(['success' => false, 'message' => 'Mensagem vazia']);
-            exit;
-        }
-        
-        // Validate target group
-        $valid_targets = ['OP_MANAGEMENT', 'COM_MANAGEMENT', 'BLOQ_MANAGEMENT', 'ENC_MANAGEMENT'];
-        if (!in_array($target_group, $valid_targets)) {
-            ob_end_clean();
-            header('Content-Type: application/json');
-            echo json_encode_custom(['success' => false, 'message' => 'Grupo inválido']);
-            exit;
-        }
-        
-        // Validate permissions
-        if ($userGroup !== 'ENC_MANAGEMENT' && $target_group !== 'ENC_MANAGEMENT') {
-            ob_end_clean();
-            header('Content-Type: application/json');
-            echo json_encode_custom(['success' => false, 'message' => 'Sem permissão para enviar para este grupo']);
-            exit;
-        }
-        
-        $model = new Analise();
-        $chat_id = $model->createChatIfNotExists($cod_solicitacao);
-        
-        // Handle file upload first if present
-        $anexo_location = null;
-        if ($hasFile) {
-            $upload_dir = 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\view\encerramento\anexos\\';
-            $user_dir = $upload_dir . $cod_usu . '\\';
-            
-            if (!file_exists($user_dir)) {
-                mkdir($user_dir, 0777, true);
-            }
-            
-            // Generate temporary filename for now (will update with MESSAGE_ID after insert)
-            $temp_file_name = time() . '_' . basename($_FILES['arquivo']['name']);
-            $temp_file_path = $user_dir . $temp_file_name;
-            
-            if (move_uploaded_file($_FILES['arquivo']['tmp_name'], $temp_file_path)) {
-                $anexo_location = $temp_file_name;
-            } else {
-                ob_end_clean();
-                header('Content-Type: application/json');
-                echo json_encode_custom(['success' => false, 'message' => 'Erro ao fazer upload do arquivo']);
-                exit;
-            }
-        }
-        
-        // Determine sender and recipient groups
-        $sender_group = $userGroup;
-        $recipient_group = $target_group;
-        
-        // Send message with file info
-        $anexo = $hasFile ? 1 : 0;
-        $result = $model->sendChatMessageToGroup($chat_id, $mensagem, $cod_usu, $sender_group, $recipient_group, $anexo);
-        
-        // Update with proper filename including MESSAGE_ID
-        if ($result && $hasFile && $anexo_location) {
-            $message_id = $model->getLastMessageId();
-            
-            // Rename file to include MESSAGE_ID
-            $final_file_name = $message_id . '_' . basename($_FILES['arquivo']['name']);
-            $user_dir = $upload_dir . $cod_usu . '\\';
-            $old_path = $user_dir . $anexo_location;
-            $new_path = $user_dir . $final_file_name;
-            
-            if (file_exists($old_path)) {
-                rename($old_path, $new_path);
-            }
-            
-            // Update database with final filename
-            $updateQuery = "UPDATE MESU..ENCERRAMENTO_TB_PORTAL_CHAT 
-                           SET ANEXO_LOCATION = '" . addslashes($final_file_name) . "'
-                           WHERE MESSAGE_ID = " . $message_id;
-            $model->update($updateQuery);
-        }
-        
-        ob_end_clean();
-        header('Content-Type: application/json');
-        echo json_encode_custom([
-            'success' => true,
-            'message' => 'Mensagem enviada'
-        ]);
-    } catch (Exception $e) {
-        ob_end_clean();
-        header('Content-Type: application/json');
-        echo json_encode_custom(['success' => false, 'message' => $e->getMessage()]);
-    }
-    exit;
-}
-
-----------
-
-// Replace the chat functions in analise_encerramento.js
-
-// Initialize chat when tab is opened
-window.initializeChat = function(codSolicitacao) {
-    // Get the first contact's group
-    const firstContact = document.querySelector('.chat-contact[data-solicitacao="' + codSolicitacao + '"]');
-    if (firstContact) {
-        const targetGroup = firstContact.getAttribute('data-group');
-        loadChatForGroup(codSolicitacao, targetGroup);
-        startChatPolling(codSolicitacao);
-    }
-};
-
-// Select a chat contact
-window.selectChatContact = function(event, targetGroup, codSolicitacao) {
-    event.preventDefault();
+class EncerramentoMassa {
+    private $model;
+    private $instituicao = '60746948'; // Código Bradesco
     
-    // Update active state
-    document.querySelectorAll('.chat-contact[data-solicitacao="' + codSolicitacao + '"]').forEach(contact => {
-        contact.classList.remove('active');
-    });
-    event.currentTarget.classList.add('active');
-    
-    // Update selected group
-    const selectedGroupInput = document.getElementById('chatSelectedGroup-' + codSolicitacao);
-    if (selectedGroupInput) {
-        selectedGroupInput.value = targetGroup;
+    public function __construct() {
+        $this->model = new Analise();
     }
     
-    // Update contact name in header
-    const contactNameEl = document.getElementById('chatContactName-' + codSolicitacao);
-    if (contactNameEl) {
-        const contactName = event.currentTarget.querySelector('.fw-bold').textContent;
-        contactNameEl.textContent = contactName;
-    }
-    
-    // Load messages for this group
-    loadChatForGroup(codSolicitacao, targetGroup);
-};
-
-// Load chat messages for specific group
-function loadChatForGroup(codSolicitacao, targetGroup) {
-    const formData = new FormData();
-    formData.append('acao', 'load_chat');
-    formData.append('cod_solicitacao', codSolicitacao);
-    formData.append('target_group', targetGroup);
-    
-    fetch(AJAX_URL, {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        console.log('Chat response:', data);
-        if (data.success) {
-            renderChatMessages(codSolicitacao, data.messages);
-        } else {
-            console.error('Chat error:', data.message);
-            const container = document.getElementById('chatMessages-' + codSolicitacao);
-            if (container) {
-                container.innerHTML = '<div class="text-center text-danger py-4"><p>Erro ao carregar chat: ' + (data.message || 'Erro desconhecido') + '</p></div>';
-            }
-        }
-    })
-    .catch(error => {
-        console.error('Chat load error:', error);
-        const container = document.getElementById('chatMessages-' + codSolicitacao);
-        if (container) {
-            container.innerHTML = '<div class="text-center text-danger py-4"><p>Erro ao carregar chat</p></div>';
-        }
-    });
-}
-
-function renderChatMessages(codSolicitacao, messages) {
-    const container = document.getElementById('chatMessages-' + codSolicitacao);
-    if (!container) return;
-    
-    // Ensure messages is an array
-    if (!messages || !Array.isArray(messages)) {
-        messages = [];
-    }
-    
-    if (messages.length === 0) {
-        container.innerHTML = '<div class="text-center text-muted py-4"><p>Nenhuma mensagem ainda. Seja o primeiro a enviar!</p></div>';
-        return;
-    }
-    
-    let html = '<div class="chat">';
-    messages.forEach(msg => {
-        const isOwnMessage = msg.REMETENTE == window.userPermissions.codUsu;
-        
-        html += '<div class="chat-item mb-3">';
-        html += '<div class="row align-items-end ' + (isOwnMessage ? 'justify-content-end' : '') + '">';
-        
-        if (!isOwnMessage) {
-            html += '<div class="col-auto"><span class="avatar avatar-sm">' + (msg.REMETENTE_NOME ? msg.REMETENTE_NOME.substring(0, 2).toUpperCase() : 'U') + '</span></div>';
+    // Generate TXT from selected checkboxes
+    public function generateFromSelection($solicitacoes) {
+        if (empty($solicitacoes) || !is_array($solicitacoes)) {
+            return ['success' => false, 'message' => 'Nenhuma solicitação selecionada'];
         }
         
-        html += '<div class="col col-lg-6">';
-        html += '<div class="chat-bubble ' + (isOwnMessage ? 'chat-bubble-me' : '') + '">';
-        html += '<div class="chat-bubble-title">';
-        html += '<div class="row">';
-        html += '<div class="col chat-bubble-author">' + (msg.REMETENTE_NOME || 'Usuário') + '</div>';
+        $dados = $this->getDadosFromSolicitacoes($solicitacoes);
+        if (empty($dados)) {
+            return ['success' => false, 'message' => 'Dados não encontrados'];
+        }
         
-        // Parse SQL Server datetime format (YYYY-MM-DD HH:MM:SS)
-        let formattedDate = '';
-        if (msg.MESSAGE_DATE) {
-            try {
-                // SQL Server datetime comes as string: "2025-01-15 14:30:45"
-                // Replace space with 'T' for proper ISO format, or parse manually
-                let dateStr = msg.MESSAGE_DATE;
-                
-                // Handle SQL Server datetime format
-                if (typeof dateStr === 'string') {
-                    // Replace space with T for ISO format: "2025-01-15T14:30:45"
-                    dateStr = dateStr.replace(' ', 'T');
+        return $this->generateTXT($dados);
+    }
+    
+    // Generate TXT from Excel import
+    public function generateFromExcel($filePath) {
+        if (!file_exists($filePath)) {
+            return ['success' => false, 'message' => 'Arquivo não encontrado'];
+        }
+        
+        require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\Lib\PhpSpreadsheet\vendor\autoload.php';
+        
+        try {
+            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($filePath);
+            $worksheet = $spreadsheet->getActiveSheet();
+            $rows = $worksheet->toArray();
+            
+            $chaveLojas = [];
+            foreach ($rows as $index => $row) {
+                if ($index === 0) continue; // Skip header
+                if (!empty($row[0])) {
+                    $chaveLojas[] = $row[0];
                 }
-                
-                const messageDate = new Date(dateStr);
-                
-                // Check if date is valid
-                if (!isNaN(messageDate.getTime())) {
-                    const day = String(messageDate.getDate()).padStart(2, '0');
-                    const month = String(messageDate.getMonth() + 1).padStart(2, '0');
-                    const hours = String(messageDate.getHours()).padStart(2, '0');
-                    const minutes = String(messageDate.getMinutes()).padStart(2, '0');
-                    formattedDate = day + '/' + month + ' ' + hours + ':' + minutes;
-                } else {
-                    formattedDate = dateStr; // Show raw string if parsing fails
-                }
-            } catch (e) {
-                console.error('Date parsing error:', e, msg.MESSAGE_DATE);
-                formattedDate = msg.MESSAGE_DATE || '';
             }
-        }
-        
-        html += '<div class="col-auto chat-bubble-date">' + formattedDate + '</div>';
-        html += '</div></div>';
-        
-        html += '<div class="chat-bubble-body">';
-        
-        const hasFile = msg.MENSAGEM && msg.MENSAGEM.includes('[FILE:');
-        let messageText = msg.MENSAGEM || '';
-        let fileName = '';
-        
-        if (hasFile) {
-            const fileMatch = msg.MENSAGEM.match(/\[FILE:(.*?)\]/);
-            if (fileMatch) {
-                fileName = fileMatch[1];
-                messageText = msg.MENSAGEM.replace(/\[FILE:.*?\]/, '').trim();
+            
+            if (empty($chaveLojas)) {
+                return ['success' => false, 'message' => 'Nenhuma Chave Loja encontrada no arquivo'];
             }
+            
+            $dados = $this->getDadosFromChaveLojas($chaveLojas);
+            return $this->generateTXT($dados);
+            
+        } catch (Exception $e) {
+            return ['success' => false, 'message' => 'Erro ao processar Excel: ' . $e->getMessage()];
         }
-        
-        if (messageText) {
-            html += '<p class="mb-0">' + escapeHtml(messageText) + '</p>';
-        }
-        
-        if (hasFile && fileName) {
-            html += '<div class="mt-2">';
-            html += '<a href="./view/encerramento/anexos/' + msg.REMETENTE + '/' + fileName + '" target="_blank" class="btn btn-sm ' + (isOwnMessage ? 'btn-light' : 'btn-outline-primary') + '">';
-            html += '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-sm me-1">';
-            html += '<path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>';
-            html += '</svg>';
-            html += fileName;
-            html += '</a></div>';
-        }
-        
-        html += '</div></div></div>';
-        
-        if (isOwnMessage) {
-            html += '<div class="col-auto"><span class="avatar avatar-sm bg-primary-lt">' + (msg.REMETENTE_NOME ? msg.REMETENTE_NOME.substring(0, 2).toUpperCase() : 'EU') + '</span></div>';
-        }
-        
-        html += '</div></div>';
-    });
-    html += '</div>';
+    }
     
-    container.innerHTML = html;
-    container.scrollTop = container.scrollHeight;
+    private function getDadosFromSolicitacoes($solicitacoes) {
+        $where = "AND A.COD_SOLICITACAO IN (" . implode(',', array_map('intval', $solicitacoes)) . ")";
+        return $this->model->solicitacoes($where, 9999, 0);
+    }
+    
+    private function getDadosFromChaveLojas($chaveLojas) {
+        $where = "AND A.CHAVE_LOJA IN (" . implode(',', array_map('intval', $chaveLojas)) . ")";
+        return $this->model->solicitacoes($where, 9999, 0);
+    }
+    
+    private function generateTXT($dados) {
+        $linhas = [];
+        
+        // Header (Leiaute 1)
+        $linhas[] = $this->gerarHeader(count($dados));
+        
+        // Details (Leiaute 2)
+        $sequencial = 1;
+        foreach ($dados as $row) {
+            $linhas[] = $this->gerarDetalhe($row, $sequencial);
+            $sequencial++;
+        }
+        
+        // Trailer (Leiaute 9)
+        $linhas[] = $this->gerarTrailer(count($dados));
+        
+        $conteudo = implode("\r\n", $linhas);
+        $nomeArquivo = 'ENCERRAMENTO_' . date('Ymd_His') . '.txt';
+        
+        return [
+            'success' => true,
+            'conteudo' => $conteudo,
+            'nomeArquivo' => $nomeArquivo,
+            'totalRegistros' => count($dados)
+        ];
+    }
+    
+    private function gerarHeader($totalRegistros) {
+        $tipo = '0';
+        $instituicao = str_pad($this->instituicao, 8, '0', STR_PAD_LEFT);
+        $tipoDocumento = '02'; // Encerramento
+        $dataGeracao = date('Ymd');
+        $horaGeracao = date('His');
+        $sequencial = str_pad('1', 6, '0', STR_PAD_LEFT);
+        $versaoLayout = '001';
+        
+        $linha = $tipo;
+        $linha .= $instituicao;
+        $linha .= $tipoDocumento;
+        $linha .= $dataGeracao;
+        $linha .= $horaGeracao;
+        $linha .= $sequencial;
+        $linha .= $versaoLayout;
+        $linha .= str_repeat(' ', 250 - strlen($linha)); // Preencher até 250 caracteres
+        
+        return substr($linha, 0, 250);
+    }
+    
+    private function gerarDetalhe($row, $sequencial) {
+        $tipo = '2';
+        $instituicao = str_pad($this->instituicao, 8, '0', STR_PAD_LEFT);
+        $agencia = str_pad($row['COD_AG'], 4, '0', STR_PAD_LEFT);
+        $chaveLoja = str_pad($row['CHAVE_LOJA'], 10, '0', STR_PAD_LEFT);
+        $cnpj = str_pad(preg_replace('/\D/', '', $row['CNPJ']), 14, '0', STR_PAD_LEFT);
+        $razaoSocial = str_pad(substr($row['NOME_LOJA'], 0, 60), 60, ' ', STR_PAD_RIGHT);
+        $dataEncerramento = date('Ymd'); // Data atual
+        $motivoEncerramento = $this->getMotivoCodigoBacen($row['MOTIVO_ENC']);
+        $sequencialStr = str_pad($sequencial, 6, '0', STR_PAD_LEFT);
+        
+        $linha = $tipo;
+        $linha .= $instituicao;
+        $linha .= $agencia;
+        $linha .= $chaveLoja;
+        $linha .= $cnpj;
+        $linha .= $razaoSocial;
+        $linha .= $dataEncerramento;
+        $linha .= $motivoEncerramento;
+        $linha .= $sequencialStr;
+        $linha .= str_repeat(' ', 250 - strlen($linha));
+        
+        return substr($linha, 0, 250);
+    }
+    
+    private function gerarTrailer($totalRegistros) {
+        $tipo = '9';
+        $quantidadeRegistros = str_pad($totalRegistros, 10, '0', STR_PAD_LEFT);
+        
+        $linha = $tipo;
+        $linha .= $quantidadeRegistros;
+        $linha .= str_repeat(' ', 250 - strlen($linha));
+        
+        return substr($linha, 0, 250);
+    }
+    
+    private function getMotivoCodigoBacen($motivoInterno) {
+        // Mapear códigos internos para códigos BACEN
+        $mapeamento = [
+            '56' => '01', // Baixa Performance
+            '61' => '01', // Abaixo ponto equilíbrio
+            '34' => '02', // Apropriação indébita
+            '37' => '02', // Cobrança indevida
+            '39' => '02', // Suspeita fraude
+            '55' => '03', // Desvio finalidade
+            '62' => '04', // Falta prestação contas
+            '32' => '05', // Inadimplência
+            '33' => '05', // Restrições financeiras
+            '64' => '05', // Saldo maior que limite
+            '63' => '06', // Inoperante
+            '38' => '06', // Tempo inoperância
+            '69' => '06', // Inoperância 24+ meses
+            '3' => '07',  // Encerramento atividades
+            '25' => '07', // Fechou estabelecimento
+            '8' => '08',  // Vigilância sanitária
+        ];
+        
+        return str_pad($mapeamento[$motivoInterno] ?? '99', 2, '0', STR_PAD_LEFT);
+    }
 }
 
-window.sendChatMessage = function(codSolicitacao) {
-    const input = document.getElementById('chatInput-' + codSolicitacao);
-    const fileInput = document.getElementById('chatFile-' + codSolicitacao);
-    const selectedGroupInput = document.getElementById('chatSelectedGroup-' + codSolicitacao);
+// Handle POST requests
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $handler = new EncerramentoMassa();
     
-    const mensagem = input.value.trim();
-    const targetGroup = selectedGroupInput ? selectedGroupInput.value : '';
-    
-    if (!mensagem && !fileInput.files.length) {
-        showNotification('Digite uma mensagem ou selecione um arquivo', 'error');
-        return;
-    }
-    
-    if (!targetGroup) {
-        showNotification('Selecione um contato', 'error');
-        return;
-    }
-    
-    const formData = new FormData();
-    formData.append('acao', 'send_message');
-    formData.append('cod_solicitacao', codSolicitacao);
-    formData.append('mensagem', mensagem);
-    formData.append('target_group', targetGroup);
-    
-    if (fileInput.files.length) {
-        formData.append('arquivo', fileInput.files[0]);
-    }
-    
-    // Disable input while sending
-    input.disabled = true;
-    
-    fetch(AJAX_URL, {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            input.value = '';
-            fileInput.value = '';
-            document.getElementById('chatFileName-' + codSolicitacao).textContent = '';
-            loadChatForGroup(codSolicitacao, targetGroup);
+    if (isset($_POST['acao']) && $_POST['acao'] === 'gerar_txt_selection') {
+        $solicitacoes = json_decode($_POST['solicitacoes'] ?? '[]', true);
+        $result = $handler->generateFromSelection($solicitacoes);
+        
+        if ($result['success']) {
+            header('Content-Type: text/plain');
+            header('Content-Disposition: attachment; filename="' . $result['nomeArquivo'] . '"');
+            header('Content-Length: ' . strlen($result['conteudo']));
+            echo $result['conteudo'];
         } else {
-            showNotification('Erro ao enviar mensagem: ' + data.message, 'error');
-        }
-        input.disabled = false;
-        input.focus();
-    })
-    .catch(error => {
-        console.error('Send message error:', error);
-        showNotification('Erro ao enviar mensagem', 'error');
-        input.disabled = false;
-    });
-};
-
-window.handleFileSelect = function(codSolicitacao) {
-    const fileInput = document.getElementById('chatFile-' + codSolicitacao);
-    const fileNameDisplay = document.getElementById('chatFileName-' + codSolicitacao);
-    
-    if (fileInput.files.length > 0) {
-        const fileName = fileInput.files[0].name;
-        const fileSize = (fileInput.files[0].size / 1024 / 1024).toFixed(2);
-        fileNameDisplay.textContent = 'Arquivo: ' + fileName + ' (' + fileSize + ' MB)';
-    } else {
-        fileNameDisplay.textContent = '';
-    }
-};
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-// Poll for new messages every 5 seconds
-let chatPollingIntervals = {};
-
-function startChatPolling(codSolicitacao) {
-    if (chatPollingIntervals[codSolicitacao]) {
-        clearInterval(chatPollingIntervals[codSolicitacao]);
-    }
-    
-    chatPollingIntervals[codSolicitacao] = setInterval(() => {
-        const selectedGroupInput = document.getElementById('chatSelectedGroup-' + codSolicitacao);
-        if (selectedGroupInput) {
-            const targetGroup = selectedGroupInput.value;
-            loadChatForGroup(codSolicitacao, targetGroup);
-        }
-    }, 5000);
-}
-
-// Stop polling when modal closes
-document.addEventListener('DOMContentLoaded', function() {
-    document.addEventListener('hidden.bs.modal', function(e) {
-        const modalId = e.target.id;
-        const match = modalId.match(/AnaliseDetalhesModal(\d+)/);
-        if (match) {
-            const codSolicitacao = match[1];
-            if (chatPollingIntervals[codSolicitacao]) {
-                clearInterval(chatPollingIntervals[codSolicitacao]);
-                delete chatPollingIntervals[codSolicitacao];
-            }
-        }
-    });
-});
-
-----------
-
-// Replace the chat methods in analise_encerramento_model.class.php
-
-public function createChatIfNotExists($cod_solicitacao) {
-    $query = "SELECT CHAT_ID FROM MESU..ENCERRAMENTO_TB_PORTAL WHERE COD_SOLICITACAO = " . intval($cod_solicitacao);
-    $result = $this->sql->select($query);
-    
-    if (!$result || !isset($result[0]['CHAT_ID']) || !$result[0]['CHAT_ID']) {
-        // Use COD_SOLICITACAO as CHAT_ID (each solicitacao has one chat)
-        $chatId = intval($cod_solicitacao);
-        
-        // Update main table with chat_id
-        $updateQuery = "UPDATE MESU..ENCERRAMENTO_TB_PORTAL SET CHAT_ID = " . $chatId . 
-                      " WHERE COD_SOLICITACAO = " . intval($cod_solicitacao);
-        $this->sql->update($updateQuery);
-        
-        return $chatId;
-    }
-    
-    return intval($result[0]['CHAT_ID']);
-}
-
-public function getChatMessagesByGroup($chat_id, $user_group, $target_group) {
-    // Messages are visible if:
-    // 1. User is sender and target is recipient_group OR
-    // 2. User's group is recipient_group and sender_group is target
-    
-    $query = "SELECT m.*, 
-              f.nome_func as REMETENTE_NOME,
-              m.SENDER_GROUP,
-              m.RECIPIENT_GROUP,
-              m.ANEXO,
-              m.ANEXO_LOCATION
-              FROM MESU..ENCERRAMENTO_TB_PORTAL_CHAT m
-              LEFT JOIN RH..TB_FUNCIONARIOS f ON m.REMETENTE = f.COD_FUNC
-              WHERE m.CHAT_ID = " . intval($chat_id) . "
-              AND (
-                  (m.SENDER_GROUP = '" . addslashes($user_group) . "' AND m.RECIPIENT_GROUP = '" . addslashes($target_group) . "')
-                  OR
-                  (m.SENDER_GROUP = '" . addslashes($target_group) . "' AND m.RECIPIENT_GROUP = '" . addslashes($user_group) . "')
-              )
-              ORDER BY m.MESSAGE_DATE ASC";
-    
-    $result = $this->sql->select($query);
-    
-    // Ensure we always return an array
-    if (!$result) {
-        return [];
-    }
-    
-    return $result;
-}
-
-public function sendChatMessageToGroup($chat_id, $mensagem, $remetente, $sender_group, $recipient_group, $anexo = 0) {
-    // Allow empty message if file is attached
-    if (empty($mensagem)) {
-        $mensagem = ''; // Ensure it's empty string, not NULL
-    }
-    
-    $query = "INSERT INTO MESU..ENCERRAMENTO_TB_PORTAL_CHAT 
-              (CHAT_ID, MENSAGEM, DESTINATARIO, REMETENTE, SENDER_GROUP, RECIPIENT_GROUP, ANEXO) 
-              VALUES (" . intval($chat_id) . ", 
-                     '" . addslashes($mensagem) . "', 
-                     0, 
-                     " . intval($remetente) . ", 
-                     '" . addslashes($sender_group) . "',
-                     '" . addslashes($recipient_group) . "',
-                     " . intval($anexo) . ")";
-    return $this->sql->insert($query);
-}
-
-public function getLastMessageId() {
-    $query = "SELECT IDENT_CURRENT('MESU.ENCERRAMENTO_TB_PORTAL_CHAT') as MESSAGE_ID";
-    $result = $this->sql->select($query);
-    return intval($result[0]['MESSAGE_ID']);
-}
-
-// Keep old method for backward compatibility if needed
-public function getChatMessages($chat_id) {
-    return $this->getChatMessagesByGroup($chat_id, '', '');
-}
-
-----------
-
-// Add this helper function at the top (after json_encode_custom function)
-
-function formatMessagesForJson($messages) {
-    if (!is_array($messages)) {
-        return $messages;
-    }
-    
-    foreach ($messages as &$message) {
-        // Convert DateTime objects to strings
-        if (isset($message['MESSAGE_DATE'])) {
-            if (is_object($message['MESSAGE_DATE'])) {
-                $message['MESSAGE_DATE'] = $message['MESSAGE_DATE']->format('Y-m-d H:i:s');
-            }
-        }
-    }
-    
-    return $messages;
-}
-
-// Replace the chat handlers in ajax_encerramento.php
-
-// Load chat messages for specific group
-if (isset($_POST['acao']) && $_POST['acao'] == 'load_chat') {
-    ob_start();
-    try {
-        require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
-        require_once '../permissions_config.php';
-        
-        $cod_solicitacao = isset($_POST['cod_solicitacao']) ? intval($_POST['cod_solicitacao']) : 0;
-        $target_group = isset($_POST['target_group']) ? $_POST['target_group'] : '';
-        $cod_usu = isset($_SESSION['cod_usu']) ? intval($_SESSION['cod_usu']) : 0;
-        $userGroup = getUserGroup($cod_usu);
-        
-        $model = new Analise();
-        $chat_id = $model->createChatIfNotExists($cod_solicitacao);
-        
-        // Get messages filtered by group
-        $messages = $model->getChatMessagesByGroup($chat_id, $userGroup, $target_group);
-        
-        // Ensure messages is always an array
-        if (!$messages) {
-            $messages = [];
-        } else if (!is_array($messages)) {
-            $messages = [$messages];
-        }
-        
-        // Convert DateTime objects to strings for JSON
-        $messages = formatMessagesForJson($messages);
-        
-        ob_end_clean();
-        header('Content-Type: application/json');
-        echo json_encode_custom([
-            'success' => true,
-            'chat_id' => $chat_id,
-            'messages' => $messages,
-            'target_group' => $target_group
-        ]);
-    } catch (Exception $e) {
-        ob_end_clean();
-        header('Content-Type: application/json');
-        echo json_encode_custom(['success' => false, 'message' => $e->getMessage()]);
-    }
-    exit;
-}
-
-// Send chat message to specific group - UPDATED to use ANEXO_LOCATION
-if (isset($_POST['acao']) && $_POST['acao'] == 'send_message') {
-    ob_start();
-    try {
-        require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
-        require_once '../permissions_config.php';
-        
-        $cod_solicitacao = isset($_POST['cod_solicitacao']) ? intval($_POST['cod_solicitacao']) : 0;
-        $mensagem = isset($_POST['mensagem']) ? trim($_POST['mensagem']) : '';
-        $target_group = isset($_POST['target_group']) ? $_POST['target_group'] : '';
-        $cod_usu = isset($_SESSION['cod_usu']) ? intval($_SESSION['cod_usu']) : 0;
-        $userGroup = getUserGroup($cod_usu);
-        
-        // Check if message or file exists
-        $hasFile = isset($_FILES['arquivo']) && $_FILES['arquivo']['error'] === UPLOAD_ERR_OK;
-        
-        if (empty($mensagem) && !$hasFile) {
-            ob_end_clean();
             header('Content-Type: application/json');
-            echo json_encode_custom(['success' => false, 'message' => 'Mensagem vazia']);
-            exit;
+            echo json_encode($result);
         }
-        
-        // Validate target group
-        $valid_targets = ['OP_MANAGEMENT', 'COM_MANAGEMENT', 'BLOQ_MANAGEMENT', 'ENC_MANAGEMENT'];
-        if (!in_array($target_group, $valid_targets)) {
-            ob_end_clean();
-            header('Content-Type: application/json');
-            echo json_encode_custom(['success' => false, 'message' => 'Grupo inválido']);
-            exit;
-        }
-        
-        // Validate permissions
-        if ($userGroup !== 'ENC_MANAGEMENT' && $target_group !== 'ENC_MANAGEMENT') {
-            ob_end_clean();
-            header('Content-Type: application/json');
-            echo json_encode_custom(['success' => false, 'message' => 'Sem permissão para enviar para este grupo']);
-            exit;
-        }
-        
-        $model = new Analise();
-        $chat_id = $model->createChatIfNotExists($cod_solicitacao);
-        
-        // Handle file upload first if present
-        $anexo_location = null;
-        if ($hasFile) {
-            $upload_dir = 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\view\encerramento\anexos\\';
-            $user_dir = $upload_dir . $cod_usu . '\\';
+        exit;
+    }
+    
+    if (isset($_POST['acao']) && $_POST['acao'] === 'gerar_txt_excel') {
+        if (isset($_FILES['excel_file']) && $_FILES['excel_file']['error'] === UPLOAD_ERR_OK) {
+            $result = $handler->generateFromExcel($_FILES['excel_file']['tmp_name']);
             
-            if (!file_exists($user_dir)) {
-                mkdir($user_dir, 0777, true);
-            }
-            
-            // Generate temporary filename for now (will update with MESSAGE_ID after insert)
-            $temp_file_name = time() . '_' . basename($_FILES['arquivo']['name']);
-            $temp_file_path = $user_dir . $temp_file_name;
-            
-            if (move_uploaded_file($_FILES['arquivo']['tmp_name'], $temp_file_path)) {
-                $anexo_location = $temp_file_name;
+            if ($result['success']) {
+                header('Content-Type: text/plain');
+                header('Content-Disposition: attachment; filename="' . $result['nomeArquivo'] . '"');
+                header('Content-Length: ' . strlen($result['conteudo']));
+                echo $result['conteudo'];
             } else {
-                ob_end_clean();
                 header('Content-Type: application/json');
-                echo json_encode_custom(['success' => false, 'message' => 'Erro ao fazer upload do arquivo']);
-                exit;
+                echo json_encode($result);
             }
+        } else {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'message' => 'Arquivo não enviado']);
         }
-        
-        // Determine sender and recipient groups
-        $sender_group = $userGroup;
-        $recipient_group = $target_group;
-        
-        // Send message with file info
-        $anexo = $hasFile ? 1 : 0;
-        $result = $model->sendChatMessageToGroup($chat_id, $mensagem, $cod_usu, $sender_group, $recipient_group, $anexo);
-        
-        // Update with proper filename including MESSAGE_ID
-        if ($result && $hasFile && $anexo_location) {
-            $message_id = $model->getLastMessageId();
-            
-            // Rename file to include MESSAGE_ID
-            $final_file_name = $message_id . '_' . basename($_FILES['arquivo']['name']);
-            $user_dir = $upload_dir . $cod_usu . '\\';
-            $old_path = $user_dir . $anexo_location;
-            $new_path = $user_dir . $final_file_name;
-            
-            if (file_exists($old_path)) {
-                rename($old_path, $new_path);
-            }
-            
-            // Update database with final filename in ANEXO_LOCATION column
-            $updateQuery = "UPDATE MESU..ENCERRAMENTO_TB_PORTAL_CHAT 
-                           SET ANEXO_LOCATION = '" . addslashes($final_file_name) . "'
-                           WHERE MESSAGE_ID = " . $message_id;
-            $model->update($updateQuery);
-        }
-        
-        ob_end_clean();
-        header('Content-Type: application/json');
-        echo json_encode_custom([
-            'success' => true,
-            'message' => 'Mensagem enviada'
-        ]);
-    } catch (Exception $e) {
-        ob_end_clean();
-        header('Content-Type: application/json');
-        echo json_encode_custom(['success' => false, 'message' => $e->getMessage()]);
+        exit;
     }
-    exit;
+}
+?>
+
+
+-----------
+
+<?php
+@session_start();
+require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
+
+class EncerramentoMassa {
+    private $model;
+    private $instituicao = '60746948'; // Código Bradesco
+    
+    public function __construct() {
+        $this->model = new Analise();
+    }
+    
+    // Generate TXT from selected checkboxes
+    public function generateFromSelection($solicitacoes) {
+        if (empty($solicitacoes) || !is_array($solicitacoes)) {
+            return ['success' => false, 'message' => 'Nenhuma solicitação selecionada'];
+        }
+        
+        $dados = $this->getDadosFromSolicitacoes($solicitacoes);
+        if (empty($dados)) {
+            return ['success' => false, 'message' => 'Dados não encontrados'];
+        }
+        
+        return $this->generateTXT($dados);
+    }
+    
+    // Generate TXT from Excel import
+    public function generateFromExcel($filePath) {
+        if (!file_exists($filePath)) {
+            return ['success' => false, 'message' => 'Arquivo não encontrado'];
+        }
+        
+        require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\Lib\PhpSpreadsheet\vendor\autoload.php';
+        
+        try {
+            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($filePath);
+            $worksheet = $spreadsheet->getActiveSheet();
+            $rows = $worksheet->toArray();
+            
+            $chaveLojas = [];
+            foreach ($rows as $index => $row) {
+                if ($index === 0) continue; // Skip header
+                if (!empty($row[0])) {
+                    $chaveLojas[] = $row[0];
+                }
+            }
+            
+            if (empty($chaveLojas)) {
+                return ['success' => false, 'message' => 'Nenhuma Chave Loja encontrada no arquivo'];
+            }
+            
+            $dados = $this->getDadosFromChaveLojas($chaveLojas);
+            return $this->generateTXT($dados);
+            
+        } catch (Exception $e) {
+            return ['success' => false, 'message' => 'Erro ao processar Excel: ' . $e->getMessage()];
+        }
+    }
+    
+    private function getDadosFromSolicitacoes($solicitacoes) {
+        $where = "AND A.COD_SOLICITACAO IN (" . implode(',', array_map('intval', $solicitacoes)) . ")";
+        return $this->model->solicitacoes($where, 9999, 0);
+    }
+    
+    private function getDadosFromChaveLojas($chaveLojas) {
+        $where = "AND A.CHAVE_LOJA IN (" . implode(',', array_map('intval', $chaveLojas)) . ")";
+        return $this->model->solicitacoes($where, 9999, 0);
+    }
+    
+    private function generateTXT($dados) {
+        $linhas = [];
+        
+        // Header (Leiaute 1)
+        $linhas[] = $this->gerarHeader(count($dados));
+        
+        // Details (Leiaute 2)
+        $sequencial = 1;
+        foreach ($dados as $row) {
+            $linhas[] = $this->gerarDetalhe($row, $sequencial);
+            $sequencial++;
+        }
+        
+        // Trailer (Leiaute 9)
+        $linhas[] = $this->gerarTrailer(count($dados));
+        
+        $conteudo = implode("\r\n", $linhas);
+        $nomeArquivo = 'ENCERRAMENTO_' . date('Ymd_His') . '.txt';
+        
+        return [
+            'success' => true,
+            'conteudo' => $conteudo,
+            'nomeArquivo' => $nomeArquivo,
+            'totalRegistros' => count($dados)
+        ];
+    }
+    
+    private function gerarHeader($totalRegistros) {
+        $tipo = '0';
+        $instituicao = str_pad($this->instituicao, 8, '0', STR_PAD_LEFT);
+        $tipoDocumento = '02'; // Encerramento
+        $dataGeracao = date('Ymd');
+        $horaGeracao = date('His');
+        $sequencial = str_pad('1', 6, '0', STR_PAD_LEFT);
+        $versaoLayout = '001';
+        
+        $linha = $tipo;
+        $linha .= $instituicao;
+        $linha .= $tipoDocumento;
+        $linha .= $dataGeracao;
+        $linha .= $horaGeracao;
+        $linha .= $sequencial;
+        $linha .= $versaoLayout;
+        $linha .= str_repeat(' ', 250 - strlen($linha)); // Preencher até 250 caracteres
+        
+        return substr($linha, 0, 250);
+    }
+    
+    private function gerarDetalhe($row, $sequencial) {
+        $tipo = '2';
+        $instituicao = str_pad($this->instituicao, 8, '0', STR_PAD_LEFT);
+        $agencia = str_pad($row['COD_AG'], 4, '0', STR_PAD_LEFT);
+        $chaveLoja = str_pad($row['CHAVE_LOJA'], 10, '0', STR_PAD_LEFT);
+        $cnpj = str_pad(preg_replace('/\D/', '', $row['CNPJ']), 14, '0', STR_PAD_LEFT);
+        $razaoSocial = str_pad(substr($row['NOME_LOJA'], 0, 60), 60, ' ', STR_PAD_RIGHT);
+        $dataEncerramento = date('Ymd'); // Data atual
+        $motivoEncerramento = $this->getMotivoCodigoBacen($row['MOTIVO_ENC']);
+        $sequencialStr = str_pad($sequencial, 6, '0', STR_PAD_LEFT);
+        
+        $linha = $tipo;
+        $linha .= $instituicao;
+        $linha .= $agencia;
+        $linha .= $chaveLoja;
+        $linha .= $cnpj;
+        $linha .= $razaoSocial;
+        $linha .= $dataEncerramento;
+        $linha .= $motivoEncerramento;
+        $linha .= $sequencialStr;
+        $linha .= str_repeat(' ', 250 - strlen($linha));
+        
+        return substr($linha, 0, 250);
+    }
+    
+    private function gerarTrailer($totalRegistros) {
+        $tipo = '9';
+        $quantidadeRegistros = str_pad($totalRegistros, 10, '0', STR_PAD_LEFT);
+        
+        $linha = $tipo;
+        $linha .= $quantidadeRegistros;
+        $linha .= str_repeat(' ', 250 - strlen($linha));
+        
+        return substr($linha, 0, 250);
+    }
+    
+    private function getMotivoCodigoBacen($motivoInterno) {
+        // Mapear códigos internos para códigos BACEN
+        $mapeamento = [
+            '56' => '01', // Baixa Performance
+            '61' => '01', // Abaixo ponto equilíbrio
+            '34' => '02', // Apropriação indébita
+            '37' => '02', // Cobrança indevida
+            '39' => '02', // Suspeita fraude
+            '55' => '03', // Desvio finalidade
+            '62' => '04', // Falta prestação contas
+            '32' => '05', // Inadimplência
+            '33' => '05', // Restrições financeiras
+            '64' => '05', // Saldo maior que limite
+            '63' => '06', // Inoperante
+            '38' => '06', // Tempo inoperância
+            '69' => '06', // Inoperância 24+ meses
+            '3' => '07',  // Encerramento atividades
+            '25' => '07', // Fechou estabelecimento
+            '8' => '08',  // Vigilância sanitária
+        ];
+        
+        return str_pad($mapeamento[$motivoInterno] ?? '99', 2, '0', STR_PAD_LEFT);
+    }
 }
 
----------
+// Handle POST requests
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $handler = new EncerramentoMassa();
+    
+    if (isset($_POST['acao']) && $_POST['acao'] === 'gerar_txt_selection') {
+        $solicitacoes = json_decode($_POST['solicitacoes'] ?? '[]', true);
+        $result = $handler->generateFromSelection($solicitacoes);
+        
+        if ($result['success']) {
+            header('Content-Type: text/plain');
+            header('Content-Disposition: attachment; filename="' . $result['nomeArquivo'] . '"');
+            header('Content-Length: ' . strlen($result['conteudo']));
+            echo $result['conteudo'];
+        } else {
+            header('Content-Type: application/json');
+            echo json_encode($result);
+        }
+        exit;
+    }
+    
+    if (isset($_POST['acao']) && $_POST['acao'] === 'gerar_txt_excel') {
+        if (isset($_FILES['excel_file']) && $_FILES['excel_file']['error'] === UPLOAD_ERR_OK) {
+            $result = $handler->generateFromExcel($_FILES['excel_file']['tmp_name']);
+            
+            if ($result['success']) {
+                header('Content-Type: text/plain');
+                header('Content-Disposition: attachment; filename="' . $result['nomeArquivo'] . '"');
+                header('Content-Length: ' . strlen($result['conteudo']));
+                echo $result['conteudo'];
+            } else {
+                header('Content-Type: application/json');
+                echo json_encode($result);
+            }
+        } else {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'message' => 'Arquivo não enviado']);
+        }
+        exit;
+    }
+}
+?>
 
 
+-------
+
+<?php if ($canViewBulk): ?>
+<div class="card mb-3" id="bulkActions" style="display: none;">
+  <div class="card-header">
+      <h3 class="card-title">Ações em Massa</h3>
+  </div>
+  <div class="card-body">
+      <div class="d-flex gap-2 mb-3">
+          <button class="btn btn-blue" onclick="sendBulkEmail('orgao_pagador')">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-envelope me-1" viewBox="0 0 16 16">
+                  <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4Zm2-1a1 1 0 0 0-1 1v.217l7 4.2 7-4.2V4a1 1 0 0 0-1-1H2Zm13 2.383-4.708 2.825L15 11.105V5.383Zm-.034 6.876-5.64-3.471L8 9.583l-1.326-.795-5.64 3.47A1 1 0 0 0 2 13h12a1 1 0 0 0 .966-.741ZM1 11.105l4.708-2.897L1 5.383v5.722Z"/>
+              </svg>
+              Órgão Pagador
+          </button>
+          <button class="btn btn-indigo" onclick="sendBulkEmail('comercial')">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-envelope me-1" viewBox="0 0 16 16">
+                  <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4Zm2-1a1 1 0 0 0-1 1v.217l7 4.2 7-4.2V4a1 1 0 0 0-1-1H2Zm13 2.383-4.708 2.825L15 11.105V5.383Zm-.034 6.876-5.64-3.471L8 9.583l-1.326-.795-5.64 3.47A1 1 0 0 0 2 13h12a1 1 0 0 0 .966-.741ZM1 11.105l4.708-2.897L1 5.383v5.722Z"/>
+              </svg>
+              Comercial
+          </button>
+          <button class="btn btn-teal" onclick="sendBulkEmail('van_material')">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-envelope me-1" viewBox="0 0 16 16">
+                  <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4Zm2-1a1 1 0 0 0-1 1v.217l7 4.2 7-4.2V4a1 1 0 0 0-1-1H2Zm13 2.383-4.708 2.825L15 11.105V5.383Zm-.034 6.876-5.64-3.471L8 9.583l-1.326-.795-5.64 3.47A1 1 0 0 0 2 13h12a1 1 0 0 0 .966-.741ZM1 11.105l4.708-2.897L1 5.383v5.722Z"/>
+              </svg>
+              Van-Material
+          </button>
+          <button class="btn btn-lime" onclick="sendBulkEmail('bloqueio')">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-envelope me-1" viewBox="0 0 16 16">
+                  <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4Zm2-1a1 1 0 0 0-1 1v.217l7 4.2 7-4.2V4a1 1 0 0 0-1-1H2Zm13 2.383-4.708 2.825L15 11.105V5.383Zm-.034 6.876-5.64-3.471L8 9.583l-1.326-.795-5.64 3.47A1 1 0 0 0 2 13h12a1 1 0 0 0 .966-.741ZM1 11.105l4.708-2.897L1 5.383v5.722Z"/>
+              </svg>
+              Bloqueio
+          </button>
+          <button class="btn btn-red ml-auto p-2" onclick="sendBulkEmail('encerramento')">
+              <svg  xmlns="http://www.w3.org/2000/svg"  width="24"  height="24"  viewBox="0 0 24 24"  fill="none"  stroke="currentColor"  stroke-width="2"  stroke-linecap="round"  stroke-linejoin="round"  class="icon icon-tabler icons-tabler-outline icon-tabler-cancel"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" /><path d="M18.364 5.636l-12.728 12.728" /></svg>
+              Encerramento
+          </button>
+      </div>
+      
+      <hr class="my-3">
+      
+      <div class="d-flex gap-2 align-items-center">
+          <button class="btn btn-success" onclick="gerarTXTSelection()">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-file-earmark-text me-1" viewBox="0 0 16 16">
+                  <path d="M5.5 7a.5.5 0 0 0 0 1h5a.5.5 0 0 0 0-1h-5zM5 9.5a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5zm0 2a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-2a.5.5 0 0 1-.5-.5z"/>
+                  <path d="M9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4.5L9.5 0zm0 1v2A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5z"/>
+              </svg>
+              Gerar TXT BACEN (Selecionados)
+          </button>
+          
+          <div class="vr"></div>
+          
+          <button class="btn btn-primary" onclick="uploadExcelAndGenerateTXT()">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-file-earmark-excel me-1" viewBox="0 0 16 16">
+                  <path d="M5.884 6.68a.5.5 0 1 0-.768.64L7.349 10l-2.233 2.68a.5.5 0 0 0 .768.64L8 10.781l2.116 2.54a.5.5 0 0 0 .768-.641L8.651 10l2.233-2.68a.5.5 0 0 0-.768-.64L8 9.219l-2.116-2.54z"/>
+                  <path d="M14 14V4.5L9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2zM9.5 3A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5v2z"/>
+              </svg>
+              Importar Excel e Gerar TXT
+          </button>
+          
+          <small class="text-muted ms-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-info-circle me-1" viewBox="0 0 16 16">
+                  <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                  <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533L8.93 6.588zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
+              </svg>
+              Excel deve conter colunas: CHAVE_LOJA e AGENCIA
+          </small>
+      </div>
+  </div>
+</div>
+<?php endif; ?>
+
+
+-----------
+
+# Geração de Arquivo TXT BACEN - Encerramento de Correspondentes
+
+## Visão Geral
+Este módulo permite gerar arquivos TXT no formato exigido pelo Banco Central (BACEN) para encerramento de contratos de correspondentes no país (Transação 02 - DOC5021).
+
+## Formas de Uso
+
+### 1. Geração a partir de Registros Selecionados
+1. Na tela principal, selecione as solicitações desejadas usando os checkboxes
+2. Clique no botão **"Gerar TXT BACEN (Selecionados)"** na seção de Ações em Massa
+3. O arquivo TXT será gerado e baixado automaticamente
+
+### 2. Geração a partir de Importação Excel
+1. Prepare um arquivo Excel (.xlsx, .xls ou .csv) com as seguintes colunas:
+   - **CHAVE_LOJA** (coluna A): Código da chave loja
+   - **AGENCIA** (coluna B): Código da agência (opcional)
+   
+   Exemplo:
+   ```
+   CHAVE_LOJA | AGENCIA
+   12345      | 1234
+   67890      | 5678
+   ```
+
+2. Clique no botão **"Importar Excel e Gerar TXT"**
+3. Selecione o arquivo Excel
+4. O sistema processará e gerará o arquivo TXT automaticamente
+
+## Formato do Arquivo TXT
+
+O arquivo gerado segue o layout oficial do BACEN (DOC5021) e contém:
+
+### Header (Tipo 0)
+- Tipo de registro: 0
+- Instituição: 60746948 (Bradesco)
+- Tipo documento: 02 (Encerramento)
+- Data/hora de geração
+- Versão do layout: 001
+- Tamanho: 250 caracteres
+
+### Detalhes (Tipo 2)
+Para cada correspondente:
+- Tipo de registro: 2
+- Instituição
+- Agência
+- Chave Loja
+- CNPJ (14 dígitos)
+- Razão Social (60 caracteres)
+- Data encerramento
+- Motivo encerramento (código BACEN)
+- Sequencial
+- Tamanho: 250 caracteres
+
+### Trailer (Tipo 9)
+- Tipo de registro: 9
+- Quantidade total de registros
+- Tamanho: 250 caracteres
+
+## Mapeamento de Motivos
+
+### Códigos Internos → Códigos BACEN
+
+| Código Interno | Descrição | Código BACEN |
+|----------------|-----------|--------------|
+| 56 | Baixa Performance em Transações | 01 |
+| 61 | Correspondente abaixo do ponto de equilíbrio | 01 |
+| 34 | Apropriação do dinheiro do Banco | 02 |
+| 37 | Cobrança tarifa de Clientes | 02 |
+| 39 | Suspeita de fraude | 02 |
+| 55 | Desvio de Finalidade | 03 |
+| 62 | Falta de Prestação de Contas | 04 |
+| 32 | Inadimplência | 05 |
+| 33 | Restrições financeiras | 05 |
+| 64 | Saldo maior que Limite | 05 |
+| 63 | Inoperantes | 06 |
+| 38 | Tempo da inoperância | 06 |
+| 69 | Inoperância superior a 24 meses | 06 |
+| 3 | Encerramento Atividades | 07 |
+| 25 | Fechou o estabelecimento | 07 |
+| 8 | Vigilância Sanitária | 08 |
+| Outros | - | 99 |
+
+## Estrutura de Arquivos
+
+```
+control/encerramento/
+├── encerramento_massa.php         # Gerador de TXT
+├── email_functions.php            # Funções de email
+└── roteamento/
+    └── ajax_encerramento.php      # Handler AJAX
+
+view/encerramento/
+└── analise_encerramento.php       # Interface principal
+
+js/encerramento/
+└── analise_encerramento.js        # JavaScript
+```
+
+## Validações
+
+O sistema realiza as seguintes validações:
+- Verificação de dados obrigatórios (CHAVE_LOJA, CNPJ, etc.)
+- Validação do formato do CNPJ
+- Preenchimento correto de campos com tamanho fixo
+- Validação do motivo de encerramento
+
+## Formato do Nome do Arquivo
+
+O arquivo gerado segue o padrão:
+```
+ENCERRAMENTO_YYYYMMDD_HHMMSS.txt
+```
+
+Exemplo: `ENCERRAMENTO_20250110_143052.txt`
+
+## Observações Importantes
+
+1. **Permissões**: Apenas usuários do grupo ENC_MANAGEMENT podem gerar arquivos TXT
+2. **Tamanho**: Cada linha do arquivo possui exatamente 250 caracteres
+3. **Codificação**: ASCII padrão
+4. **Quebra de linha**: CR+LF (Windows)
+5. **Status**: Os correspondentes devem ter passado pelas etapas anteriores antes do encerramento
+6. **CNPJ**: Apenas números, sem formatação (14 dígitos)
+
+## Tratamento de Erros
+
+Possíveis erros e soluções:
+
+| Erro | Causa | Solução |
+|------|-------|---------|
+| "Nenhum registro selecionado" | Nenhum checkbox marcado | Selecione ao menos um registro |
+| "Nenhuma Chave Loja encontrada" | Excel sem dados válidos | Verifique o formato do Excel |
+| "Dados não encontrados" | Chaves Loja inexistentes | Verifique os códigos informados |
+| "Arquivo não enviado" | Falha no upload | Tente novamente |
+
+## Referências
+
+- [Documentação BACEN DOC5021](https://www.bcb.gov.br/estabilidadefinanceira/leiautedoc5021mai)
+- Transação 02: Encerramento de Contrato de Correspondente no País
+
+## Suporte
+
+Em caso de dúvidas ou problemas, entre em contato com a equipe de desenvolvimento.
