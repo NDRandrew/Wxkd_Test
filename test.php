@@ -1,254 +1,219 @@
-I'll create a comprehensive Edge testing script with multiple methods:
+Here are the best alternatives to Selenium for Python web automation:
 
+## **1. Playwright (HIGHLY RECOMMENDED) ⭐**
+
+**Why it's better for your situation:**
+- ✅ No separate driver downloads needed
+- ✅ Automatic browser installation
+- ✅ Faster and more reliable than Selenium
+- ✅ Better API and modern features
+- ✅ Built by Microsoft
+
+**Installation:**
+```bash
+pip install playwright
+playwright install chromium  # or: msedge, firefox, webkit
+```
+
+**Basic Code:**
 ```python
-from selenium import webdriver
-from selenium.webdriver.edge.service import Service
-from selenium.webdriver.edge.options import Options
-from selenium.webdriver.common.by import By
+from playwright.sync_api import sync_playwright
 import time
-import os
 
 
-def test_edge_setup():
-    """Test Edge setup with multiple approaches"""
-    
-    # Configuration
-    edgedriver_path = r"C:\WebDrivers\msedgedriver.exe"
-    
-    # Check if edgedriver exists
-    print("=" * 60)
-    print("CHECKING EDGEDRIVER...")
-    print("=" * 60)
-    
-    if os.path.exists(edgedriver_path):
-        print(f"✓ EdgeDriver found at: {edgedriver_path}")
-        file_size = os.path.getsize(edgedriver_path)
-        print(f"✓ File size: {file_size} bytes")
-    else:
-        print(f"✗ ERROR: EdgeDriver NOT found at: {edgedriver_path}")
-        print("\nPlease verify:")
-        print("1. The file exists at C:\\WebDrivers\\msedgedriver.exe")
-        print("2. It's extracted (not still in .zip)")
-        print("3. The filename is exactly 'msedgedriver.exe'")
-        print("\nDownload from: https://developer.microsoft.com/en-us/microsoft-edge/tools/webdriver/")
-        return
-    
-    print("\n" + "=" * 60)
-    print("METHOD 1: Using Service with Options")
-    print("=" * 60)
-    
-    try:
-        # Edge options - make it VISIBLE
-        edge_options = Options()
-        edge_options.add_argument('--start-maximized')
-        edge_options.add_argument('--disable-blink-features=AutomationControlled')
-        edge_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        edge_options.add_experimental_option('useAutomationExtension', False)
+def main():
+    with sync_playwright() as p:
+        # Launch browser (visible)
+        browser = p.chromium.launch(headless=False)
         
-        # Disable proxy (corporate network issue)
-        edge_options.add_argument('--no-proxy-server')
-        edge_options.add_argument('--proxy-server="direct://"')
-        edge_options.add_argument('--proxy-bypass-list=*')
+        # Or use Edge
+        # browser = p.chromium.launch(channel="msedge", headless=False)
         
-        # Create service
-        service = Service(executable_path=edgedriver_path)
+        # Or use Firefox
+        # browser = p.firefox.launch(headless=False)
         
-        print("Creating Edge driver...")
-        driver = webdriver.Edge(service=service, options=edge_options)
+        # Create a new page
+        page = browser.new_page()
         
-        print("✓ Edge opened successfully!")
-        print("\nNavigating to website...")
-        
-        driver.get("https://www.example.com")
-        time.sleep(3)
-        
-        print(f"✓ Page loaded!")
-        print(f"✓ Page title: {driver.title}")
-        print(f"✓ Current URL: {driver.current_url}")
-        
-        # Try to find an element
         try:
-            heading = driver.find_element(By.TAG_NAME, "h1")
-            print(f"✓ Found heading: {heading.text}")
-        except:
-            print("Note: Could not find h1 element (this is OK)")
+            # Navigate to URL
+            page.goto("https://www.example.com")
+            
+            # Wait for page to load
+            page.wait_for_load_state("networkidle")
+            
+            # Get title
+            title = page.title()
+            print(f"Page title: {title}")
+            
+            # Find and interact with elements
+            # page.click("button#submit")
+            # page.fill("input#username", "myusername")
+            # page.locator("h1").text_content()
+            
+            # Take screenshot
+            # page.screenshot(path="screenshot.png")
+            
+            print("Script executed successfully!")
+            time.sleep(5)  # Keep browser open to see it
+            
+        except Exception as e:
+            print(f"Error: {e}")
         
-        print("\n✓✓✓ SUCCESS! Edge is working properly! ✓✓✓")
-        print("\nKeeping browser open for 10 seconds so you can see it...")
-        time.sleep(10)
-        
-        driver.quit()
-        print("Browser closed.")
-        return True
-        
-    except Exception as e:
-        print(f"\n✗ METHOD 1 FAILED")
-        print(f"Error type: {type(e).__name__}")
-        print(f"Error message: {str(e)}")
-        print("\nTrying METHOD 2...\n")
-    
-    print("=" * 60)
-    print("METHOD 2: Direct Service Creation")
-    print("=" * 60)
-    
-    try:
-        service = Service(edgedriver_path)
-        driver = webdriver.Edge(service=service)
-        
-        print("✓ Edge opened!")
-        driver.maximize_window()
-        
-        driver.get("https://www.google.com")
-        time.sleep(3)
-        
-        print(f"✓ Page title: {driver.title}")
-        print("\n✓✓✓ SUCCESS with METHOD 2! ✓✓✓")
-        print("\nKeeping browser open for 10 seconds...")
-        time.sleep(10)
-        
-        driver.quit()
-        return True
-        
-    except Exception as e:
-        print(f"\n✗ METHOD 2 FAILED")
-        print(f"Error: {str(e)}")
-        print("\nTrying METHOD 3...\n")
-    
-    print("=" * 60)
-    print("METHOD 3: Using webdriver.Edge() directly")
-    print("=" * 60)
-    
-    try:
-        # Set environment variable
-        os.environ['PATH'] += r";C:\WebDrivers"
-        
-        driver = webdriver.Edge()
-        
-        print("✓ Edge opened!")
-        driver.maximize_window()
-        
-        driver.get("https://www.microsoft.com")
-        time.sleep(3)
-        
-        print(f"✓ Page title: {driver.title}")
-        print("\n✓✓✓ SUCCESS with METHOD 3! ✓✓✓")
-        print("\nKeeping browser open for 10 seconds...")
-        time.sleep(10)
-        
-        driver.quit()
-        return True
-        
-    except Exception as e:
-        print(f"\n✗ METHOD 3 FAILED")
-        print(f"Error: {str(e)}")
-        print("\nTrying METHOD 4...\n")
-    
-    print("=" * 60)
-    print("METHOD 4: Minimal Configuration")
-    print("=" * 60)
-    
-    try:
-        driver = webdriver.Edge(executable_path=edgedriver_path)
-        
-        print("✓ Edge opened!")
-        driver.get("https://www.bing.com")
-        time.sleep(3)
-        
-        print(f"✓ Page title: {driver.title}")
-        print("\n✓✓✓ SUCCESS with METHOD 4! ✓✓✓")
-        print("\nKeeping browser open for 10 seconds...")
-        time.sleep(10)
-        
-        driver.quit()
-        return True
-        
-    except Exception as e:
-        print(f"\n✗ METHOD 4 FAILED")
-        print(f"Error: {str(e)}")
-    
-    print("\n" + "=" * 60)
-    print("ALL METHODS FAILED - TROUBLESHOOTING NEEDED")
-    print("=" * 60)
-    print("\nPossible issues:")
-    print("1. EdgeDriver version doesn't match Edge version")
-    print("2. Edge browser is not installed")
-    print("3. Antivirus or security software blocking execution")
-    print("4. Insufficient permissions")
-    print("\nNext steps:")
-    print("1. Check Edge version: edge://version/")
-    print("2. Download matching EdgeDriver from:")
-    print("   https://developer.microsoft.com/en-us/microsoft-edge/tools/webdriver/")
-    print("3. Verify EdgeDriver is at: C:\\WebDrivers\\msedgedriver.exe")
-    print("4. Try running this script as Administrator")
-    
-    # Check Edge installation
-    print("\n" + "=" * 60)
-    print("CHECKING EDGE INSTALLATION")
-    print("=" * 60)
-    
-    possible_edge_paths = [
-        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"
-    ]
-    
-    edge_found = False
-    for path in possible_edge_paths:
-        if os.path.exists(path):
-            print(f"✓ Edge browser found at: {path}")
-            edge_found = True
-            break
-    
-    if not edge_found:
-        print("✗ Edge browser NOT found in default locations")
-        print("Please install Microsoft Edge or check installation path")
+        finally:
+            browser.close()
 
 
 if __name__ == "__main__":
-    print("EDGE SELENIUM TEST SCRIPT")
-    print("=" * 60)
-    print("\nThis script will:")
-    print("1. Check if EdgeDriver exists")
-    print("2. Try 4 different methods to open Edge")
-    print("3. Keep the browser open for 10 seconds")
-    print("4. Show you exactly what's working or failing")
-    print("\n" + "=" * 60)
-    input("\nPress ENTER to start the test...")
-    print()
-    
-    test_edge_setup()
-    
-    print("\n" + "=" * 60)
-    print("TEST COMPLETE")
-    print("=" * 60)
-    input("\nPress ENTER to exit...")
+    main()
 ```
 
 ---
 
-## **Before running, download EdgeDriver:**
+## **2. Pyppeteer (Puppeteer for Python)**
 
-1. **Check your Edge version:**
-   - Open Edge browser
-   - Go to: `edge://version/`
-   - Note the version number (e.g., 141.0.2792.65)
+Python port of Google's Puppeteer (Chrome DevTools Protocol)
 
-2. **Download matching EdgeDriver:**
-   - Go to: https://developer.microsoft.com/en-us/microsoft-edge/tools/webdriver/
-   - Download the version that matches your Edge version
-   - Extract `msedgedriver.exe` 
-   - Place it in: `C:\WebDrivers\msedgedriver.exe`
+**Installation:**
+```bash
+pip install pyppeteer
+```
 
-3. **Run the script above**
+**Basic Code:**
+```python
+import asyncio
+from pyppeteer import launch
+
+
+async def main():
+    # Launch browser
+    browser = await launch(headless=False, args=['--start-maximized'])
+    page = await browser.newPage()
+    
+    try:
+        # Navigate
+        await page.goto('https://www.example.com')
+        
+        # Get title
+        title = await page.title()
+        print(f'Title: {title}')
+        
+        # Interact with elements
+        # await page.click('#button')
+        # await page.type('#input', 'text')
+        
+        await asyncio.sleep(5)
+        
+    except Exception as e:
+        print(f"Error: {e}")
+    
+    finally:
+        await browser.close()
+
+
+if __name__ == '__main__':
+    asyncio.get_event_loop().run_until_complete(main())
+```
 
 ---
 
-## **This script will:**
-- ✅ Check if EdgeDriver exists
-- ✅ Open Edge VISIBLY (not headless)
-- ✅ Try 4 different methods automatically
-- ✅ Keep browser open for 10 seconds
-- ✅ Show detailed feedback
-- ✅ Handle corporate proxy issues
-- ✅ Verify Edge installation
+## **3. Helium (Simplified Selenium Wrapper)**
 
-**Run it and tell me which method works or what error appears!** 🚀
+Easier syntax built on top of Selenium - if you still want Selenium
+
+**Installation:**
+```bash
+pip install helium
+```
+
+**Basic Code:**
+```python
+from helium import *
+
+
+def main():
+    # Start browser (it handles drivers automatically in some cases)
+    start_chrome("https://www.example.com")
+    # or: start_firefox()
+    
+    # Much simpler syntax
+    write("search query", into="Search")
+    click("Search button")
+    
+    # Check if text exists
+    if Text("Result").exists():
+        print("Found result!")
+    
+    wait_until(Text("Something").exists)
+    
+    kill_browser()
+
+
+if __name__ == "__main__":
+    main()
+```
+
+---
+
+## **4. Requests-HTML (Lightweight Alternative)**
+
+For simpler scraping without full browser automation
+
+**Installation:**
+```bash
+pip install requests-html
+```
+
+**Basic Code:**
+```python
+from requests_html import HTMLSession
+
+
+def main():
+    session = HTMLSession()
+    
+    # Get page
+    r = session.get('https://www.example.com')
+    
+    # Render JavaScript (uses Chromium behind scenes)
+    r.html.render()
+    
+    # Find elements
+    title = r.html.find('title', first=True).text
+    print(f"Title: {title}")
+    
+    # CSS selectors
+    links = r.html.find('a')
+    for link in links:
+        print(link.attrs.get('href'))
+
+
+if __name__ == "__main__":
+    main()
+```
+
+---
+
+## **Comparison Table:**
+
+| Tool | Difficulty | Speed | Features | Best For |
+|------|-----------|-------|----------|----------|
+| **Playwright** | Medium | ⚡⚡⚡ | Most complete | Modern automation |
+| **Pyppeteer** | Medium | ⚡⚡⚡ | Good | Chrome-specific tasks |
+| **Helium** | Easy | ⚡⚡ | Limited | Simple Selenium tasks |
+| **Requests-HTML** | Easy | ⚡⚡ | Basic | Light scraping |
+
+---
+
+## **My Recommendation for You:**
+
+**Try Playwright first!** It's the most modern, doesn't have driver issues, and is actually easier to work with than Selenium.
+
+```bash
+pip install playwright
+playwright install chromium
+```
+
+Then use the Playwright code I provided above. It should work without all the driver headaches you've been experiencing!
+
+**Want me to create a more complete Playwright example for you?** 🚀
