@@ -5,6 +5,7 @@ import sys
 import time
 import base64
 import pyodbc
+import pandas as pd
 
 # ====================================
 # DATABASE CONFIGURATION
@@ -44,53 +45,55 @@ def get_db_connection():
         print(f"Database connection error: {e}", file=sys.stderr)
         sys.exit(1)
 
-def chave_exists(cursor, chave_loja):
-    """Check if a chaveLoja already exists in the database."""
-    query = f"SELECT COUNT(*) FROM {DB_CONFIG['table']} WHERE ChaveLoja = ?"
-    cursor.execute(query, (chave_loja,))
+def loja_exists(cursor, loja):
+    """Check if a loja already exists in the database."""
+    query = f"SELECT COUNT(*) FROM {DB_CONFIG['table']} WHERE Loja = ?"
+    cursor.execute(query, (loja,))
     count = cursor.fetchone()[0]
     return count > 0
 
-def insert_rows(cursor, chave_loja, rows):
-    """Insert new rows for a chaveLoja."""
+def insert_rows(cursor, loja, chave_loja, rows):
+    """Insert new rows for a loja."""
     table = DB_CONFIG['table']
-    
-    # Clear any existing rows for this chave first (optional)
-    delete_query = f"DELETE FROM {table} WHERE ChaveLoja = ?"
-    cursor.execute(delete_query, (chave_loja,))
     
     # Insert each row
     insert_query = f"""
-        INSERT INTO {table} (ChaveLoja, RowData, InsertedAt)
-        VALUES (?, ?, GETDATE())
+        INSERT INTO {table} (Loja, ChaveLoja, RowData, InsertedAt)
+        VALUES (?, ?, ?, GETDATE())
     """
     
     for row in rows:
-        cursor.execute(insert_query, (chave_loja, row))
+        cursor.execute(insert_query, (loja, chave_loja, row))
     
-    print(f"  [DB] Inserted {len(rows)} rows for ChaveLoja {chave_loja}")
+    print(f"  [DB] Inserted {len(rows)} rows for Loja {loja} (ChaveLoja: {chave_loja})")
 
-def update_rows(cursor, chave_loja, rows):
-    """Update existing rows for a chaveLoja."""
+def update_rows(cursor, loja, chave_loja, rows):
+    """Update existing rows for a loja."""
     table = DB_CONFIG['table']
     
-    # Delete old rows
-    delete_query = f"DELETE FROM {table} WHERE ChaveLoja = ?"
-    cursor.execute(delete_query, (chave_loja,))
+    # Delete old rows for this loja
+    delete_query = f"DELETE FROM {table} WHERE Loja = ?"
+    cursor.execute(delete_query, (loja,))
     
     # Insert updated rows
     insert_query = f"""
-        INSERT INTO {table} (ChaveLoja, RowData, UpdatedAt)
-        VALUES (?, ?, GETDATE())
+        INSERT INTO {table} (Loja, ChaveLoja, RowData, UpdatedAt)
+        VALUES (?, ?, ?, GETDATE())
     """
     
     for row in rows:
-        cursor.execute(insert_query, (chave_loja, row))
+        cursor.execute(insert_query, (loja, chave_loja, row))
     
-    print(f"  [DB] Updated {len(rows)} rows for ChaveLoja {chave_loja}")
+    print(f"  [DB] Updated {len(rows)} rows for Loja {loja} (ChaveLoja: {chave_loja})")
 
-def save_to_database(parsed_data):
-    """Save or update parsed data to the database."""
+def save_to_database(parsed_data, chave_to_loja_map):
+    """
+    Save or update parsed data to the database.
+    
+    Args:
+        parsed_data: dict {chave_loja: [rows]}
+        chave_to_loja_map: dict {chave_loja: loja}
+    """
     if not parsed_data:
         print("No data to save to database")
         return
@@ -104,13 +107,19 @@ def save_to_database(parsed_data):
                 print(f"  [DB] No rows for ChaveLoja {chave_loja}, skipping")
                 continue
             
-            # Check if chaveLoja exists
-            if chave_exists(cursor, chave_loja):
+            # Get the corresponding loja
+            loja = chave_to_loja_map.get(chave_loja)
+            if not loja:
+                print(f"  [DB] No loja mapping found for ChaveLoja {chave_loja}, skipping")
+                continue
+            
+            # Check if loja exists
+            if loja_exists(cursor, loja):
                 # Update existing records
-                update_rows(cursor, chave_loja, rows)
+                update_rows(cursor, loja, chave_loja, rows)
             else:
                 # Insert new records
-                insert_rows(cursor, chave_loja, rows)
+                insert_rows(cursor, loja, chave_loja, rows)
         
         # Commit all changes
         conn.commit()
@@ -123,6 +132,59 @@ def save_to_database(parsed_data):
     finally:
         cursor.close()
         conn.close()
+
+def read_excel_file(excel_path):
+    """
+    Read Excel file with columns 'loja' and 'chave'.
+    
+    Returns:
+        tuple: (chave_list, chave_to_loja_map)
+        - chave_list: list of chave values
+        - chave_to_loja_map: dict mapping chave to loja
+    """
+    try:
+        # Read Excel file
+        df = pd.read_excel(excel_path)
+        
+        # Check required columns
+        required_cols = ['loja', 'chave']
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        
+        if missing_cols:
+            print(f"Error: Missing required columns: {missing_cols}", file=sys.stderr)
+            print(f"Available columns: {list(df.columns)}", file=sys.stderr)
+            sys.exit(1)
+        
+        # Remove rows with NaN values
+        df = df.dropna(subset=['loja', 'chave'])
+        
+        if df.empty:
+            print("Error: No valid data found in Excel file", file=sys.stderr)
+            sys.exit(1)
+        
+        # Convert to strings and strip whitespace
+        df['loja'] = df['loja'].astype(str).str.strip()
+        df['chave'] = df['chave'].astype(str).str.strip()
+        
+        # Create chave list and mapping
+        chave_list = df['chave'].tolist()
+        chave_to_loja_map = dict(zip(df['chave'], df['loja']))
+        
+        print(f"\n[Excel] Read {len(chave_list)} entries from {excel_path}")
+        print(f"[Excel] Sample entries:")
+        for i, (chave, loja) in enumerate(zip(chave_list[:3], [chave_to_loja_map[c] for c in chave_list[:3]])):
+            print(f"  {i+1}. Loja: {loja}, Chave: {chave}")
+        if len(chave_list) > 3:
+            print(f"  ... and {len(chave_list) - 3} more")
+        
+        return chave_list, chave_to_loja_map
+        
+    except FileNotFoundError:
+        print(f"Error: Excel file not found: {excel_path}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error reading Excel file: {e}", file=sys.stderr)
+        sys.exit(1)
 
 # ====================================
 # PCOMM / VBS FUNCTIONS
@@ -142,12 +204,13 @@ def open_session_ws(ws_file, delay=4):
     print(f"Waiting {delay}s for emulator to come up…")
     time.sleep(delay)
 
-def run_sequence(username, password_b64, token, codigoloja, chave_list, ws_file=None, session_name="A",
-                 parse=False, save_db=False):
+def run_sequence(username, password_b64, token, codigoloja, chave_list, chave_to_loja_map, 
+                 ws_file=None, session_name="A", parse=False, save_db=False):
     """
     Calls Base_Contas_PJ_read.vbs with:
       <user> <password> <token-or-dash> <codigoloja> <chaveLoja1> [<chaveLoja2> ...]
-    - chave_list: list[str] of loja keys
+    - chave_list: list[str] of chave values (used as chaveLoja)
+    - chave_to_loja_map: dict mapping chave to loja
     - token: pass "-" if not required
     - parse: if True, return a dict {chave: [rowStr, ...]} parsed from VBS output
     - save_db: if True, save parsed data to database
@@ -214,11 +277,12 @@ def run_sequence(username, password_b64, token, codigoloja, chave_list, ws_file=
         result = parse_vbs_output(output, chave_list)
         print("\n[Parsed Data]:")
         for chave, rows in result.items():
-            print(f"  {chave}: {len(rows)} rows")
+            loja = chave_to_loja_map.get(chave, "?")
+            print(f"  Loja {loja} (Chave {chave}): {len(rows)} rows")
         
         if save_db:
             print("\n[Saving to Database...]")
-            save_to_database(result)
+            save_to_database(result, chave_to_loja_map)
 
     time.sleep(1)
     close_session(session_name=session_name)
@@ -288,14 +352,17 @@ def close_session(session_name="A"):
             pass
 
 if __name__ == "__main__":
-    # Example usage
+    # Configuration
     USER       = "9409841"
     PWD_B64    = "dGlubzEyMDM="  
     TOKEN      = "228326"        
-    CODIGOLOJA = "035006"              
-    CHAVES     = ["17167508", "11981669", "6181137"]  
+    CODIGOLOJA = "035006"
 
-    WS_PATH = r"C:\Users\I458363\Desktop\VIDEO 2.ws"
+    WS_PATH    = r"C:\Users\I458363\Desktop\VIDEO 2.ws"
+    EXCEL_PATH = r"C:\Users\I458363\Desktop\lojas_chaves.xlsx"  # Path to your Excel file
+
+    # Read Excel file
+    chave_list, chave_to_loja_map = read_excel_file(EXCEL_PATH)
 
     # Run with database save enabled
     data = run_sequence(
@@ -303,7 +370,8 @@ if __name__ == "__main__":
         PWD_B64, 
         TOKEN, 
         CODIGOLOJA, 
-        CHAVES, 
+        chave_list,
+        chave_to_loja_map,
         ws_file=WS_PATH, 
         parse=True,
         save_db=True  # Enable database saving
@@ -312,7 +380,8 @@ if __name__ == "__main__":
     # Optional: print structured result
     if isinstance(data, dict):
         print("\n[Final Results]:")
-        for k, rows in data.items():
-            print(f"\n{k}:")
+        for chave, rows in data.items():
+            loja = chave_to_loja_map.get(chave, "?")
+            print(f"\nLoja {loja} (Chave {chave}):")
             for row in rows:
                 print(f"  - {row}")
