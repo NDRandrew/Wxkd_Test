@@ -1,3 +1,275 @@
+Option Explicit
+
+' ===============================
+' === CONFIGURE YOUR LAYOUT  ====
+' ===============================
+Const ROW_START  = 7      ' First data row
+Const ROW_END    = 18     ' Last row to probe for data
+
+' Column positions for validation
+Const COL_CHECK  = 4      ' Column to check if row has data
+Const COL_FILTER = 80     ' Column to check if row should be excluded
+
+' Field extraction positions
+Const COL_AGEN   = 6      ' AGEN starts at column 6
+Const LEN_AGEN   = 4      ' AGEN is 4 characters (columns 6-9)
+Const COL_CONTA  = 11     ' CONTA starts at column 11
+Const LEN_CONTA  = 7      ' CONTA is 7 characters (columns 11-17)
+
+' Token prompt string
+Const TOKEN_PROMPT_STR = "DIGITE ABAIXO A CHAVE INFORMADA NO SEU DISPOSITIVO DE SEGURANCA"
+
+' ===============================
+' ============= MAIN ============
+' ===============================
+Dim args, user, pwd, token, codigoloja
+Dim session, ps
+Dim i, chaveCount, chaveList()
+Dim allOutputs, perChaveOutput
+
+Set args = WScript.Arguments
+If args.Count < 5 Then
+    WScript.StdErr.Write "ERROR: Usage: cscript //nologo Base_Contas_PJ_read.vbs <username> <password> <token-or-dash> <codigoloja> <chaveLoja1> [<chaveLoja2> ...]" & vbCrLf
+    WScript.Quit 1
+End If
+
+user        = args(0)
+pwd         = args(1)
+token       = args(2)
+codigoloja  = args(3)
+
+chaveCount = args.Count - 4
+ReDim chaveList(chaveCount - 1)
+For i = 0 To chaveCount - 1
+    chaveList(i) = args(4 + i)
+Next
+
+On Error Resume Next
+
+' ==== Attach PCOMM session A ====
+Set session = CreateObject("PCOMM.autECLSession")
+If session Is Nothing Then
+    WScript.StdErr.Write "ERROR: Cannot create autECLSession" & vbCrLf
+    WScript.Quit 1
+End If
+
+session.SetConnectionByName "A"
+If Err.Number <> 0 Then
+    WScript.StdErr.Write "ERROR: Attach session A – " & Err.Description & vbCrLf
+    WScript.Quit 1
+End If
+Err.Clear
+
+Set ps = session.autECLPS
+
+' ==== Open and login ====
+If Not ps.WaitForCursor(20, 1, 10000) Then
+    WScript.StdErr.Write "ERROR: Timeout to open IBM PCOMM" & vbCrLf
+    Cleanup session
+    WScript.Quit 1
+End If
+
+ps.SendKeys "IMS12"
+ps.SendKeys "[Enter]"
+ps.SendKeys "[PF4]"
+
+If Not ps.WaitForCursor(15, 46, 10000) Then
+    WScript.StdErr.Write "ERROR: Usuario ou senha incorreta (usuario field)" & vbCrLf
+    Cleanup session
+    WScript.Quit 1
+End If
+ps.SendKeys user
+
+If Not ps.WaitForCursor(16, 46, 10000) Then
+    WScript.StdErr.Write "ERROR: Usuario ou senha incorreta (senha field)" & vbCrLf
+    Cleanup session
+    WScript.Quit 1
+End If
+ps.SendKeys pwd
+ps.SendKeys "[Enter]"
+
+' Optional token step
+If token <> "-" Then
+    If WaitForString(ps, TOKEN_PROMPT_STR, 07, 10, 8000) Then
+        ps.SendKeys token
+        ps.SendKeys "[Enter]"
+        If WaitForString(ps, TOKEN_PROMPT_STR, 07, 10, 4000) Then
+            WScript.StdErr.Write "ERROR: Token incorreto" & vbCrLf
+            Cleanup session
+            WScript.Quit 1
+        End If
+    End If
+End If
+
+' Ensure command area before starting queries
+If Not EnsureCommandArea(ps, 4, 06, 10000) Then
+    WScript.StdErr.Write "ERROR: Nao foi possivel chegar na area de comando" & vbCrLf
+    Cleanup session
+    WScript.Quit 1
+End If
+
+allOutputs = ""
+
+' ===============================
+' Loop each ChaveLoja
+' ===============================
+For i = 0 To UBound(chaveList)
+    perChaveOutput = HandleOneChave(ps, codigoloja, CStr(chaveList(i)))
+    If perChaveOutput = "" Then perChaveOutput = chaveList(i) & ": "
+
+    If allOutputs <> "" Then allOutputs = allOutputs & ", "
+    allOutputs = allOutputs & perChaveOutput
+
+    ' Return to command area for next chave
+    EnsureCommandArea ps, 4, 6, 5000
+Next
+
+If Err.Number <> 0 Then
+    WScript.StdErr.Write "ERROR during sequence – " & Err.Description & vbCrLf
+    Cleanup session
+    WScript.Quit 1
+End If
+
+WScript.StdOut.Write allOutputs
+Cleanup session
+WScript.Quit 0
+
+' ===============================
+' ========= FUNCTIONS ===========
+' ===============================
+
+Function HandleOneChave(psObj, codigoLojaValue, chaveLojaValue)
+    Dim rowOutputs
+
+    ' Go to transaction and enter chave
+    psObj.SendKeys "clie"
+    psObj.SendKeys "[Enter]"
+    psObj.WaitForCursor 1, 1, 3000
+
+    ' Two Tabs then enter chave da loja
+    psObj.SendKeys "[Tab]"
+    psObj.SendKeys "[Tab]"
+    psObj.SendKeys chaveLojaValue
+    psObj.SendKeys "[Enter]"
+
+    ' Wait for screen to update
+    WScript.Sleep 300
+
+    ' Collect all pages by comparing before/after PF8
+    rowOutputs = CollectAllPages(psObj)
+
+    HandleOneChave = chaveLojaValue & ": " & rowOutputs
+End Function
+
+Function CollectAllPages(psObj)
+    Dim allRows, currentPageRows, nextPageRows
+    
+    allRows = ""
+    
+    Do
+        ' Collect current page
+        currentPageRows = CollectOnePageRows(psObj)
+        
+        ' Add current page to all results
+        allRows = ConcatOutputs(allRows, currentPageRows)
+        
+        ' Press PF8 to try next page
+        psObj.SendKeys "[PF8]"
+        WScript.Sleep 300
+        
+        ' Collect what's on screen after PF8
+        nextPageRows = CollectOnePageRows(psObj)
+        
+        ' If same as current page, we're on the last page - exit
+        If nextPageRows = currentPageRows Then Exit Do
+        
+    Loop
+    
+    CollectAllPages = allRows
+End Function
+
+Function CollectOnePageRows(psObj)
+    Dim rowOutputs, r, col4Char, col80Char, agen, conta, rowData
+    rowOutputs = ""
+
+    ' Loop through all rows
+    For r = ROW_START To ROW_END
+        ' Read column 04 - check if row has data
+        col4Char = psObj.GetText(r, COL_CHECK, 1)
+        
+        ' If empty, stop (no more rows)
+        If Trim(col4Char) = "" Then Exit For
+        
+        ' Has data, check column 80 filter
+        col80Char = psObj.GetText(r, COL_FILTER, 1)
+        
+        ' Only add if column 80 is empty
+        If Trim(col80Char) = "" Then
+            ' Extract AGEN (columns 6-9) and CONTA (columns 11-17)
+            agen = Trim(psObj.GetText(r, COL_AGEN, LEN_AGEN))
+            conta = Trim(psObj.GetText(r, COL_CONTA, LEN_CONTA))
+            
+            ' Format as "AGEN|CONTA"
+            If agen <> "" And conta <> "" Then
+                rowData = agen & "|" & conta
+                If rowOutputs <> "" Then rowOutputs = rowOutputs & ", "
+                rowOutputs = rowOutputs & rowData
+            End If
+        End If
+    Next
+
+    CollectOnePageRows = rowOutputs
+End Function
+
+Function ConcatOutputs(base, add)
+    If Trim(add) = "" Then
+        ConcatOutputs = base
+    ElseIf Trim(base) = "" Then
+        ConcatOutputs = add
+    Else
+        ConcatOutputs = base & ", " & add
+    End If
+End Function
+
+Function WaitForString(psObj, textToWait, rowNum, colNum, timeoutMs)
+    WaitForString = psObj.WaitForString(textToWait, rowNum, colNum, timeoutMs)
+End Function
+
+Function EnsureCommandArea(psObj, cmdRow, cmdCol, timeoutMs)
+    Dim tries
+    If psObj.WaitForCursor(cmdRow, cmdCol, 800) Then
+        EnsureCommandArea = True
+        Exit Function
+    End If
+
+    For tries = 1 To 4
+        psObj.SendKeys "[PF5]"
+        If psObj.WaitForCursor(cmdRow, cmdCol, 800) Then
+            EnsureCommandArea = True
+            Exit Function
+        End If
+
+        psObj.SendKeys "[PF3]"
+        If psObj.WaitForCursor(cmdRow, cmdCol, 800) Then
+            EnsureCommandArea = True
+            Exit Function
+        End If
+    Next
+
+    EnsureCommandArea = psObj.WaitForCursor(cmdRow, cmdCol, timeoutMs)
+End Function
+
+Sub Cleanup(sess)
+    On Error Resume Next
+    If Not sess Is Nothing Then
+        sess.autECLConnMgr.StopCommunication
+    End If
+End Sub
+
+
+---------
+
+
 # -*- coding: utf-8 -*-
 import os
 import subprocess
@@ -6,6 +278,7 @@ import time
 import base64
 import pyodbc
 import pandas as pd
+from datetime import datetime
 
 # ====================================
 # DATABASE CONFIGURATION
@@ -47,64 +320,82 @@ def get_db_connection():
 
 def loja_exists(cursor, loja):
     """Check if a loja already exists in the database."""
-    query = f"SELECT COUNT(*) FROM {DB_CONFIG['table']} WHERE Loja = ?"
+    query = f"SELECT COUNT(*) FROM {DB_CONFIG['table']} WHERE LOJA = ?"
     cursor.execute(query, (loja,))
     count = cursor.fetchone()[0]
     return count > 0
 
-def insert_rows(cursor, loja, chave_loja, rows):
-    """Insert new rows for a loja."""
+def insert_accounts(cursor, loja, accounts, descricao):
+    """
+    Insert new accounts for a loja.
+    
+    Args:
+        cursor: database cursor
+        loja: loja identifier
+        accounts: list of dicts with 'agen' and 'conta' keys
+        descricao: description with date
+    """
     table = DB_CONFIG['table']
     
-    # Insert each row
     insert_query = f"""
-        INSERT INTO {table} (Loja, ChaveLoja, RowData, InsertedAt)
-        VALUES (?, ?, ?, GETDATE())
+        INSERT INTO {table} (DESCRICAO, LOJA, AGEN, CONTA)
+        VALUES (?, ?, ?, ?)
     """
     
-    for row in rows:
-        cursor.execute(insert_query, (loja, chave_loja, row))
+    for account in accounts:
+        cursor.execute(insert_query, (descricao, loja, account['agen'], account['conta']))
     
-    print(f"  [DB] Inserted {len(rows)} rows for Loja {loja} (ChaveLoja: {chave_loja})")
+    print(f"  [DB] Inserted {len(accounts)} accounts for Loja {loja}")
 
-def update_rows(cursor, loja, chave_loja, rows):
-    """Update existing rows for a loja."""
+def update_accounts(cursor, loja, accounts, descricao):
+    """
+    Update existing accounts for a loja.
+    
+    Args:
+        cursor: database cursor
+        loja: loja identifier
+        accounts: list of dicts with 'agen' and 'conta' keys
+        descricao: description with date
+    """
     table = DB_CONFIG['table']
     
-    # Delete old rows for this loja
-    delete_query = f"DELETE FROM {table} WHERE Loja = ?"
+    # Delete old records for this loja
+    delete_query = f"DELETE FROM {table} WHERE LOJA = ?"
     cursor.execute(delete_query, (loja,))
     
-    # Insert updated rows
+    # Insert updated records
     insert_query = f"""
-        INSERT INTO {table} (Loja, ChaveLoja, RowData, UpdatedAt)
-        VALUES (?, ?, ?, GETDATE())
+        INSERT INTO {table} (DESCRICAO, LOJA, AGEN, CONTA)
+        VALUES (?, ?, ?, ?)
     """
     
-    for row in rows:
-        cursor.execute(insert_query, (loja, chave_loja, row))
+    for account in accounts:
+        cursor.execute(insert_query, (descricao, loja, account['agen'], account['conta']))
     
-    print(f"  [DB] Updated {len(rows)} rows for Loja {loja} (ChaveLoja: {chave_loja})")
+    print(f"  [DB] Updated {len(accounts)} accounts for Loja {loja}")
 
 def save_to_database(parsed_data, chave_to_loja_map):
     """
     Save or update parsed data to the database.
     
     Args:
-        parsed_data: dict {chave_loja: [rows]}
+        parsed_data: dict {chave_loja: [{'agen': '...', 'conta': '...'}, ...]}
         chave_to_loja_map: dict {chave_loja: loja}
     """
     if not parsed_data:
         print("No data to save to database")
         return
     
+    # Generate DESCRICAO with today's date
+    descricao = datetime.now().strftime("Processado em %d/%m/%Y")
+    
     conn = get_db_connection()
     cursor = conn.cursor()
     
     try:
-        for chave_loja, rows in parsed_data.items():
-            if not rows:
-                print(f"  [DB] No rows for ChaveLoja {chave_loja}, skipping")
+        for chave_loja, accounts in parsed_data.items():
+            if not accounts:
+                print(f"  [DB] No accounts for ChaveLoja {chave_loja}, skipping")
                 continue
             
             # Get the corresponding loja
@@ -116,10 +407,10 @@ def save_to_database(parsed_data, chave_to_loja_map):
             # Check if loja exists
             if loja_exists(cursor, loja):
                 # Update existing records
-                update_rows(cursor, loja, chave_loja, rows)
+                update_accounts(cursor, loja, accounts, descricao)
             else:
                 # Insert new records
-                insert_rows(cursor, loja, chave_loja, rows)
+                insert_accounts(cursor, loja, accounts, descricao)
         
         # Commit all changes
         conn.commit()
@@ -146,7 +437,8 @@ def read_excel_file(excel_path):
         # Read Excel file
         df = pd.read_excel(excel_path)
         
-        # Check required columns
+        # Check required columns (case-insensitive)
+        df.columns = df.columns.str.lower().str.strip()
         required_cols = ['loja', 'chave']
         missing_cols = [col for col in required_cols if col not in df.columns]
         
@@ -212,7 +504,7 @@ def run_sequence(username, password_b64, token, codigoloja, chave_list, chave_to
     - chave_list: list[str] of chave values (used as chaveLoja)
     - chave_to_loja_map: dict mapping chave to loja
     - token: pass "-" if not required
-    - parse: if True, return a dict {chave: [rowStr, ...]} parsed from VBS output
+    - parse: if True, return a dict {chave: [{'agen': '...', 'conta': '...'}, ...]}
     - save_db: if True, save parsed data to database
     """
     here = os.path.dirname(os.path.abspath(__file__))
@@ -276,9 +568,13 @@ def run_sequence(username, password_b64, token, codigoloja, chave_list, chave_to
     if parse:
         result = parse_vbs_output(output, chave_list)
         print("\n[Parsed Data]:")
-        for chave, rows in result.items():
+        for chave, accounts in result.items():
             loja = chave_to_loja_map.get(chave, "?")
-            print(f"  Loja {loja} (Chave {chave}): {len(rows)} rows")
+            print(f"  Loja {loja} (Chave {chave}): {len(accounts)} accounts")
+            for acc in accounts[:3]:  # Show first 3
+                print(f"    - AGEN: {acc['agen']}, CONTA: {acc['conta']}")
+            if len(accounts) > 3:
+                print(f"    ... and {len(accounts) - 3} more")
         
         if save_db:
             print("\n[Saving to Database...]")
@@ -291,9 +587,9 @@ def run_sequence(username, password_b64, token, codigoloja, chave_list, chave_to
 def parse_vbs_output(output, chave_list):
     """
     Parses the VBS output format:
-      "chave1: [V] | [V] | [V], [V] | [V] | [V], chave2: [V] | ... , chave3: ..."
+      "chave1: AGEN1|CONTA1, AGEN2|CONTA2, chave2: AGEN3|CONTA3, ..."
     into:
-      { "chave1": ["[V] | [V] | [V]", "..."], "chave2": [...], ... }
+      { "chave1": [{'agen': 'AGEN1', 'conta': 'CONTA1'}, ...], "chave2": [...], ... }
     """
     starts = {}
     for chave in chave_list:
@@ -318,8 +614,19 @@ def parse_vbs_output(output, chave_list):
         if chunk.endswith(","):
             chunk = chunk[:-1].strip()
 
-        rows = [x.strip() for x in chunk.split(",") if x.strip()]
-        result[chave] = rows
+        # Parse "AGEN|CONTA" format
+        accounts = []
+        for row in chunk.split(","):
+            row = row.strip()
+            if "|" in row:
+                parts = row.split("|")
+                if len(parts) == 2:
+                    agen = parts[0].strip()
+                    conta = parts[1].strip()
+                    if agen and conta:
+                        accounts.append({'agen': agen, 'conta': conta})
+        
+        result[chave] = accounts
 
     return result
 
@@ -359,7 +666,7 @@ if __name__ == "__main__":
     CODIGOLOJA = "035006"
 
     WS_PATH    = r"C:\Users\I458363\Desktop\VIDEO 2.ws"
-    EXCEL_PATH = r"C:\Users\I458363\Desktop\lojas_chaves.xlsx"  # Path to your Excel file
+    EXCEL_PATH = r"C:\Users\I458363\Desktop\lojas_chaves.xlsx"
 
     # Read Excel file
     chave_list, chave_to_loja_map = read_excel_file(EXCEL_PATH)
@@ -374,14 +681,14 @@ if __name__ == "__main__":
         chave_to_loja_map,
         ws_file=WS_PATH, 
         parse=True,
-        save_db=True  # Enable database saving
+        save_db=True
     )
     
     # Optional: print structured result
     if isinstance(data, dict):
         print("\n[Final Results]:")
-        for chave, rows in data.items():
+        for chave, accounts in data.items():
             loja = chave_to_loja_map.get(chave, "?")
             print(f"\nLoja {loja} (Chave {chave}):")
-            for row in rows:
-                print(f"  - {row}")
+            for acc in accounts:
+                print(f"  - AGEN: {acc['agen']}, CONTA: {acc['conta']}")
