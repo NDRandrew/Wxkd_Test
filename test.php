@@ -1,257 +1,318 @@
-Option Explicit
+# -*- coding: utf-8 -*-
+import os
+import subprocess
+import sys
+import time
+import base64
+import pyodbc
 
-' ===============================
-' === CONFIGURE YOUR LAYOUT  ====
-' ===============================
-Const ROW_START  = 7      ' First data row
-Const ROW_END    = 18     ' Last row to probe for data
-Const LINE_WIDTH = 80     ' Full line width
+# ====================================
+# DATABASE CONFIGURATION
+# ====================================
+DB_CONFIG = {
+    'server': 'your_server_name',      # e.g., 'localhost' or 'SERVER\\INSTANCE'
+    'database': 'your_database_name',
+    'username': 'your_username',       # Use None for Windows Authentication
+    'password': 'your_password',       # Use None for Windows Authentication
+    'table': 'Contas_PJ'               # Table name
+}
 
-' Column positions for validation
-Const COL_CHECK  = 4      ' Column to check if row has data
-Const COL_FILTER = 80     ' Column to check if row should be excluded
+def get_db_connection():
+    """Create and return a database connection."""
+    try:
+        if DB_CONFIG['username'] and DB_CONFIG['password']:
+            # SQL Server Authentication
+            conn_str = (
+                f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+                f"SERVER={DB_CONFIG['server']};"
+                f"DATABASE={DB_CONFIG['database']};"
+                f"UID={DB_CONFIG['username']};"
+                f"PWD={DB_CONFIG['password']}"
+            )
+        else:
+            # Windows Authentication
+            conn_str = (
+                f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+                f"SERVER={DB_CONFIG['server']};"
+                f"DATABASE={DB_CONFIG['database']};"
+                f"Trusted_Connection=yes;"
+            )
+        
+        conn = pyodbc.connect(conn_str)
+        return conn
+    except pyodbc.Error as e:
+        print(f"Database connection error: {e}", file=sys.stderr)
+        sys.exit(1)
 
-' Token prompt string
-Const TOKEN_PROMPT_STR = "DIGITE ABAIXO A CHAVE INFORMADA NO SEU DISPOSITIVO DE SEGURANCA"
+def chave_exists(cursor, chave_loja):
+    """Check if a chaveLoja already exists in the database."""
+    query = f"SELECT COUNT(*) FROM {DB_CONFIG['table']} WHERE ChaveLoja = ?"
+    cursor.execute(query, (chave_loja,))
+    count = cursor.fetchone()[0]
+    return count > 0
 
-' ===============================
-' ============= MAIN ============
-' ===============================
-Dim args, user, pwd, token, codigoloja
-Dim session, ps
-Dim i, chaveCount, chaveList()
-Dim allOutputs, perChaveOutput
-
-Set args = WScript.Arguments
-If args.Count < 5 Then
-    WScript.StdErr.Write "ERROR: Usage: cscript //nologo Base_Contas_PJ_read.vbs <username> <password> <token-or-dash> <codigoloja> <chaveLoja1> [<chaveLoja2> ...]" & vbCrLf
-    WScript.Quit 1
-End If
-
-user        = args(0)
-pwd         = args(1)
-token       = args(2)
-codigoloja  = args(3)
-
-chaveCount = args.Count - 4
-ReDim chaveList(chaveCount - 1)
-For i = 0 To chaveCount - 1
-    chaveList(i) = args(4 + i)
-Next
-
-On Error Resume Next
-
-' ==== Attach PCOMM session A ====
-Set session = CreateObject("PCOMM.autECLSession")
-If session Is Nothing Then
-    WScript.StdErr.Write "ERROR: Cannot create autECLSession" & vbCrLf
-    WScript.Quit 1
-End If
-
-session.SetConnectionByName "A"
-If Err.Number <> 0 Then
-    WScript.StdErr.Write "ERROR: Attach session A – " & Err.Description & vbCrLf
-    WScript.Quit 1
-End If
-Err.Clear
-
-Set ps = session.autECLPS
-
-' ==== Open and login ====
-If Not ps.WaitForCursor(20, 1, 10000) Then
-    WScript.StdErr.Write "ERROR: Timeout to open IBM PCOMM" & vbCrLf
-    Cleanup session
-    WScript.Quit 1
-End If
-
-ps.SendKeys "IMS12"
-ps.SendKeys "[Enter]"
-ps.SendKeys "[PF4]"
-
-If Not ps.WaitForCursor(15, 46, 10000) Then
-    WScript.StdErr.Write "ERROR: Usuario ou senha incorreta (usuario field)" & vbCrLf
-    Cleanup session
-    WScript.Quit 1
-End If
-ps.SendKeys user
-
-If Not ps.WaitForCursor(16, 46, 10000) Then
-    WScript.StdErr.Write "ERROR: Usuario ou senha incorreta (senha field)" & vbCrLf
-    Cleanup session
-    WScript.Quit 1
-End If
-ps.SendKeys pwd
-ps.SendKeys "[Enter]"
-
-' Optional token step
-If token <> "-" Then
-    If WaitForString(ps, TOKEN_PROMPT_STR, 07, 10, 8000) Then
-        ps.SendKeys token
-        ps.SendKeys "[Enter]"
-        If WaitForString(ps, TOKEN_PROMPT_STR, 07, 10, 4000) Then
-            WScript.StdErr.Write "ERROR: Token incorreto" & vbCrLf
-            Cleanup session
-            WScript.Quit 1
-        End If
-    End If
-End If
-
-' Ensure command area before starting queries
-If Not EnsureCommandArea(ps, 4, 06, 10000) Then
-    WScript.StdErr.Write "ERROR: Nao foi possivel chegar na area de comando" & vbCrLf
-    Cleanup session
-    WScript.Quit 1
-End If
-
-allOutputs = ""
-
-' ===============================
-' Loop each ChaveLoja
-' ===============================
-For i = 0 To UBound(chaveList)
-    perChaveOutput = HandleOneChave(ps, codigoloja, CStr(chaveList(i)))
-    If perChaveOutput = "" Then perChaveOutput = chaveList(i) & ": "
-
-    If allOutputs <> "" Then allOutputs = allOutputs & ", "
-    allOutputs = allOutputs & perChaveOutput
-
-    ' Return to command area for next chave
-    EnsureCommandArea ps, 4, 6, 5000
-Next
-
-If Err.Number <> 0 Then
-    WScript.StdErr.Write "ERROR during sequence – " & Err.Description & vbCrLf
-    Cleanup session
-    WScript.Quit 1
-End If
-
-WScript.StdOut.Write allOutputs
-Cleanup session
-WScript.Quit 0
-
-' ===============================
-' ========= FUNCTIONS ===========
-' ===============================
-
-Function HandleOneChave(psObj, codigoLojaValue, chaveLojaValue)
-    Dim rowOutputs
-
-    ' Go to transaction and enter chave
-    psObj.SendKeys "clie"
-    psObj.SendKeys "[Enter]"
-    psObj.WaitForCursor 1, 1, 3000
-
-    ' Two Tabs then enter chave da loja
-    psObj.SendKeys "[Tab]"
-    psObj.SendKeys "[Tab]"
-    psObj.SendKeys chaveLojaValue
-    psObj.SendKeys "[Enter]"
-
-    ' Wait for screen to update
-    WScript.Sleep 300
-
-    ' Collect all pages by comparing before/after PF8
-    rowOutputs = CollectAllPages(psObj)
-
-    HandleOneChave = chaveLojaValue & ": " & rowOutputs
-End Function
-
-Function CollectAllPages(psObj)
-    Dim allRows, currentPageRows, nextPageRows
+def insert_rows(cursor, chave_loja, rows):
+    """Insert new rows for a chaveLoja."""
+    table = DB_CONFIG['table']
     
-    allRows = ""
+    # Clear any existing rows for this chave first (optional)
+    delete_query = f"DELETE FROM {table} WHERE ChaveLoja = ?"
+    cursor.execute(delete_query, (chave_loja,))
     
-    Do
-        ' Collect current page
-        currentPageRows = CollectOnePageRows(psObj)
-        
-        ' Add current page to all results
-        allRows = ConcatOutputs(allRows, currentPageRows)
-        
-        ' Press PF8 to try next page
-        psObj.SendKeys "[PF8]"
-        WScript.Sleep 300
-        
-        ' Collect what's on screen after PF8
-        nextPageRows = CollectOnePageRows(psObj)
-        
-        ' If same as current page, we're on the last page - exit
-        If nextPageRows = currentPageRows Then Exit Do
-        
-    Loop
+    # Insert each row
+    insert_query = f"""
+        INSERT INTO {table} (ChaveLoja, RowData, InsertedAt)
+        VALUES (?, ?, GETDATE())
+    """
     
-    CollectAllPages = allRows
-End Function
+    for row in rows:
+        cursor.execute(insert_query, (chave_loja, row))
+    
+    print(f"  [DB] Inserted {len(rows)} rows for ChaveLoja {chave_loja}")
 
-Function CollectOnePageRows(psObj)
-    Dim rowOutputs, r, col4Char, col80Char, rowText
-    rowOutputs = ""
+def update_rows(cursor, chave_loja, rows):
+    """Update existing rows for a chaveLoja."""
+    table = DB_CONFIG['table']
+    
+    # Delete old rows
+    delete_query = f"DELETE FROM {table} WHERE ChaveLoja = ?"
+    cursor.execute(delete_query, (chave_loja,))
+    
+    # Insert updated rows
+    insert_query = f"""
+        INSERT INTO {table} (ChaveLoja, RowData, UpdatedAt)
+        VALUES (?, ?, GETDATE())
+    """
+    
+    for row in rows:
+        cursor.execute(insert_query, (chave_loja, row))
+    
+    print(f"  [DB] Updated {len(rows)} rows for ChaveLoja {chave_loja}")
 
-    ' Loop through all rows
-    For r = ROW_START To ROW_END
-        ' Read column 04 - check if row has data
-        col4Char = psObj.GetText(r, COL_CHECK, 1)
+def save_to_database(parsed_data):
+    """Save or update parsed data to the database."""
+    if not parsed_data:
+        print("No data to save to database")
+        return
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        for chave_loja, rows in parsed_data.items():
+            if not rows:
+                print(f"  [DB] No rows for ChaveLoja {chave_loja}, skipping")
+                continue
+            
+            # Check if chaveLoja exists
+            if chave_exists(cursor, chave_loja):
+                # Update existing records
+                update_rows(cursor, chave_loja, rows)
+            else:
+                # Insert new records
+                insert_rows(cursor, chave_loja, rows)
         
-        ' If empty, stop (no more rows)
-        If Trim(col4Char) = "" Then Exit For
+        # Commit all changes
+        conn.commit()
+        print("\n[DB] All changes committed successfully")
         
-        ' Has data, check column 80 filter
-        col80Char = psObj.GetText(r, COL_FILTER, 1)
+    except pyodbc.Error as e:
+        conn.rollback()
+        print(f"Database error: {e}", file=sys.stderr)
+        raise
+    finally:
+        cursor.close()
+        conn.close()
+
+# ====================================
+# PCOMM / VBS FUNCTIONS
+# ====================================
+
+def get_cscript_exe():
+    windir = os.environ.get("SystemRoot", r"C:\Windows")
+    path32 = os.path.join(windir, "SysWOW64", "cscript.exe")
+    return path32 if os.path.isfile(path32) else os.path.join(windir, "System32", "cscript.exe")
+
+def open_session_ws(ws_file, delay=4):
+    if not os.path.isfile(ws_file):
+        print(f"Session file not found: {ws_file}", file=sys.stderr)
+        sys.exit(1)
+    print(f"Launching session: {ws_file}")
+    os.startfile(ws_file)
+    print(f"Waiting {delay}s for emulator to come up…")
+    time.sleep(delay)
+
+def run_sequence(username, password_b64, token, codigoloja, chave_list, ws_file=None, session_name="A",
+                 parse=False, save_db=False):
+    """
+    Calls Base_Contas_PJ_read.vbs with:
+      <user> <password> <token-or-dash> <codigoloja> <chaveLoja1> [<chaveLoja2> ...]
+    - chave_list: list[str] of loja keys
+    - token: pass "-" if not required
+    - parse: if True, return a dict {chave: [rowStr, ...]} parsed from VBS output
+    - save_db: if True, save parsed data to database
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    vbs  = os.path.join(here, "Base_Contas_PJ_read.vbs")
+
+    if ws_file:
+        open_session_ws(ws_file)
+
+    if not os.path.exists(vbs):
+        print(f"VBScript not found: {vbs}", file=sys.stderr)
+        close_session(session_name=session_name)
+        sys.exit(1)
+
+    try:
+        raw = base64.b64decode(password_b64, validate=True)
+        password = raw.decode("utf-8")
+    except Exception as e:
+        print(f"Invalid Base64 password: {e}", file=sys.stderr)
+        close_session(session_name=session_name)
+        sys.exit(1)
+
+    if token is None or token == "":
+        token = "-"   # VBS expects "-" to skip token
+
+    # Build command
+    cmd = [
+        get_cscript_exe(),
+        "//NoLogo",
+        vbs,
+        username,
+        password,
+        token,
+        (codigoloja or ""),
+    ]
+
+    # Append all chaves
+    if not chave_list:
+        print("No ChaveLoja provided. Pass at least one.", file=sys.stderr)
+        close_session(session_name=session_name)
+        sys.exit(1)
+    cmd.extend([str(x) for x in chave_list])
+
+    # Run VBS
+    print(f"\n[Running VBS with {len(chave_list)} chaveLoja(s)...]")
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout or "").strip()
+        print(f"VBScript error: {err}", file=sys.stderr)
+        time.sleep(1)
+        close_session(session_name=session_name)
+        sys.exit(1)
+
+    output = (proc.stdout or "").strip()
+
+    # Print raw output for logging
+    print("\n[VBS Output]:")
+    print(output)
+
+    result = None
+    if parse:
+        result = parse_vbs_output(output, chave_list)
+        print("\n[Parsed Data]:")
+        for chave, rows in result.items():
+            print(f"  {chave}: {len(rows)} rows")
         
-        ' Only add if column 80 is empty
-        If Trim(col80Char) = "" Then
-            rowText = RTrim(psObj.GetText(r, 1, LINE_WIDTH))
-            If Trim(rowText) <> "" Then
-                If rowOutputs <> "" Then rowOutputs = rowOutputs & ", "
-                rowOutputs = rowOutputs & rowText
-            End If
-        End If
-    Next
+        if save_db:
+            print("\n[Saving to Database...]")
+            save_to_database(result)
 
-    CollectOnePageRows = rowOutputs
-End Function
+    time.sleep(1)
+    close_session(session_name=session_name)
+    return result if parse else output
 
-Function ConcatOutputs(base, add)
-    If Trim(add) = "" Then
-        ConcatOutputs = base
-    ElseIf Trim(base) = "" Then
-        ConcatOutputs = add
-    Else
-        ConcatOutputs = base & ", " & add
-    End If
-End Function
+def parse_vbs_output(output, chave_list):
+    """
+    Parses the VBS output format:
+      "chave1: [V] | [V] | [V], [V] | [V] | [V], chave2: [V] | ... , chave3: ..."
+    into:
+      { "chave1": ["[V] | [V] | [V]", "..."], "chave2": [...], ... }
+    """
+    starts = {}
+    for chave in chave_list:
+        needle = f"{chave}:"
+        idx = output.find(needle)
+        if idx >= 0:
+            starts[chave] = idx
 
-Function WaitForString(psObj, textToWait, rowNum, colNum, timeoutMs)
-    WaitForString = psObj.WaitForString(textToWait, rowNum, colNum, timeoutMs)
-End Function
+    ordered = sorted(starts.items(), key=lambda kv: kv[1])
 
-Function EnsureCommandArea(psObj, cmdRow, cmdCol, timeoutMs)
-    Dim tries
-    If psObj.WaitForCursor(cmdRow, cmdCol, 800) Then
-        EnsureCommandArea = True
-        Exit Function
-    End If
+    result = {}
+    for i, (chave, start_idx) in enumerate(ordered):
+        after_label = start_idx + len(chave) + 1
+        if after_label < len(output) and output[after_label] == " ":
+            after_label += 1
 
-    For tries = 1 To 4
-        psObj.SendKeys "[PF5]"
-        If psObj.WaitForCursor(cmdRow, cmdCol, 800) Then
-            EnsureCommandArea = True
-            Exit Function
-        End If
+        end_idx = len(output)
+        if i + 1 < len(ordered):
+            end_idx = ordered[i + 1][1]
 
-        psObj.SendKeys "[PF3]"
-        If psObj.WaitForCursor(cmdRow, cmdCol, 800) Then
-            EnsureCommandArea = True
-            Exit Function
-        End If
-    Next
+        chunk = output[after_label:end_idx].strip()
+        if chunk.endswith(","):
+            chunk = chunk[:-1].strip()
 
-    EnsureCommandArea = psObj.WaitForCursor(cmdRow, cmdCol, timeoutMs)
-End Function
+        rows = [x.strip() for x in chunk.split(",") if x.strip()]
+        result[chave] = rows
 
-Sub Cleanup(sess)
-    On Error Resume Next
-    If Not sess Is Nothing Then
-        sess.autECLConnMgr.StopCommunication
-    End If
-End Sub
+    return result
+
+def close_session(session_name="A"):
+    """
+    Attempts to close the PCOMM session window.
+    Falls back to killing pcsws.exe via WMIC if needed.
+    """
+    try:
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.windll.user32
+
+        def enum_windows_proc(hwnd, lParam):
+            length = user32.GetWindowTextLengthW(hwnd)
+            if length > 0:
+                buffer = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(hwnd, buffer, length + 1)
+                title = buffer.value
+                if (f"Sessão {session_name}" in title) or (f"Session {session_name}" in title) or (f"{session_name} - " in title):
+                    user32.PostMessageW(hwnd, 0x10, 0, 0)  # WM_CLOSE
+            return True
+
+        EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+        user32.EnumWindows(EnumWindowsProc(enum_windows_proc), 0)
+    except Exception:
+        try:
+            subprocess.run(["wmic", "process", "where", "name='pcsws.exe'", "delete"], capture_output=True)
+        except Exception:
+            pass
+
+if __name__ == "__main__":
+    # Example usage
+    USER       = "9409841"
+    PWD_B64    = "dGlubzEyMDM="  
+    TOKEN      = "228326"        
+    CODIGOLOJA = "035006"              
+    CHAVES     = ["17167508", "11981669", "6181137"]  
+
+    WS_PATH = r"C:\Users\I458363\Desktop\VIDEO 2.ws"
+
+    # Run with database save enabled
+    data = run_sequence(
+        USER, 
+        PWD_B64, 
+        TOKEN, 
+        CODIGOLOJA, 
+        CHAVES, 
+        ws_file=WS_PATH, 
+        parse=True,
+        save_db=True  # Enable database saving
+    )
+    
+    # Optional: print structured result
+    if isinstance(data, dict):
+        print("\n[Final Results]:")
+        for k, rows in data.items():
+            print(f"\n{k}:")
+            for row in rows:
+                print(f"  - {row}")
