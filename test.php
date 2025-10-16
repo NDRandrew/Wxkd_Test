@@ -1,219 +1,267 @@
-Here are the best alternatives to Selenium for Python web automation:
+Option Explicit
 
-## **1. Playwright (HIGHLY RECOMMENDED) ⭐**
+' ===============================
+' === CONFIGURE YOUR LAYOUT  ====
+' ===============================
+Const ROW_START  = 7      ' First data row
+Const ROW_END    = 18     ' Last row to probe for data
+Const LINE_WIDTH = 80     ' Full line width
 
-**Why it's better for your situation:**
-- ✅ No separate driver downloads needed
-- ✅ Automatic browser installation
-- ✅ Faster and more reliable than Selenium
-- ✅ Better API and modern features
-- ✅ Built by Microsoft
+' Column positions for validation
+Const COL_CHECK  = 4      ' Column to check if row has data
+Const COL_FILTER = 80     ' Column to check if row should be excluded
 
-**Installation:**
-```bash
-pip install playwright
-playwright install chromium  # or: msedge, firefox, webkit
-```
+' Token prompt string and end-of-sample marker
+Const TOKEN_PROMPT_STR    = "DIGITE ABAIXO A CHAVE INFORMADA NO SEU DISPOSITIVO DE SEGURANCA"
+Const AMOSTRAGEM_END_STR  = "FIM DA AMOSTRAGEM"
+Const AMOSTRAGEM_ROW      = 24
+Const AMOSTRAGEM_COL      = 8
 
-**Basic Code:**
-```python
-from playwright.sync_api import sync_playwright
-import time
+' ===============================
+' ============= MAIN ============
+' ===============================
+Dim args, user, pwd, token, codigoloja
+Dim session, ps
+Dim i, chaveCount, chaveList()
+Dim allOutputs, perChaveOutput
 
+Set args = WScript.Arguments
+If args.Count < 5 Then
+    WScript.StdErr.Write "ERROR: Usage: cscript //nologo Base_Contas_PJ_read.vbs <username> <password> <token-or-dash> <codigoloja> <chaveLoja1> [<chaveLoja2> ...]" & vbCrLf
+    WScript.Quit 1
+End If
 
-def main():
-    with sync_playwright() as p:
-        # Launch browser (visible)
-        browser = p.chromium.launch(headless=False)
+user        = args(0)
+pwd         = args(1)
+token       = args(2)      ' Pass "-" to skip token
+codigoloja  = args(3)
+
+chaveCount = args.Count - 4
+ReDim chaveList(chaveCount - 1)
+For i = 0 To chaveCount - 1
+    chaveList(i) = args(4 + i)
+Next
+
+On Error Resume Next
+
+' ==== Attach PCOMM session A ====
+Set session = CreateObject("PCOMM.autECLSession")
+If session Is Nothing Then
+    WScript.StdErr.Write "ERROR: Cannot create autECLSession" & vbCrLf
+    WScript.Quit 1
+End If
+
+session.SetConnectionByName "A"
+If Err.Number <> 0 Then
+    WScript.StdErr.Write "ERROR: Attach session A – " & Err.Description & vbCrLf
+    WScript.Quit 1
+End If
+Err.Clear
+
+Set ps = session.autECLPS
+
+' ==== Open and login ====
+If Not ps.WaitForCursor(20, 1, 10000) Then
+    WScript.StdErr.Write "ERROR: Timeout to open IBM PCOMM" & vbCrLf
+    Cleanup session
+    WScript.Quit 1
+End If
+
+ps.SendKeys "IMS12"
+ps.SendKeys "[Enter]"
+ps.SendKeys "[PF4]"
+
+If Not ps.WaitForCursor(15, 46, 10000) Then
+    WScript.StdErr.Write "ERROR: Usuario ou senha incorreta (usuario field)" & vbCrLf
+    Cleanup session
+    WScript.Quit 1
+End If
+ps.SendKeys user
+
+If Not ps.WaitForCursor(16, 46, 10000) Then
+    WScript.StdErr.Write "ERROR: Usuario ou senha incorreta (senha field)" & vbCrLf
+    Cleanup session
+    WScript.Quit 1
+End If
+ps.SendKeys pwd
+ps.SendKeys "[Enter]"
+
+' Optional token step
+If token <> "-" Then
+    If WaitForString(ps, TOKEN_PROMPT_STR, 07, 10, 8000) Then
+        ps.SendKeys token
+        ps.SendKeys "[Enter]"
+        If WaitForString(ps, TOKEN_PROMPT_STR, 07, 10, 4000) Then
+            WScript.StdErr.Write "ERROR: Token incorreto" & vbCrLf
+            Cleanup session
+            WScript.Quit 1
+        End If
+    End If
+End If
+
+' Ensure command area (cursor at 4,7) before starting queries
+If Not EnsureCommandArea(ps, 4, 06, 10000) Then
+    WScript.StdErr.Write "ERROR: Nao foi possivel chegar na area de comando" & vbCrLf
+    Cleanup session
+    WScript.Quit 1
+End If
+
+allOutputs = ""
+
+' ===============================
+' Loop each ChaveLoja
+' ===============================
+For i = 0 To UBound(chaveList)
+    perChaveOutput = HandleOneChave(ps, codigoloja, CStr(chaveList(i)))
+    If perChaveOutput = "" Then perChaveOutput = chaveList(i) & ": "
+
+    If allOutputs <> "" Then allOutputs = allOutputs & ", "
+    allOutputs = allOutputs & perChaveOutput
+
+    ' After finishing this chave, return to command area for next chave
+    EnsureCommandArea ps, 4, 6, 5000
+Next
+
+If Err.Number <> 0 Then
+    WScript.StdErr.Write "ERROR during sequence – " & Err.Description & vbCrLf
+    Cleanup session
+    WScript.Quit 1
+End If
+
+WScript.StdOut.Write allOutputs
+Cleanup session
+WScript.Quit 0
+
+' ===============================
+' ========= FUNCTIONS ===========
+' ===============================
+
+Function HandleOneChave(psObj, codigoLojaValue, chaveLojaValue)
+    Dim rowOutputs
+
+    ' Go to transaction and enter chave
+    psObj.SendKeys "clie"
+    psObj.SendKeys "[Enter]"
+
+    ' Two Tabs then enter chave da loja
+    psObj.SendKeys "[Tab]"
+    psObj.SendKeys "[Tab]"
+    psObj.SendKeys chaveLojaValue
+    psObj.SendKeys "[Enter]"
+
+    ' Wait for first result page
+    psObj.WaitForCursor ROW_START, 1, 5000
+
+    ' Collect pages
+    rowOutputs = CollectRowsUntilEnd(psObj)
+
+    HandleOneChave = chaveLojaValue & ": " & rowOutputs
+End Function
+
+Function CollectRowsUntilEnd(psObj)
+    Dim allRows, pageRows, isLastPage
+
+    allRows = ""
+
+    Do
+        ' Check if this is the last page BEFORE collecting rows
+        isLastPage = HasEndOfAmostragem(psObj, 300)
+
+        ' Collect rows from current page
+        pageRows = CollectOnePageRows(psObj)
+        allRows = ConcatOutputs(allRows, pageRows)
+
+        ' If last page, exit without pressing PF8
+        If isLastPage Then Exit Do
+
+        ' Not last page, go to next page
+        psObj.SendKeys "[PF8]"
+        WScript.Sleep 400
+    Loop
+
+    CollectRowsUntilEnd = allRows
+End Function
+
+Function HasEndOfAmostragem(psObj, timeoutMs)
+    HasEndOfAmostragem = psObj.WaitForString(AMOSTRAGEM_END_STR, AMOSTRAGEM_ROW, AMOSTRAGEM_COL, timeoutMs)
+End Function
+
+Function CollectOnePageRows(psObj)
+    Dim rowOutputs, r, col4Value, col80Value, rowOut
+    rowOutputs = ""
+
+    For r = ROW_START To ROW_END
+        ' Check column 04 - if empty, no more data rows
+        col4Value = Trim(psObj.GetText(r, COL_CHECK, 1))
         
-        # Or use Edge
-        # browser = p.chromium.launch(channel="msedge", headless=False)
+        If col4Value = "" Then
+            ' No data in column 04, finish processing rows
+            Exit For
+        End If
         
-        # Or use Firefox
-        # browser = p.firefox.launch(headless=False)
+        ' Column 04 has data, now check column 80
+        col80Value = Trim(psObj.GetText(r, COL_FILTER, 1))
         
-        # Create a new page
-        page = browser.new_page()
-        
-        try:
-            # Navigate to URL
-            page.goto("https://www.example.com")
-            
-            # Wait for page to load
-            page.wait_for_load_state("networkidle")
-            
-            # Get title
-            title = page.title()
-            print(f"Page title: {title}")
-            
-            # Find and interact with elements
-            # page.click("button#submit")
-            # page.fill("input#username", "myusername")
-            # page.locator("h1").text_content()
-            
-            # Take screenshot
-            # page.screenshot(path="screenshot.png")
-            
-            print("Script executed successfully!")
-            time.sleep(5)  # Keep browser open to see it
-            
-        except Exception as e:
-            print(f"Error: {e}")
-        
-        finally:
-            browser.close()
+        If col80Value = "" Then
+            ' Column 80 is empty, add this row to output
+            rowOut = FormatRow(psObj, r)
+            If Trim(rowOut) <> "" Then
+                If rowOutputs <> "" Then rowOutputs = rowOutputs & ", "
+                rowOutputs = rowOutputs & rowOut
+            End If
+        End If
+        ' If column 80 has data, skip this row (don't add to output)
+    Next
 
+    CollectOnePageRows = rowOutputs
+End Function
 
-if __name__ == "__main__":
-    main()
-```
+Function ConcatOutputs(base, add)
+    If Trim(add) = "" Then
+        ConcatOutputs = base
+    ElseIf Trim(base) = "" Then
+        ConcatOutputs = add
+    Else
+        ConcatOutputs = base & ", " & add
+    End If
+End Function
 
----
+Function FormatRow(psObj, row)
+    Dim line
+    line = RTrim(psObj.GetText(row, 1, LINE_WIDTH))
 
-## **2. Pyppeteer (Puppeteer for Python)**
+    If Trim(line) = "" Then
+        FormatRow = ""
+    Else
+        FormatRow = line
+    End If
+End Function
 
-Python port of Google's Puppeteer (Chrome DevTools Protocol)
+Function WaitForString(psObj, textToWait, rowNum, colNum, timeoutMs)
+    WaitForString = psObj.WaitForString(textToWait, rowNum, colNum, timeoutMs)
+End Function
 
-**Installation:**
-```bash
-pip install pyppeteer
-```
+Function EnsureCommandArea(psObj, cmdRow, cmdCol, timeoutMs)
+    Dim tries
+    If psObj.WaitForCursor(cmdRow, cmdCol, 800) Then
+        EnsureCommandArea = True
+        Exit Function
+    End If
 
-**Basic Code:**
-```python
-import asyncio
-from pyppeteer import launch
+    For tries = 1 To 4
+        psObj.SendKeys "[PF5]"
+        If psObj.WaitForCursor(cmdRow, cmdCol, 800) Then EnsureCommandArea = True : Exit Function
 
+        psObj.SendKeys "[PF3]"
+        If psObj.WaitForCursor(cmdRow, cmdCol, 800) Then EnsureCommandArea = True : Exit Function
+    Next
 
-async def main():
-    # Launch browser
-    browser = await launch(headless=False, args=['--start-maximized'])
-    page = await browser.newPage()
-    
-    try:
-        # Navigate
-        await page.goto('https://www.example.com')
-        
-        # Get title
-        title = await page.title()
-        print(f'Title: {title}')
-        
-        # Interact with elements
-        # await page.click('#button')
-        # await page.type('#input', 'text')
-        
-        await asyncio.sleep(5)
-        
-    except Exception as e:
-        print(f"Error: {e}")
-    
-    finally:
-        await browser.close()
+    EnsureCommandArea = psObj.WaitForCursor(cmdRow, cmdCol, timeoutMs)
+End Function
 
-
-if __name__ == '__main__':
-    asyncio.get_event_loop().run_until_complete(main())
-```
-
----
-
-## **3. Helium (Simplified Selenium Wrapper)**
-
-Easier syntax built on top of Selenium - if you still want Selenium
-
-**Installation:**
-```bash
-pip install helium
-```
-
-**Basic Code:**
-```python
-from helium import *
-
-
-def main():
-    # Start browser (it handles drivers automatically in some cases)
-    start_chrome("https://www.example.com")
-    # or: start_firefox()
-    
-    # Much simpler syntax
-    write("search query", into="Search")
-    click("Search button")
-    
-    # Check if text exists
-    if Text("Result").exists():
-        print("Found result!")
-    
-    wait_until(Text("Something").exists)
-    
-    kill_browser()
-
-
-if __name__ == "__main__":
-    main()
-```
-
----
-
-## **4. Requests-HTML (Lightweight Alternative)**
-
-For simpler scraping without full browser automation
-
-**Installation:**
-```bash
-pip install requests-html
-```
-
-**Basic Code:**
-```python
-from requests_html import HTMLSession
-
-
-def main():
-    session = HTMLSession()
-    
-    # Get page
-    r = session.get('https://www.example.com')
-    
-    # Render JavaScript (uses Chromium behind scenes)
-    r.html.render()
-    
-    # Find elements
-    title = r.html.find('title', first=True).text
-    print(f"Title: {title}")
-    
-    # CSS selectors
-    links = r.html.find('a')
-    for link in links:
-        print(link.attrs.get('href'))
-
-
-if __name__ == "__main__":
-    main()
-```
-
----
-
-## **Comparison Table:**
-
-| Tool | Difficulty | Speed | Features | Best For |
-|------|-----------|-------|----------|----------|
-| **Playwright** | Medium | ⚡⚡⚡ | Most complete | Modern automation |
-| **Pyppeteer** | Medium | ⚡⚡⚡ | Good | Chrome-specific tasks |
-| **Helium** | Easy | ⚡⚡ | Limited | Simple Selenium tasks |
-| **Requests-HTML** | Easy | ⚡⚡ | Basic | Light scraping |
-
----
-
-## **My Recommendation for You:**
-
-**Try Playwright first!** It's the most modern, doesn't have driver issues, and is actually easier to work with than Selenium.
-
-```bash
-pip install playwright
-playwright install chromium
-```
-
-Then use the Playwright code I provided above. It should work without all the driver headaches you've been experiencing!
-
-**Want me to create a more complete Playwright example for you?** 🚀
+Sub Cleanup(sess)
+    On Error Resume Next
+    If Not sess Is Nothing Then
+        sess.autECLConnMgr.StopCommunication
+    End If
+End Sub
