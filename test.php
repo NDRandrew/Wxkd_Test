@@ -153,63 +153,86 @@ Function HandleOneChave(psObj, codigoLojaValue, chaveLojaValue)
     psObj.SendKeys chaveLojaValue
     psObj.SendKeys "[Enter]"
 
-    ' Wait just a moment for screen to update (not for cursor)
+    ' Wait for screen to update
     WScript.Sleep 300
 
-    ' Collect ONLY first page for testing
-    rowOutputs = CollectOnePageRows(psObj)
+    ' Collect all pages by comparing before/after PF8
+    rowOutputs = CollectAllPages(psObj)
 
     HandleOneChave = chaveLojaValue & ": " & rowOutputs
 End Function
 
-' TEMPORARILY DISABLED FOR TESTING - Multi-page collection
-' Function CollectRowsUntilEnd(psObj)
-'     Dim allRows, pageRows, isLastPage, pageNum
-'     allRows = ""
-'     pageNum = 1
-'     Do
-'         pageRows = CollectOnePageRows(psObj)
-'         allRows = ConcatOutputs(allRows, pageRows)
-'         isLastPage = HasEndOfAmostragem(psObj)
-'         If isLastPage Then Exit Do
-'         psObj.SendKeys "[PF8]"
-'         psObj.WaitForCursor ROW_START, 1, 5000
-'         pageNum = pageNum + 1
-'     Loop
-'     CollectRowsUntilEnd = allRows
-' End Function
+Function CollectRowsUntilEnd(psObj)
+    Dim allRows, pageRows, isLastPage, pageNum
 
-' TEMPORARILY DISABLED FOR TESTING
-' Function HasEndOfAmostragem(psObj)
-'     Dim textAtMarker
-'     textAtMarker = psObj.GetText(AMOSTRAGEM_ROW, AMOSTRAGEM_COL, Len(AMOSTRAGEM_END_STR))
-'     HasEndOfAmostragem = (Trim(textAtMarker) = AMOSTRAGEM_END_STR)
-' End Function
+    allRows = ""
+    pageNum = 1
+
+    Do
+        If DEBUG_MODE Then WScript.StdErr.Write "  [Page " & pageNum & "] Reading rows..." & vbCrLf
+        
+        ' Collect rows from current page (reads are instant)
+        pageRows = CollectOnePageRows(psObj)
+        allRows = ConcatOutputs(allRows, pageRows)
+
+        ' Check if this is the last page
+        isLastPage = HasEndOfAmostragem(psObj)
+        
+        If DEBUG_MODE Then
+            If isLastPage Then
+                WScript.StdErr.Write "  [Page " & pageNum & "] Last page detected" & vbCrLf
+            Else
+                WScript.StdErr.Write "  [Page " & pageNum & "] More pages, pressing PF8..." & vbCrLf
+            End If
+        End If
+        
+        ' If last page, exit without pressing PF8
+        If isLastPage Then Exit Do
+
+        ' Not last page, go to next page
+        psObj.SendKeys "[PF8]"
+        psObj.WaitForCursor ROW_START, 1, 5000
+        pageNum = pageNum + 1
+    Loop
+
+    CollectRowsUntilEnd = allRows
+End Function
+
+Function HasEndOfAmostragem(psObj)
+    Dim textAtMarker
+    ' Get text directly instead of waiting - much faster
+    textAtMarker = psObj.GetText(AMOSTRAGEM_ROW, AMOSTRAGEM_COL, Len(AMOSTRAGEM_END_STR))
+    HasEndOfAmostragem = (Trim(textAtMarker) = AMOSTRAGEM_END_STR)
+End Function
 
 Function CollectOnePageRows(psObj)
-    Dim rowOutputs, r, col4Char, col80Char, rowText
+    Dim rowOutputs, r, col4Char, col80Char, rowText, rowCount
     rowOutputs = ""
+    rowCount = 0
 
-    ' Simple loop through all rows
     For r = ROW_START To ROW_END
-        ' Read column 04 - check if row has data
+        ' Quick check: read single character from column 04
         col4Char = psObj.GetText(r, COL_CHECK, 1)
         
-        ' If empty, stop (no more rows)
+        ' If column 04 is empty (space or nothing), no more data rows
         If Trim(col4Char) = "" Then Exit For
         
-        ' Has data, check column 80 filter
+        ' Column 04 has data, check column 80
         col80Char = psObj.GetText(r, COL_FILTER, 1)
         
-        ' Only add if column 80 is empty
+        ' If column 80 is empty, include this row
         If Trim(col80Char) = "" Then
             rowText = RTrim(psObj.GetText(r, 1, LINE_WIDTH))
             If Trim(rowText) <> "" Then
                 If rowOutputs <> "" Then rowOutputs = rowOutputs & ", "
                 rowOutputs = rowOutputs & rowText
+                rowCount = rowCount + 1
             End If
         End If
+        ' If column 80 has data, skip this row
     Next
+
+    If DEBUG_MODE Then WScript.StdErr.Write "    Found " & rowCount & " valid rows" & vbCrLf
 
     CollectOnePageRows = rowOutputs
 End Function
