@@ -164,8 +164,11 @@ Function CollectRowsUntilEnd(psObj)
     allRows = ""
 
     Do
+        ' Small wait to ensure screen is fully rendered
+        WScript.Sleep 200
+        
         ' Check if this is the last page BEFORE collecting rows
-        isLastPage = HasEndOfAmostragem(psObj, 300)
+        isLastPage = HasEndOfAmostragem(psObj)
 
         ' Collect rows from current page
         pageRows = CollectOnePageRows(psObj)
@@ -176,14 +179,19 @@ Function CollectRowsUntilEnd(psObj)
 
         ' Not last page, go to next page
         psObj.SendKeys "[PF8]"
-        WScript.Sleep 400
+        
+        ' Wait for next page to load - wait for cursor at first data row
+        psObj.WaitForCursor ROW_START, 1, 3000
     Loop
 
     CollectRowsUntilEnd = allRows
 End Function
 
-Function HasEndOfAmostragem(psObj, timeoutMs)
-    HasEndOfAmostragem = psObj.WaitForString(AMOSTRAGEM_END_STR, AMOSTRAGEM_ROW, AMOSTRAGEM_COL, timeoutMs)
+Function HasEndOfAmostragem(psObj)
+    Dim textAtMarker
+    ' Get text directly instead of waiting - much faster
+    textAtMarker = psObj.GetText(AMOSTRAGEM_ROW, AMOSTRAGEM_COL, Len(AMOSTRAGEM_END_STR))
+    HasEndOfAmostragem = (Trim(textAtMarker) = AMOSTRAGEM_END_STR)
 End Function
 
 Function CollectOnePageRows(psObj)
