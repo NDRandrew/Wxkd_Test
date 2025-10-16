@@ -17,6 +17,9 @@ Const AMOSTRAGEM_END_STR  = "FIM DA AMOSTRAGEM"
 Const AMOSTRAGEM_ROW      = 24
 Const AMOSTRAGEM_COL      = 8
 
+' Debug mode - set to True to see progress messages on stderr
+Const DEBUG_MODE = False
+
 ' ===============================
 ' ============= MAIN ============
 ' ===============================
@@ -139,9 +142,14 @@ WScript.Quit 0
 Function HandleOneChave(psObj, codigoLojaValue, chaveLojaValue)
     Dim rowOutputs
 
+    If DEBUG_MODE Then WScript.StdErr.Write "[Chave " & chaveLojaValue & "] Starting..." & vbCrLf
+
     ' Go to transaction and enter chave
     psObj.SendKeys "clie"
     psObj.SendKeys "[Enter]"
+    
+    ' Wait for screen to be ready before entering data
+    psObj.WaitForCursor 1, 1, 3000
 
     ' Two Tabs then enter chave da loja
     psObj.SendKeys "[Tab]"
@@ -149,39 +157,50 @@ Function HandleOneChave(psObj, codigoLojaValue, chaveLojaValue)
     psObj.SendKeys chaveLojaValue
     psObj.SendKeys "[Enter]"
 
-    ' Wait for first result page
+    ' Wait for first result page - cursor at first data row
     psObj.WaitForCursor ROW_START, 1, 5000
 
-    ' Collect pages
+    If DEBUG_MODE Then WScript.StdErr.Write "[Chave " & chaveLojaValue & "] Collecting data..." & vbCrLf
+
+    ' Collect all pages
     rowOutputs = CollectRowsUntilEnd(psObj)
+
+    If DEBUG_MODE Then WScript.StdErr.Write "[Chave " & chaveLojaValue & "] Done!" & vbCrLf
 
     HandleOneChave = chaveLojaValue & ": " & rowOutputs
 End Function
 
 Function CollectRowsUntilEnd(psObj)
-    Dim allRows, pageRows, isLastPage
+    Dim allRows, pageRows, isLastPage, pageNum
 
     allRows = ""
+    pageNum = 1
 
     Do
-        ' Small wait to ensure screen is fully rendered
-        WScript.Sleep 200
+        If DEBUG_MODE Then WScript.StdErr.Write "  [Page " & pageNum & "] Reading rows..." & vbCrLf
         
-        ' Check if this is the last page BEFORE collecting rows
-        isLastPage = HasEndOfAmostragem(psObj)
-
-        ' Collect rows from current page
+        ' Collect rows from current page (reads are instant)
         pageRows = CollectOnePageRows(psObj)
         allRows = ConcatOutputs(allRows, pageRows)
 
+        ' Check if this is the last page
+        isLastPage = HasEndOfAmostragem(psObj)
+        
+        If DEBUG_MODE Then
+            If isLastPage Then
+                WScript.StdErr.Write "  [Page " & pageNum & "] Last page detected" & vbCrLf
+            Else
+                WScript.StdErr.Write "  [Page " & pageNum & "] More pages, pressing PF8..." & vbCrLf
+            End If
+        End If
+        
         ' If last page, exit without pressing PF8
         If isLastPage Then Exit Do
 
         ' Not last page, go to next page
         psObj.SendKeys "[PF8]"
-        
-        ' Wait for next page to load - wait for cursor at first data row
-        psObj.WaitForCursor ROW_START, 1, 3000
+        psObj.WaitForCursor ROW_START, 1, 5000
+        pageNum = pageNum + 1
     Loop
 
     CollectRowsUntilEnd = allRows
@@ -195,31 +214,33 @@ Function HasEndOfAmostragem(psObj)
 End Function
 
 Function CollectOnePageRows(psObj)
-    Dim rowOutputs, r, col4Value, col80Value, rowOut
+    Dim rowOutputs, r, col4Char, col80Char, rowText, rowCount
     rowOutputs = ""
+    rowCount = 0
 
     For r = ROW_START To ROW_END
-        ' Check column 04 - if empty, no more data rows
-        col4Value = Trim(psObj.GetText(r, COL_CHECK, 1))
+        ' Quick check: read single character from column 04
+        col4Char = psObj.GetText(r, COL_CHECK, 1)
         
-        If col4Value = "" Then
-            ' No data in column 04, finish processing rows
-            Exit For
-        End If
+        ' If column 04 is empty (space or nothing), no more data rows
+        If Trim(col4Char) = "" Then Exit For
         
-        ' Column 04 has data, now check column 80
-        col80Value = Trim(psObj.GetText(r, COL_FILTER, 1))
+        ' Column 04 has data, check column 80
+        col80Char = psObj.GetText(r, COL_FILTER, 1)
         
-        If col80Value = "" Then
-            ' Column 80 is empty, add this row to output
-            rowOut = FormatRow(psObj, r)
-            If Trim(rowOut) <> "" Then
+        ' If column 80 is empty, include this row
+        If Trim(col80Char) = "" Then
+            rowText = RTrim(psObj.GetText(r, 1, LINE_WIDTH))
+            If Trim(rowText) <> "" Then
                 If rowOutputs <> "" Then rowOutputs = rowOutputs & ", "
-                rowOutputs = rowOutputs & rowOut
+                rowOutputs = rowOutputs & rowText
+                rowCount = rowCount + 1
             End If
         End If
-        ' If column 80 has data, skip this row (don't add to output)
+        ' If column 80 has data, skip this row
     Next
+
+    If DEBUG_MODE Then WScript.StdErr.Write "    Found " & rowCount & " valid rows" & vbCrLf
 
     CollectOnePageRows = rowOutputs
 End Function
@@ -231,17 +252,6 @@ Function ConcatOutputs(base, add)
         ConcatOutputs = add
     Else
         ConcatOutputs = base & ", " & add
-    End If
-End Function
-
-Function FormatRow(psObj, row)
-    Dim line
-    line = RTrim(psObj.GetText(row, 1, LINE_WIDTH))
-
-    If Trim(line) = "" Then
-        FormatRow = ""
-    Else
-        FormatRow = line
     End If
 End Function
 
