@@ -11,14 +11,8 @@ Const LINE_WIDTH = 80     ' Full line width
 Const COL_CHECK  = 4      ' Column to check if row has data
 Const COL_FILTER = 80     ' Column to check if row should be excluded
 
-' Token prompt string and end-of-sample marker
-Const TOKEN_PROMPT_STR    = "DIGITE ABAIXO A CHAVE INFORMADA NO SEU DISPOSITIVO DE SEGURANCA"
-Const AMOSTRAGEM_END_STR  = "FIM DA AMOSTRAGEM"
-Const AMOSTRAGEM_ROW      = 24
-Const AMOSTRAGEM_COL      = 8
-
-' Debug mode - set to True to see progress messages on stderr
-Const DEBUG_MODE = False
+' Token prompt string
+Const TOKEN_PROMPT_STR = "DIGITE ABAIXO A CHAVE INFORMADA NO SEU DISPOSITIVO DE SEGURANCA"
 
 ' ===============================
 ' ============= MAIN ============
@@ -36,7 +30,7 @@ End If
 
 user        = args(0)
 pwd         = args(1)
-token       = args(2)      ' Pass "-" to skip token
+token       = args(2)
 codigoloja  = args(3)
 
 chaveCount = args.Count - 4
@@ -102,7 +96,7 @@ If token <> "-" Then
     End If
 End If
 
-' Ensure command area (cursor at 4,7) before starting queries
+' Ensure command area before starting queries
 If Not EnsureCommandArea(ps, 4, 06, 10000) Then
     WScript.StdErr.Write "ERROR: Nao foi possivel chegar na area de comando" & vbCrLf
     Cleanup session
@@ -121,7 +115,7 @@ For i = 0 To UBound(chaveList)
     If allOutputs <> "" Then allOutputs = allOutputs & ", "
     allOutputs = allOutputs & perChaveOutput
 
-    ' After finishing this chave, return to command area for next chave
+    ' Return to command area for next chave
     EnsureCommandArea ps, 4, 6, 5000
 Next
 
@@ -162,77 +156,57 @@ Function HandleOneChave(psObj, codigoLojaValue, chaveLojaValue)
     HandleOneChave = chaveLojaValue & ": " & rowOutputs
 End Function
 
-Function CollectRowsUntilEnd(psObj)
-    Dim allRows, pageRows, isLastPage, pageNum
-
+Function CollectAllPages(psObj)
+    Dim allRows, currentPageRows, nextPageRows
+    
     allRows = ""
-    pageNum = 1
-
+    
     Do
-        If DEBUG_MODE Then WScript.StdErr.Write "  [Page " & pageNum & "] Reading rows..." & vbCrLf
+        ' Collect current page
+        currentPageRows = CollectOnePageRows(psObj)
         
-        ' Collect rows from current page (reads are instant)
-        pageRows = CollectOnePageRows(psObj)
-        allRows = ConcatOutputs(allRows, pageRows)
-
-        ' Check if this is the last page
-        isLastPage = HasEndOfAmostragem(psObj)
+        ' Add current page to all results
+        allRows = ConcatOutputs(allRows, currentPageRows)
         
-        If DEBUG_MODE Then
-            If isLastPage Then
-                WScript.StdErr.Write "  [Page " & pageNum & "] Last page detected" & vbCrLf
-            Else
-                WScript.StdErr.Write "  [Page " & pageNum & "] More pages, pressing PF8..." & vbCrLf
-            End If
-        End If
-        
-        ' If last page, exit without pressing PF8
-        If isLastPage Then Exit Do
-
-        ' Not last page, go to next page
+        ' Press PF8 to try next page
         psObj.SendKeys "[PF8]"
-        psObj.WaitForCursor ROW_START, 1, 5000
-        pageNum = pageNum + 1
+        WScript.Sleep 300
+        
+        ' Collect what's on screen after PF8
+        nextPageRows = CollectOnePageRows(psObj)
+        
+        ' If same as current page, we're on the last page - exit
+        If nextPageRows = currentPageRows Then Exit Do
+        
     Loop
-
-    CollectRowsUntilEnd = allRows
-End Function
-
-Function HasEndOfAmostragem(psObj)
-    Dim textAtMarker
-    ' Get text directly instead of waiting - much faster
-    textAtMarker = psObj.GetText(AMOSTRAGEM_ROW, AMOSTRAGEM_COL, Len(AMOSTRAGEM_END_STR))
-    HasEndOfAmostragem = (Trim(textAtMarker) = AMOSTRAGEM_END_STR)
+    
+    CollectAllPages = allRows
 End Function
 
 Function CollectOnePageRows(psObj)
-    Dim rowOutputs, r, col4Char, col80Char, rowText, rowCount
+    Dim rowOutputs, r, col4Char, col80Char, rowText
     rowOutputs = ""
-    rowCount = 0
 
+    ' Loop through all rows
     For r = ROW_START To ROW_END
-        ' Quick check: read single character from column 04
+        ' Read column 04 - check if row has data
         col4Char = psObj.GetText(r, COL_CHECK, 1)
         
-        ' If column 04 is empty (space or nothing), no more data rows
+        ' If empty, stop (no more rows)
         If Trim(col4Char) = "" Then Exit For
         
-        ' Column 04 has data, check column 80
+        ' Has data, check column 80 filter
         col80Char = psObj.GetText(r, COL_FILTER, 1)
         
-        ' If column 80 is empty, include this row
+        ' Only add if column 80 is empty
         If Trim(col80Char) = "" Then
             rowText = RTrim(psObj.GetText(r, 1, LINE_WIDTH))
             If Trim(rowText) <> "" Then
                 If rowOutputs <> "" Then rowOutputs = rowOutputs & ", "
                 rowOutputs = rowOutputs & rowText
-                rowCount = rowCount + 1
             End If
         End If
-        ' If column 80 has data, skip this row
     Next
-
-    If DEBUG_MODE Then WScript.StdErr.Write "    Found " & rowCount & " valid rows" & vbCrLf
 
     CollectOnePageRows = rowOutputs
 End Function
@@ -260,10 +234,16 @@ Function EnsureCommandArea(psObj, cmdRow, cmdCol, timeoutMs)
 
     For tries = 1 To 4
         psObj.SendKeys "[PF5]"
-        If psObj.WaitForCursor(cmdRow, cmdCol, 800) Then EnsureCommandArea = True : Exit Function
+        If psObj.WaitForCursor(cmdRow, cmdCol, 800) Then
+            EnsureCommandArea = True
+            Exit Function
+        End If
 
         psObj.SendKeys "[PF3]"
-        If psObj.WaitForCursor(cmdRow, cmdCol, 800) Then EnsureCommandArea = True : Exit Function
+        If psObj.WaitForCursor(cmdRow, cmdCol, 800) Then
+            EnsureCommandArea = True
+            Exit Function
+        End If
     Next
 
     EnsureCommandArea = psObj.WaitForCursor(cmdRow, cmdCol, timeoutMs)
