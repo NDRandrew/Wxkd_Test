@@ -1,694 +1,730 @@
-Option Explicit
+<?php
+// Add these methods to analise_encerramento_model.class.php
 
-' ===============================
-' === CONFIGURE YOUR LAYOUT  ====
-' ===============================
-Const ROW_START  = 7      ' First data row
-Const ROW_END    = 18     ' Last row to probe for data
-
-' Column positions for validation
-Const COL_CHECK  = 4      ' Column to check if row has data
-Const COL_FILTER = 80     ' Column to check if row should be excluded
-
-' Field extraction positions
-Const COL_AGEN   = 6      ' AGEN starts at column 6
-Const LEN_AGEN   = 4      ' AGEN is 4 characters (columns 6-9)
-Const COL_CONTA  = 11     ' CONTA starts at column 11
-Const LEN_CONTA  = 7      ' CONTA is 7 characters (columns 11-17)
-
-' Token prompt string
-Const TOKEN_PROMPT_STR = "DIGITE ABAIXO A CHAVE INFORMADA NO SEU DISPOSITIVO DE SEGURANCA"
-
-' ===============================
-' ============= MAIN ============
-' ===============================
-Dim args, user, pwd, token, codigoloja
-Dim session, ps
-Dim i, chaveCount, chaveList()
-Dim allOutputs, perChaveOutput
-
-Set args = WScript.Arguments
-If args.Count < 5 Then
-    WScript.StdErr.Write "ERROR: Usage: cscript //nologo Base_Contas_PJ_read.vbs <username> <password> <token-or-dash> <codigoloja> <chaveLoja1> [<chaveLoja2> ...]" & vbCrLf
-    WScript.Quit 1
-End If
-
-user        = args(0)
-pwd         = args(1)
-token       = args(2)
-codigoloja  = args(3)
-
-chaveCount = args.Count - 4
-ReDim chaveList(chaveCount - 1)
-For i = 0 To chaveCount - 1
-    chaveList(i) = args(4 + i)
-Next
-
-On Error Resume Next
-
-' ==== Attach PCOMM session A ====
-Set session = CreateObject("PCOMM.autECLSession")
-If session Is Nothing Then
-    WScript.StdErr.Write "ERROR: Cannot create autECLSession" & vbCrLf
-    WScript.Quit 1
-End If
-
-session.SetConnectionByName "A"
-If Err.Number <> 0 Then
-    WScript.StdErr.Write "ERROR: Attach session A – " & Err.Description & vbCrLf
-    WScript.Quit 1
-End If
-Err.Clear
-
-Set ps = session.autECLPS
-
-' ==== Open and login ====
-If Not ps.WaitForCursor(20, 1, 10000) Then
-    WScript.StdErr.Write "ERROR: Timeout to open IBM PCOMM" & vbCrLf
-    Cleanup session
-    WScript.Quit 1
-End If
-
-ps.SendKeys "IMS12"
-ps.SendKeys "[Enter]"
-ps.SendKeys "[PF4]"
-
-If Not ps.WaitForCursor(15, 46, 10000) Then
-    WScript.StdErr.Write "ERROR: Usuario ou senha incorreta (usuario field)" & vbCrLf
-    Cleanup session
-    WScript.Quit 1
-End If
-ps.SendKeys user
-
-If Not ps.WaitForCursor(16, 46, 10000) Then
-    WScript.StdErr.Write "ERROR: Usuario ou senha incorreta (senha field)" & vbCrLf
-    Cleanup session
-    WScript.Quit 1
-End If
-ps.SendKeys pwd
-ps.SendKeys "[Enter]"
-
-' Optional token step
-If token <> "-" Then
-    If WaitForString(ps, TOKEN_PROMPT_STR, 07, 10, 8000) Then
-        ps.SendKeys token
-        ps.SendKeys "[Enter]"
-        If WaitForString(ps, TOKEN_PROMPT_STR, 07, 10, 4000) Then
-            WScript.StdErr.Write "ERROR: Token incorreto" & vbCrLf
-            Cleanup session
-            WScript.Quit 1
-        End If
-    End If
-End If
-
-' Ensure command area before starting queries
-If Not EnsureCommandArea(ps, 4, 06, 10000) Then
-    WScript.StdErr.Write "ERROR: Nao foi possivel chegar na area de comando" & vbCrLf
-    Cleanup session
-    WScript.Quit 1
-End If
-
-allOutputs = ""
-
-' ===============================
-' Loop each ChaveLoja
-' ===============================
-For i = 0 To UBound(chaveList)
-    perChaveOutput = HandleOneChave(ps, codigoloja, CStr(chaveList(i)))
-    If perChaveOutput = "" Then perChaveOutput = chaveList(i) & ": "
-
-    If allOutputs <> "" Then allOutputs = allOutputs & ", "
-    allOutputs = allOutputs & perChaveOutput
-
-    ' Return to command area for next chave
-    EnsureCommandArea ps, 4, 6, 5000
-Next
-
-If Err.Number <> 0 Then
-    WScript.StdErr.Write "ERROR during sequence – " & Err.Description & vbCrLf
-    Cleanup session
-    WScript.Quit 1
-End If
-
-WScript.StdOut.Write allOutputs
-Cleanup session
-WScript.Quit 0
-
-' ===============================
-' ========= FUNCTIONS ===========
-' ===============================
-
-Function HandleOneChave(psObj, codigoLojaValue, chaveLojaValue)
-    Dim rowOutputs
-
-    ' Go to transaction and enter chave
-    psObj.SendKeys "clie"
-    psObj.SendKeys "[Enter]"
-    psObj.WaitForCursor 1, 1, 3000
-
-    ' Two Tabs then enter chave da loja
-    psObj.SendKeys "[Tab]"
-    psObj.SendKeys "[Tab]"
-    psObj.SendKeys chaveLojaValue
-    psObj.SendKeys "[Enter]"
-
-    ' Wait for screen to update
-    WScript.Sleep 300
-
-    ' Collect all pages by comparing before/after PF8
-    rowOutputs = CollectAllPages(psObj)
-
-    HandleOneChave = chaveLojaValue & ": " & rowOutputs
-End Function
-
-Function CollectAllPages(psObj)
-    Dim allRows, currentPageRows, nextPageRows
-    
-    allRows = ""
-    
-    Do
-        ' Collect current page
-        currentPageRows = CollectOnePageRows(psObj)
-        
-        ' Add current page to all results
-        allRows = ConcatOutputs(allRows, currentPageRows)
-        
-        ' Press PF8 to try next page
-        psObj.SendKeys "[PF8]"
-        WScript.Sleep 300
-        
-        ' Collect what's on screen after PF8
-        nextPageRows = CollectOnePageRows(psObj)
-        
-        ' If same as current page, we're on the last page - exit
-        If nextPageRows = currentPageRows Then Exit Do
-        
-    Loop
-    
-    CollectAllPages = allRows
-End Function
-
-Function CollectOnePageRows(psObj)
-    Dim rowOutputs, r, col4Char, col80Char, agen, conta, rowData
-    rowOutputs = ""
-
-    ' Loop through all rows
-    For r = ROW_START To ROW_END
-        ' Read column 04 - check if row has data
-        col4Char = psObj.GetText(r, COL_CHECK, 1)
-        
-        ' If empty, stop (no more rows)
-        If Trim(col4Char) = "" Then Exit For
-        
-        ' Has data, check column 80 filter
-        col80Char = psObj.GetText(r, COL_FILTER, 1)
-        
-        ' Only add if column 80 is empty
-        If Trim(col80Char) = "" Then
-            ' Extract AGEN (columns 6-9) and CONTA (columns 11-17)
-            agen = Trim(psObj.GetText(r, COL_AGEN, LEN_AGEN))
-            conta = Trim(psObj.GetText(r, COL_CONTA, LEN_CONTA))
-            
-            ' Format as "AGEN|CONTA"
-            If agen <> "" And conta <> "" Then
-                rowData = agen & "|" & conta
-                If rowOutputs <> "" Then rowOutputs = rowOutputs & ", "
-                rowOutputs = rowOutputs & rowData
-            End If
-        End If
-    Next
-
-    CollectOnePageRows = rowOutputs
-End Function
-
-Function ConcatOutputs(base, add)
-    If Trim(add) = "" Then
-        ConcatOutputs = base
-    ElseIf Trim(base) = "" Then
-        ConcatOutputs = add
-    Else
-        ConcatOutputs = base & ", " & add
-    End If
-End Function
-
-Function WaitForString(psObj, textToWait, rowNum, colNum, timeoutMs)
-    WaitForString = psObj.WaitForString(textToWait, rowNum, colNum, timeoutMs)
-End Function
-
-Function EnsureCommandArea(psObj, cmdRow, cmdCol, timeoutMs)
-    Dim tries
-    If psObj.WaitForCursor(cmdRow, cmdCol, 800) Then
-        EnsureCommandArea = True
-        Exit Function
-    End If
-
-    For tries = 1 To 4
-        psObj.SendKeys "[PF5]"
-        If psObj.WaitForCursor(cmdRow, cmdCol, 800) Then
-            EnsureCommandArea = True
-            Exit Function
-        End If
-
-        psObj.SendKeys "[PF3]"
-        If psObj.WaitForCursor(cmdRow, cmdCol, 800) Then
-            EnsureCommandArea = True
-            Exit Function
-        End If
-    Next
-
-    EnsureCommandArea = psObj.WaitForCursor(cmdRow, cmdCol, timeoutMs)
-End Function
-
-Sub Cleanup(sess)
-    On Error Resume Next
-    If Not sess Is Nothing Then
-        sess.autECLConnMgr.StopCommunication
-    End If
-End Sub
-
-
----------
-
-
-# -*- coding: utf-8 -*-
-import os
-import subprocess
-import sys
-import time
-import base64
-import pyodbc
-import pandas as pd
-from datetime import datetime
-
-# ====================================
-# DATABASE CONFIGURATION
-# ====================================
-DB_CONFIG = {
-    'server': 'your_server_name',      # e.g., 'localhost' or 'SERVER\\INSTANCE'
-    'database': 'your_database_name',
-    'username': 'your_username',       # Use None for Windows Authentication
-    'password': 'your_password',       # Use None for Windows Authentication
-    'table': 'Contas_PJ'               # Table name
+public function updateDataContVerified($codSolicitacao, $dataContVerified) {
+    $query = "UPDATE MESU..ENCERRAMENTO_TB_PORTAL 
+              SET DATA_CONT_VERIFIED = '" . $dataContVerified . "' 
+              WHERE COD_SOLICITACAO = " . intval($codSolicitacao);
+    return $this->sql->update($query);
 }
 
-def get_db_connection():
-    """Create and return a database connection."""
+public function getDataContVerified($codSolicitacao) {
+    $query = "SELECT DATA_CONT_VERIFIED 
+              FROM MESU..ENCERRAMENTO_TB_PORTAL 
+              WHERE COD_SOLICITACAO = " . intval($codSolicitacao);
+    $result = $this->sql->select($query);
+    return $result ? $result[0]['DATA_CONT_VERIFIED'] : null;
+}
+
+public function solicitacoesEncerramentoWithVerified($where, $limit = 25, $offset = 0) {
+    $query = "
+        ;WITH Q AS (
+            SELECT
+                A.COD_SOLICITACAO AS COD_SOLICITACAO, 
+                A.COD_AG AS COD_AG, 
+                CASE WHEN A.COD_AG = F.COD_AG_LOJA THEN F.NOME_AG ELSE 'AGENCIA' END AS NOME_AG, 
+                A.CHAVE_LOJA AS CHAVE_LOJA, 
+                F.NOME_LOJA AS NOME_LOJA, 
+                G.NR_PACB AS NR_PACB, 
+                F.COD_EMPRESA AS COD_EMPRESA,
+                A.DATA_CAD AS DATA_RECEPCAO, 
+                F.RZ_SOCIAL_EMP AS NOME_EMPRESA,
+                F.CNPJ AS CNPJ,
+                N.DATA_CONTRATO,
+                ES.DATA_CONT_VERIFIED,
+                ROW_NUMBER() OVER (
+                    PARTITION BY A.COD_SOLICITACAO
+                    ORDER BY COALESCE(G.DATA_LAST_TRANS, A.DATA_CAD) DESC, A.COD_SOLICITACAO DESC
+                ) AS rn
+            FROM 
+                TB_ACIONAMENTO_FIN_SOLICITACOES A WITH (NOLOCK)
+                JOIN TB_ACIONAMENTO_SERVICOS B WITH (NOLOCK)
+                    ON A.COD_TIPO_SERVICO = B.COD_TIPO_SERVICO 
+                LEFT JOIN DATALAKE..DL_BRADESCO_EXPRESSO F WITH (NOLOCK)
+                    ON A.CHAVE_LOJA = F.CHAVE_LOJA 
+                JOIN TB_ACIONAMENTO_FIN_SOLICITACOES_DADOS G WITH (NOLOCK)
+                    ON A.COD_SOLICITACAO = G.COD_SOLICITACAO
+                LEFT JOIN (
+                    SELECT KEY_EMPRESA, DATA_CONTRATO
+                    FROM MESU..TB_EMPRESA_VERSAO_CONTRATO2
+                ) N ON F.COD_EMPRESA = N.KEY_EMPRESA
+                LEFT JOIN MESU..ENCERRAMENTO_TB_PORTAL ES WITH (NOLOCK)
+                    ON A.COD_SOLICITACAO = ES.COD_SOLICITACAO
+            WHERE 1 = 1
+            AND F.BE_INAUGURADO = 1
+            " . $where . "
+        )
+        SELECT
+            COD_SOLICITACAO, 
+            COD_AG, 
+            NOME_AG, 
+            CHAVE_LOJA, 
+            NOME_LOJA, 
+            NR_PACB, 
+            COD_EMPRESA,
+            DATA_RECEPCAO, 
+            NOME_EMPRESA,
+            CNPJ,
+            DATA_CONTRATO,
+            DATA_CONT_VERIFIED
+        FROM Q
+        WHERE rn = 1
+        ORDER BY COD_SOLICITACAO DESC
+        OFFSET " . (int)$offset . " ROWS
+        FETCH NEXT " . (int)$limit . " ROWS ONLY;
+    ";
+
+    $dados = $this->sql->select($query);
+    return $dados;
+}
+?>
+
+
+-----------
+
+
+<?php
+@session_start();
+require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
+
+class EncerramentoMassa {
+    private $model;
+    private $instituicao = '60746948';
+    private $apiUrl = 'https://10.222.217.237/portal_tds/bacen_verify';
+    private $apiUser = 'your_user';
+    private $apiPwd = 'your_pwd';
+    private $apiToken = 'your_token';
+    
+    public function __construct() {
+        $this->model = new Analise();
+    }
+    
+    public function generateFromSelection($solicitacoes) {
+        if (empty($solicitacoes) || !is_array($solicitacoes)) {
+            return ['success' => false, 'message' => 'Nenhuma solicitação selecionada'];
+        }
+        
+        $dados = $this->getDadosFromSolicitacoes($solicitacoes);
+        if (empty($dados)) {
+            return ['success' => false, 'message' => 'Dados não encontrados'];
+        }
+        
+        $this->verifyCNPJsAndUpdate($dados);
+        
+        return $this->generateTXT($dados);
+    }
+    
+    public function generateFromExcel($filePath) {
+        if (!file_exists($filePath)) {
+            return ['success' => false, 'message' => 'Arquivo não encontrado'];
+        }
+        
+        require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\Lib\PhpSpreadsheet\vendor\autoload.php';
+        
+        try {
+            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($filePath);
+            $worksheet = $spreadsheet->getActiveSheet();
+            $rows = $worksheet->toArray();
+            
+            $chaveLojas = [];
+            foreach ($rows as $index => $row) {
+                if ($index === 0) continue;
+                if (!empty($row[0])) {
+                    $chaveLojas[] = $row[0];
+                }
+            }
+            
+            if (empty($chaveLojas)) {
+                return ['success' => false, 'message' => 'Nenhuma Chave Loja encontrada no arquivo'];
+            }
+            
+            $dados = $this->getDadosFromChaveLojas($chaveLojas);
+            $this->verifyCNPJsAndUpdate($dados);
+            
+            return $this->generateTXT($dados);
+            
+        } catch (Exception $e) {
+            return ['success' => false, 'message' => 'Erro ao processar Excel: ' . $e->getMessage()];
+        }
+    }
+    
+    private function verifyCNPJsAndUpdate(&$dados) {
+        foreach ($dados as &$row) {
+            $cnpj = $this->formatCNPJ($row['CNPJ']);
+            $verificationResult = $this->callVerificationAPI($cnpj);
+            
+            if ($verificationResult['success']) {
+                $verifiedDate = $this->parseDateFromResponse($verificationResult['data']);
+                
+                if ($verifiedDate) {
+                    $dataContrato = $row['DATA_CONTRATO'];
+                    $dataContratoFormatted = is_object($dataContrato) 
+                        ? $dataContrato->format('Y-m-d') 
+                        : date('Y-m-d', strtotime($dataContrato));
+                    
+                    if ($verifiedDate !== $dataContratoFormatted) {
+                        $this->model->updateDataContVerified($row['COD_SOLICITACAO'], $verifiedDate);
+                        $row['DATA_CONT_VERIFIED'] = $verifiedDate;
+                    }
+                }
+            }
+        }
+    }
+    
+    private function formatCNPJ($cnpj) {
+        $cnpj = preg_replace('/[^0-9]/', '', $cnpj);
+        return str_pad(substr($cnpj, 0, 8), 8, '0', STR_PAD_LEFT);
+    }
+    
+    private function callVerificationAPI($cnpj) {
+        $ch = curl_init($this->apiUrl);
+        
+        $payload = json_encode([
+            'user' => $this->apiUser,
+            'pwd' => $this->apiPwd,
+            'token' => $this->apiToken,
+            'cnpj' => $cnpj
+        ]);
+        
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'Content-Length: ' . strlen($payload)
+        ]);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        
+        if (curl_errno($ch) || $httpCode !== 200) {
+            curl_close($ch);
+            return ['success' => false, 'data' => 'Error'];
+        }
+        
+        curl_close($ch);
+        
+        $data = json_decode($response, true);
+        return [
+            'success' => true,
+            'data' => $data['result'] ?? 'Error'
+        ];
+    }
+    
+    private function parseDateFromResponse($response) {
+        if ($response === 'Error' || empty($response)) {
+            return null;
+        }
+        
+        preg_match('/(\d{2})\/(\d{2})\/(\d{4})/', $response, $matches);
+        
+        if (count($matches) === 4) {
+            return $matches[3] . '-' . $matches[2] . '-' . $matches[1];
+        }
+        
+        return null;
+    }
+    
+    private function getDadosFromSolicitacoes($solicitacoes) {
+        $where = "AND A.COD_SOLICITACAO IN (" . implode(',', array_map('intval', $solicitacoes)) . ")";
+        return $this->model->solicitacoesEncerramentoWithVerified($where, 999999, 0);
+    }
+    
+    private function getDadosFromChaveLojas($chaveLojas) {
+        $where = "AND A.CHAVE_LOJA IN (" . implode(',', array_map('intval', $chaveLojas)) . ")";
+        return $this->model->solicitacoesEncerramentoWithVerified($where, 9999, 0);
+    }
+    
+    private function generateTXT($dados) {
+        $linhas = [];
+        
+        $linhas[] = $this->gerarHeader(count($dados));
+        
+        $sequencial = 2;
+        foreach ($dados as $row) {
+            $linhas[] = $this->gerarDetalhe($row, $sequencial);
+            $sequencial++;
+        }
+        
+        $linhas[] = $this->gerarTrailer(count($dados));
+        
+        $conteudo = implode("\r\n", $linhas);
+        $nomeArquivo = 'ENCERRAMENTO_' . date('Ymd_His') . '.txt';
+        
+        return [
+            'success' => true,
+            'conteudo' => $conteudo,
+            'nomeArquivo' => $nomeArquivo,
+            'totalRegistros' => count($dados)
+        ];
+    }
+    
+    private function gerarHeader($totalRegistros) {
+        $tipo = '#A1';
+        $codigoDocumento = '5021';
+        $instituicao = str_pad($this->instituicao, 8, '0', STR_PAD_LEFT);
+        $dataGeracao = date('Ymd');
+        $contato = str_pad('YGOR SANTINI', 30, ' ', STR_PAD_RIGHT);
+        $ddd = '00011';
+        $telefone = '0036849907';
+        $livreFiller = str_pad(' ', 112, ' ', STR_PAD_RIGHT);
+        $sequencial = '00001';
+        
+        $linha = $tipo . $codigoDocumento . $instituicao . $dataGeracao . $contato . $ddd . $telefone . $livreFiller . $sequencial;
+        return substr($linha, 0, 250);
+    }
+    
+    private function gerarDetalhe($row, $sequencial) {
+        $tipo = 'D01';
+        $metodo = '02';
+        $instituicao = str_pad($this->instituicao, 8, '0', STR_PAD_LEFT);
+        $cnpj = str_pad($row['CNPJ'], 8, '0', STR_PAD_LEFT);
+        $cnpjSubs = str_pad(' ', 8, ' ', STR_PAD_RIGHT);
+        
+        $dataToUse = !empty($row['DATA_CONT_VERIFIED']) 
+            ? $row['DATA_CONT_VERIFIED'] 
+            : $row['DATA_CONTRATO'];
+        
+        if (is_object($dataToUse)) {
+            $dataContrato = $dataToUse->format('Ymd');
+        } else {
+            $dataContrato = date('Ymd', strtotime($dataToUse));
+        }
+        
+        $dataEncerramento = date('Ymd');
+        $linhaFiller = str_pad(' ', 135, ' ', STR_PAD_LEFT);
+        $sequencialStr = str_pad($sequencial, 5, '0', STR_PAD_LEFT);
+        
+        $linha = $tipo . $metodo . $instituicao . $cnpj . $cnpjSubs . $dataContrato . $dataEncerramento . $linhaFiller . $sequencialStr;
+        
+        return substr($linha, 0, 250);
+    }
+    
+    private function gerarTrailer($totalRegistros) {
+        $tipo = '9';
+        $quantidadeRegistros = str_pad($totalRegistros, 10, '0', STR_PAD_LEFT);
+        
+        $linha = $tipo . $quantidadeRegistros . str_repeat(' ', 250 - strlen($tipo . $quantidadeRegistros));
+        
+        return substr($linha, 0, 250);
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $handler = new EncerramentoMassa();
+    
+    if (isset($_POST['acao']) && $_POST['acao'] === 'gerar_txt_selection') {
+        $solicitacoes = json_decode($_POST['solicitacoes'] ?? '[]', true);
+        $result = $handler->generateFromSelection($solicitacoes);
+        
+        if ($result['success']) {
+            header('Content-Type: text/plain');
+            header('Content-Disposition: attachment; filename="' . $result['nomeArquivo'] . '"');
+            header('Content-Length: ' . strlen($result['conteudo']));
+            echo $result['conteudo'];
+        } else {
+            header('Content-Type: application/json');
+            echo json_encode($result);
+        }
+        exit;
+    }
+    
+    if (isset($_POST['acao']) && $_POST['acao'] === 'gerar_txt_excel') {
+        if (isset($_FILES['excel_file']) && $_FILES['excel_file']['error'] === UPLOAD_ERR_OK) {
+            $result = $handler->generateFromExcel($_FILES['excel_file']['tmp_name']);
+            
+            if ($result['success']) {
+                header('Content-Type: text/plain');
+                header('Content-Disposition: attachment; filename="' . $result['nomeArquivo'] . '"');
+                header('Content-Length: ' . strlen($result['conteudo']));
+                echo $result['conteudo'];
+            } else {
+                header('Content-Type: application/json');
+                echo json_encode($result);
+            }
+        } else {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'message' => 'Arquivo não enviado']);
+        }
+        exit;
+    }
+}
+?>
+
+----------
+
+-- Add DATA_CONT_VERIFIED column to ENCERRAMENTO_TB_PORTAL table
+ALTER TABLE MESU..ENCERRAMENTO_TB_PORTAL
+ADD DATA_CONT_VERIFIED DATE NULL;
+
+-- Create index for better performance
+CREATE INDEX IDX_ENCERRAMENTO_DATA_CONT_VERIFIED 
+ON MESU..ENCERRAMENTO_TB_PORTAL(DATA_CONT_VERIFIED);
+
+
+
+--------------
+
+from flask import Flask, request, jsonify
+import subprocess
+import json
+import re
+import os
+
+app = Flask(__name__)
+
+@app.route('/portal_tds/bacen_verify', methods=['POST'])
+def bacen_verify():
     try:
-        if DB_CONFIG['username'] and DB_CONFIG['password']:
-            # SQL Server Authentication
-            conn_str = (
-                f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-                f"SERVER={DB_CONFIG['server']};"
-                f"DATABASE={DB_CONFIG['database']};"
-                f"UID={DB_CONFIG['username']};"
-                f"PWD={DB_CONFIG['password']}"
-            )
+        data = request.get_json()
+        
+        user = data.get('user')
+        pwd = data.get('pwd')
+        token = data.get('token')
+        cnpj = data.get('cnpj')
+        
+        if not all([user, pwd, token, cnpj]):
+            return jsonify({'error': 'Missing parameters', 'result': 'Error'}), 400
+        
+        cnpj_formatted = cnpj.zfill(8)
+        
+        python_script = r"C:\path\to\bacen_verification.py"
+        
+        result = subprocess.run(
+            ['python', python_script, cnpj_formatted],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        
+        if result.returncode != 0:
+            return jsonify({'error': 'Script execution failed', 'result': 'Error'}), 500
+        
+        output = result.stdout
+        
+        date_match = re.search(r'(\d{2}/\d{2}/\d{4})', output)
+        
+        if date_match:
+            verified_date = date_match.group(1)
+            return jsonify({
+                'success': True,
+                'result': f'{verified_date} - Verificado',
+                'cnpj': cnpj_formatted
+            })
         else:
-            # Windows Authentication
-            conn_str = (
-                f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-                f"SERVER={DB_CONFIG['server']};"
-                f"DATABASE={DB_CONFIG['database']};"
-                f"Trusted_Connection=yes;"
-            )
-        
-        conn = pyodbc.connect(conn_str)
-        return conn
-    except pyodbc.Error as e:
-        print(f"Database connection error: {e}", file=sys.stderr)
-        sys.exit(1)
-
-def loja_exists(cursor, loja):
-    """Check if a loja already exists in the database."""
-    query = f"SELECT COUNT(*) FROM {DB_CONFIG['table']} WHERE LOJA = ?"
-    cursor.execute(query, (loja,))
-    count = cursor.fetchone()[0]
-    return count > 0
-
-def insert_accounts(cursor, loja, accounts, descricao):
-    """
-    Insert new accounts for a loja.
-    
-    Args:
-        cursor: database cursor
-        loja: loja identifier
-        accounts: list of dicts with 'agen' and 'conta' keys
-        descricao: description with date
-    """
-    table = DB_CONFIG['table']
-    
-    insert_query = f"""
-        INSERT INTO {table} (DESCRICAO, LOJA, AGEN, CONTA)
-        VALUES (?, ?, ?, ?)
-    """
-    
-    for account in accounts:
-        cursor.execute(insert_query, (descricao, loja, account['agen'], account['conta']))
-    
-    print(f"  [DB] Inserted {len(accounts)} accounts for Loja {loja}")
-
-def update_accounts(cursor, loja, accounts, descricao):
-    """
-    Update existing accounts for a loja.
-    
-    Args:
-        cursor: database cursor
-        loja: loja identifier
-        accounts: list of dicts with 'agen' and 'conta' keys
-        descricao: description with date
-    """
-    table = DB_CONFIG['table']
-    
-    # Delete old records for this loja
-    delete_query = f"DELETE FROM {table} WHERE LOJA = ?"
-    cursor.execute(delete_query, (loja,))
-    
-    # Insert updated records
-    insert_query = f"""
-        INSERT INTO {table} (DESCRICAO, LOJA, AGEN, CONTA)
-        VALUES (?, ?, ?, ?)
-    """
-    
-    for account in accounts:
-        cursor.execute(insert_query, (descricao, loja, account['agen'], account['conta']))
-    
-    print(f"  [DB] Updated {len(accounts)} accounts for Loja {loja}")
-
-def save_to_database(parsed_data, chave_to_loja_map):
-    """
-    Save or update parsed data to the database.
-    
-    Args:
-        parsed_data: dict {chave_loja: [{'agen': '...', 'conta': '...'}, ...]}
-        chave_to_loja_map: dict {chave_loja: loja}
-    """
-    if not parsed_data:
-        print("No data to save to database")
-        return
-    
-    # Generate DESCRICAO with today's date
-    descricao = datetime.now().strftime("Processado em %d/%m/%Y")
-    
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    try:
-        for chave_loja, accounts in parsed_data.items():
-            if not accounts:
-                print(f"  [DB] No accounts for ChaveLoja {chave_loja}, skipping")
-                continue
+            return jsonify({
+                'success': False,
+                'result': 'Error',
+                'cnpj': cnpj_formatted
+            })
             
-            # Get the corresponding loja
-            loja = chave_to_loja_map.get(chave_loja)
-            if not loja:
-                print(f"  [DB] No loja mapping found for ChaveLoja {chave_loja}, skipping")
-                continue
-            
-            # Check if loja exists
-            if loja_exists(cursor, loja):
-                # Update existing records
-                update_accounts(cursor, loja, accounts, descricao)
-            else:
-                # Insert new records
-                insert_accounts(cursor, loja, accounts, descricao)
-        
-        # Commit all changes
-        conn.commit()
-        print("\n[DB] All changes committed successfully")
-        
-    except pyodbc.Error as e:
-        conn.rollback()
-        print(f"Database error: {e}", file=sys.stderr)
-        raise
-    finally:
-        cursor.close()
-        conn.close()
-
-def read_excel_file(excel_path):
-    """
-    Read Excel file with columns 'loja' and 'chave'.
-    
-    Returns:
-        tuple: (chave_list, chave_to_loja_map)
-        - chave_list: list of chave values
-        - chave_to_loja_map: dict mapping chave to loja
-    """
-    try:
-        # Read Excel file
-        df = pd.read_excel(excel_path)
-        
-        # Check required columns (case-insensitive)
-        df.columns = df.columns.str.lower().str.strip()
-        required_cols = ['loja', 'chave']
-        missing_cols = [col for col in required_cols if col not in df.columns]
-        
-        if missing_cols:
-            print(f"Error: Missing required columns: {missing_cols}", file=sys.stderr)
-            print(f"Available columns: {list(df.columns)}", file=sys.stderr)
-            sys.exit(1)
-        
-        # Remove rows with NaN values
-        df = df.dropna(subset=['loja', 'chave'])
-        
-        if df.empty:
-            print("Error: No valid data found in Excel file", file=sys.stderr)
-            sys.exit(1)
-        
-        # Convert to strings and strip whitespace
-        df['loja'] = df['loja'].astype(str).str.strip()
-        df['chave'] = df['chave'].astype(str).str.strip()
-        
-        # Create chave list and mapping
-        chave_list = df['chave'].tolist()
-        chave_to_loja_map = dict(zip(df['chave'], df['loja']))
-        
-        print(f"\n[Excel] Read {len(chave_list)} entries from {excel_path}")
-        print(f"[Excel] Sample entries:")
-        for i, (chave, loja) in enumerate(zip(chave_list[:3], [chave_to_loja_map[c] for c in chave_list[:3]])):
-            print(f"  {i+1}. Loja: {loja}, Chave: {chave}")
-        if len(chave_list) > 3:
-            print(f"  ... and {len(chave_list) - 3} more")
-        
-        return chave_list, chave_to_loja_map
-        
-    except FileNotFoundError:
-        print(f"Error: Excel file not found: {excel_path}", file=sys.stderr)
-        sys.exit(1)
+    except subprocess.TimeoutExpired:
+        return jsonify({'error': 'Timeout', 'result': 'Error'}), 504
     except Exception as e:
-        print(f"Error reading Excel file: {e}", file=sys.stderr)
-        sys.exit(1)
+        return jsonify({'error': str(e), 'result': 'Error'}), 500
 
-# ====================================
-# PCOMM / VBS FUNCTIONS
-# ====================================
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, ssl_context='adhoc')
 
-def get_cscript_exe():
-    windir = os.environ.get("SystemRoot", r"C:\Windows")
-    path32 = os.path.join(windir, "SysWOW64", "cscript.exe")
-    return path32 if os.path.isfile(path32) else os.path.join(windir, "System32", "cscript.exe")
 
-def open_session_ws(ws_file, delay=4):
-    if not os.path.isfile(ws_file):
-        print(f"Session file not found: {ws_file}", file=sys.stderr)
-        sys.exit(1)
-    print(f"Launching session: {ws_file}")
-    os.startfile(ws_file)
-    print(f"Waiting {delay}s for emulator to come up…")
-    time.sleep(delay)
+----------
 
-def run_sequence(username, password_b64, token, codigoloja, chave_list, chave_to_loja_map, 
-                 ws_file=None, session_name="A", parse=False, save_db=False):
-    """
-    Calls Base_Contas_PJ_read.vbs with:
-      <user> <password> <token-or-dash> <codigoloja> <chaveLoja1> [<chaveLoja2> ...]
-    - chave_list: list[str] of chave values (used as chaveLoja)
-    - chave_to_loja_map: dict mapping chave to loja
-    - token: pass "-" if not required
-    - parse: if True, return a dict {chave: [{'agen': '...', 'conta': '...'}, ...]}
-    - save_db: if True, save parsed data to database
-    """
-    here = os.path.dirname(os.path.abspath(__file__))
-    vbs  = os.path.join(here, "Base_Contas_PJ_read.vbs")
+import os
+from selenium import webdriver
+from selenium.webdriver.edge.options import Options
+from selenium.webdriver.edge.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import Select, WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import sys
+import base64
+import time
+import re
 
-    if ws_file:
-        open_session_ws(ws_file)
+os.environ.pop('HTTP_PROXY', None)
+os.environ.pop('HTTPS_PROXY', None)
+os.environ.pop('http_proxy', None)
+os.environ.pop('https_proxy', None)
+os.environ['NO_PROXY'] = 'localhost,127.0.0.1,::1'
 
-    if not os.path.exists(vbs):
-        print(f"VBScript not found: {vbs}", file=sys.stderr)
-        close_session(session_name=session_name)
-        sys.exit(1)
+options = Options()
+options.add_argument("--start-maximized")
+options.add_argument("--headless")
+options.add_experimental_option("excludeSwitches", ["enable-logging"])
+options.add_argument("--log-level=3")
+options.add_argument("--disable-logging")
+options.set_capability('proxy', {'proxyType': 'system'})
 
-    try:
-        raw = base64.b64decode(password_b64, validate=True)
-        password = raw.decode("utf-8")
-    except Exception as e:
-        print(f"Invalid Base64 password: {e}", file=sys.stderr)
-        close_session(session_name=session_name)
-        sys.exit(1)
+service = Service(r"C:\WebDrivers\msedgedriver.exe", log_output=os.devnull)
+driver = webdriver.Edge(service=service, options=options)
+wait = WebDriverWait(driver, 20)
 
-    if token is None or token == "":
-        token = "-"   # VBS expects "-" to skip token
-
-    # Build command
-    cmd = [
-        get_cscript_exe(),
-        "//NoLogo",
-        vbs,
-        username,
-        password,
-        token,
-        (codigoloja or ""),
-    ]
-
-    # Append all chaves
-    if not chave_list:
-        print("No ChaveLoja provided. Pass at least one.", file=sys.stderr)
-        close_session(session_name=session_name)
-        sys.exit(1)
-    cmd.extend([str(x) for x in chave_list])
-
-    # Run VBS
-    print(f"\n[Running VBS with {len(chave_list)} chaveLoja(s)...]")
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-
-    if proc.returncode != 0:
-        err = (proc.stderr or proc.stdout or "").strip()
-        print(f"VBScript error: {err}", file=sys.stderr)
-        time.sleep(1)
-        close_session(session_name=session_name)
-        sys.exit(1)
-
-    output = (proc.stdout or "").strip()
-
-    # Print raw output for logging
-    print("\n[VBS Output]:")
-    print(output)
-
-    result = None
-    if parse:
-        result = parse_vbs_output(output, chave_list)
-        print("\n[Parsed Data]:")
-        for chave, accounts in result.items():
-            loja = chave_to_loja_map.get(chave, "?")
-            print(f"  Loja {loja} (Chave {chave}): {len(accounts)} accounts")
-            for acc in accounts[:3]:  # Show first 3
-                print(f"    - AGEN: {acc['agen']}, CONTA: {acc['conta']}")
-            if len(accounts) > 3:
-                print(f"    ... and {len(accounts) - 3} more")
-        
-        if save_db:
-            print("\n[Saving to Database...]")
-            save_to_database(result, chave_to_loja_map)
-
-    time.sleep(1)
-    close_session(session_name=session_name)
-    return result if parse else output
-
-def parse_vbs_output(output, chave_list):
-    """
-    Parses the VBS output format:
-      "chave1: AGEN1|CONTA1, AGEN2|CONTA2, chave2: AGEN3|CONTA3, ..."
-    into:
-      { "chave1": [{'agen': 'AGEN1', 'conta': 'CONTA1'}, ...], "chave2": [...], ... }
-    """
-    starts = {}
-    for chave in chave_list:
-        needle = f"{chave}:"
-        idx = output.find(needle)
-        if idx >= 0:
-            starts[chave] = idx
-
-    ordered = sorted(starts.items(), key=lambda kv: kv[1])
-
-    result = {}
-    for i, (chave, start_idx) in enumerate(ordered):
-        after_label = start_idx + len(chave) + 1
-        if after_label < len(output) and output[after_label] == " ":
-            after_label += 1
-
-        end_idx = len(output)
-        if i + 1 < len(ordered):
-            end_idx = ordered[i + 1][1]
-
-        chunk = output[after_label:end_idx].strip()
-        if chunk.endswith(","):
-            chunk = chunk[:-1].strip()
-
-        # Parse "AGEN|CONTA" format
-        accounts = []
-        for row in chunk.split(","):
-            row = row.strip()
-            if "|" in row:
-                parts = row.split("|")
-                if len(parts) == 2:
-                    agen = parts[0].strip()
-                    conta = parts[1].strip()
-                    if agen and conta:
-                        accounts.append({'agen': agen, 'conta': conta})
-        
-        result[chave] = accounts
-
-    return result
-
-def close_session(session_name="A"):
-    """
-    Attempts to close the PCOMM session window.
-    Falls back to killing pcsws.exe via WMIC if needed.
-    """
-    try:
-        import ctypes
-        from ctypes import wintypes
-        user32 = ctypes.windll.user32
-
-        def enum_windows_proc(hwnd, lParam):
-            length = user32.GetWindowTextLengthW(hwnd)
-            if length > 0:
-                buffer = ctypes.create_unicode_buffer(length + 1)
-                user32.GetWindowTextW(hwnd, buffer, length + 1)
-                title = buffer.value
-                if (f"Sessão {session_name}" in title) or (f"Session {session_name}" in title) or (f"{session_name} - " in title):
-                    user32.PostMessageW(hwnd, 0x10, 0, 0)  # WM_CLOSE
-            return True
-
-        EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
-        user32.EnumWindows(EnumWindowsProc(enum_windows_proc), 0)
-    except Exception:
-        try:
-            subprocess.run(["wmic", "process", "where", "name='pcsws.exe'", "delete"], capture_output=True)
-        except Exception:
-            pass
-
-if __name__ == "__main__":
-    # Configuration
-    USER       = "9409841"
-    PWD_B64    = "dGlubzEyMDM="  
-    TOKEN      = "228326"        
-    CODIGOLOJA = "035006"
-
-    WS_PATH    = r"C:\Users\I458363\Desktop\VIDEO 2.ws"
-    EXCEL_PATH = r"C:\Users\I458363\Desktop\lojas_chaves.xlsx"
-
-    # Read Excel file
-    chave_list, chave_to_loja_map = read_excel_file(EXCEL_PATH)
-
-    # Run with database save enabled
-    data = run_sequence(
-        USER, 
-        PWD_B64, 
-        TOKEN, 
-        CODIGOLOJA, 
-        chave_list,
-        chave_to_loja_map,
-        ws_file=WS_PATH, 
-        parse=True,
-        save_db=True
-    )
+try:
+    driver.get("https://www.bcb.gov.br/estabilidadefinanceira/unicadentidadesinteressebanco")
+    time.sleep(5)
     
-    # Optional: print structured result
-    if isinstance(data, dict):
-        print("\n[Final Results]:")
-        for chave, accounts in data.items():
-            loja = chave_to_loja_map.get(chave, "?")
-            print(f"\nLoja {loja} (Chave {chave}):")
-            for acc in accounts:
-                print(f"  - AGEN: {acc['agen']}, CONTA: {acc['conta']}")
+    button = wait.until(EC.element_to_be_clickable(
+        (By.XPATH, '/html/body/app-root/app-root/div/div/main/dynamic-comp/div/div/div[2]/div[1]/a[1]')
+    ))
+    button.click()
+    time.sleep(2)
+    
+    email = wait.until(EC.presence_of_element_located((By.XPATH, '//*[@id="userNameInput"]')))
+    base64_email = 'MDUyMzc3OTcyLlNDSE5FVFpMRVI='
+    decode_string = base64.b64decode(base64_email).decode('utf-8')
+    email.send_keys(decode_string)
+    
+    senha = driver.find_element(By.XPATH, '//*[@id="passwordInput"]')
+    base64_senha = 'YnJhZDEyMzQ='
+    decode_string_s = base64.b64decode(base64_senha).decode('utf-8')
+    senha.send_keys(decode_string_s)
+    
+    driver.find_element(By.XPATH, '//*[@id="submitButton"]').click()
+    time.sleep(5)
+    
+    driver.find_element(By.XPATH, '/html/body/div[1]/ul/li[8]/a').click()
+    driver.find_element(By.XPATH, '/html/body/div[1]/ul/li[8]/ul/li[1]/a').click()
+    time.sleep(2)
+    
+    iframes_inicial = driver.find_elements(By.TAG_NAME, "iframe")
+    driver.switch_to.frame(iframes_inicial[0])
+    
+    select_li = wait.until(EC.element_to_be_clickable(
+        (By.XPATH, "/html/body/form/center/table/tbody/tr/td/table[2]/tbody/tr[4]/td[2]/select")
+    ))
+    select = Select(select_li)
+    select.select_by_index(1)
+    
+    cnpj_input = driver.find_element(By.XPATH, '/html/body/form/center/table/tbody/tr/td/table[2]/tbody/tr[4]/td[2]/input')
+    cnpj_input.send_keys(sys.argv[1])
+    
+    driver.find_element(By.XPATH, '/html/body/form/center/table/tbody/tr/td/table[2]/tbody/tr[4]/td[2]/img').click()
+    time.sleep(2)
+    
+    driver.find_element(By.XPATH, '/html/body/form/center/center/table/tbody/tr/td[1]/input').click()
+    driver.switch_to.default_content()
+    time.sleep(2)
+    
+    iframes_secundario = driver.find_elements(By.TAG_NAME, "iframe")
+    driver.switch_to.frame(iframes_secundario[0])
+    
+    driver.find_element(By.XPATH, '/html/body/form/table/tbody/tr/td/font/a[9]').click()
+    time.sleep(2)
+    
+    page_text = driver.page_source
+    
+    date_pattern = r'Data\s*(?:do\s*)?Contrato[:\s]*(\d{2}/\d{2}/\d{4})'
+    date_match = re.search(date_pattern, page_text, re.IGNORECASE)
+    
+    if date_match:
+        contract_date = date_match.group(1)
+        print(contract_date)
+    else:
+        print("Error: Date not found")
+    
+except Exception as e:
+    print(f"Error: {str(e)}")
+finally:
+    driver.quit()
+
+
+------------
+
+<?php
+// Save as: api_config.php
+// Include this file in encerramento_massa.php using: require_once 'api_config.php';
+
+define('BACEN_API_URL', 'https://10.222.217.237/portal_tds/bacen_verify');
+define('BACEN_API_USER', 'your_actual_username');
+define('BACEN_API_PWD', 'your_actual_password');
+define('BACEN_API_TOKEN', 'your_actual_token');
+
+// In encerramento_massa.php, replace the hardcoded values with:
+// private $apiUrl = BACEN_API_URL;
+// private $apiUser = BACEN_API_USER;
+// private $apiPwd = BACEN_API_PWD;
+// private $apiToken = BACEN_API_TOKEN;
+?>
+
+--------------
+
+# BACEN CNPJ Verification Implementation Guide
+
+## Overview
+This implementation adds automatic CNPJ verification via API when generating TXT BACEN files. The system validates contract dates and stores discrepancies for accurate reporting.
+
+## Architecture Flow
+
+1. **User triggers TXT generation** (via checkbox selection or Excel import)
+2. **System extracts CNPJs** from selected records
+3. **For each CNPJ:**
+   - Format to 8 characters (pad left with zeros)
+   - Call Flask API endpoint
+   - API executes Python Selenium script
+   - Script scrapes BACEN website for contract date
+   - Compare returned date with database DATA_CONTRATO
+   - If different, store in DATA_CONT_VERIFIED column
+4. **Generate TXT file** using verified dates where applicable
+
+## Installation Steps
+
+### 1. Database Changes
+```sql
+-- Execute this SQL script first
+ALTER TABLE MESU..ENCERRAMENTO_TB_PORTAL
+ADD DATA_CONT_VERIFIED DATE NULL;
+
+CREATE INDEX IDX_ENCERRAMENTO_DATA_CONT_VERIFIED 
+ON MESU..ENCERRAMENTO_TB_PORTAL(DATA_CONT_VERIFIED);
+```
+
+### 2. Model Updates
+Add the three new methods to `analise_encerramento_model.class.php`:
+- `updateDataContVerified()`
+- `getDataContVerified()`
+- `solicitacoesEncerramentoWithVerified()`
+
+### 3. Replace encerramento_massa.php
+Replace the entire file with the updated version that includes:
+- API verification logic
+- CNPJ formatting (8-char with leading zeros)
+- Date comparison logic
+- Error handling for failed verifications
+
+### 4. Configure API Credentials
+Create `api_config.php` with your actual credentials:
+```php
+define('BACEN_API_URL', 'https://10.222.217.237/portal_tds/bacen_verify');
+define('BACEN_API_USER', 'your_username');
+define('BACEN_API_PWD', 'your_password');
+define('BACEN_API_TOKEN', 'your_token');
+```
+
+### 5. Deploy Flask API
+- Install Flask: `pip install flask`
+- Save the Flask API script
+- Update the Python script path in the Flask code
+- Run: `python flask_api.py`
+- Consider using a production WSGI server (Gunicorn, uWSGI)
+
+### 6. Update Python Selenium Script
+- Replace `bacen_verification.py` with the updated version
+- Ensure Edge WebDriver is installed at `C:\WebDrivers\msedgedriver.exe`
+- Update credentials in the script if needed
+- Test manually: `python bacen_verification.py 12345678`
+
+## Key Features
+
+### CNPJ Formatting
+- Automatically pads CNPJs to 8 characters
+- Example: "123456" becomes "00123456"
+- Only first 8 digits are used if longer
+
+### Error Handling
+- Individual CNPJ failures don't stop the entire process
+- Errors return "Error" status but process continues
+- Failed verifications use original DATA_CONTRATO
+
+### Date Comparison
+- Compares API date (DD/MM/YYYY) with SQL datetime
+- Only stores DATA_CONT_VERIFIED if dates differ
+- TXT generation prioritizes DATA_CONT_VERIFIED over DATA_CONTRATO
+
+### Sequential Processing
+- Each CNPJ is verified one at a time
+- Prevents API overload
+- Allows for detailed error logging per CNPJ
+
+## API Response Format
+
+### Success Response
+```json
+{
+  "success": true,
+  "result": "15/10/2022 - Verificado",
+  "cnpj": "00123456"
+}
+```
+
+### Error Response
+```json
+{
+  "success": false,
+  "result": "Error",
+  "cnpj": "00123456"
+}
+```
+
+## TXT Generation Logic
+
+For each record in the TXT:
+1. Check if `DATA_CONT_VERIFIED` exists and is not null
+2. If yes: Use `DATA_CONT_VERIFIED`
+3. If no: Use `DATA_CONTRATO`
+4. Format date as `Ymd` for BACEN file
+
+## Testing Procedure
+
+1. **Test API endpoint:**
+   ```bash
+   curl -X POST https://10.222.217.237/portal_tds/bacen_verify \
+     -H "Content-Type: application/json" \
+     -d '{"user":"test","pwd":"test","token":"test","cnpj":"12345678"}'
+   ```
+
+2. **Test single CNPJ generation:**
+   - Select one record with checkbox
+   - Click "Gerar TXT BACEN"
+   - Verify API call in logs
+   - Check DATA_CONT_VERIFIED column in database
+
+3. **Test bulk generation:**
+   - Select multiple records
+   - Verify sequential processing
+   - Check all records updated correctly
+
+4. **Test Excel import:**
+   - Create Excel with CHAVE_LOJA column
+   - Import and generate TXT
+   - Verify all CNPJs processed
+
+## Troubleshooting
+
+### API not responding
+- Check Flask server is running
+- Verify firewall allows port 5000
+- Check SSL certificate configuration
+
+### Selenium script fails
+- Verify Edge WebDriver version matches Edge browser
+- Check BACEN website structure hasn't changed
+- Ensure credentials are correct and not expired
+
+### Dates not matching
+- Verify date format parsing in `parseDateFromResponse()`
+- Check SQL datetime format conversion
+- Look for timezone issues
+
+### Performance issues
+- Consider caching verified CNPJs
+- Implement batch processing for large datasets
+- Add timeout controls for API calls
+
+## Security Considerations
+
+- Store API credentials securely (use environment variables)
+- Implement API rate limiting
+- Add request authentication/authorization
+- Log all verification attempts
+- Consider encrypting sensitive data in transit
+- Implement retry logic with exponential backoff
+
+## Maintenance
+
+- Monitor API call success rates
+- Review failed verifications regularly
+- Update Selenium selectors if BACEN site changes
+- Keep WebDriver updated
+- Regular backup of DATA_CONT_VERIFIED column
