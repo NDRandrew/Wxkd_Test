@@ -126,43 +126,61 @@ async function verifyAllCNPJs(cnpjList, progressCallback) {
 
 // Replace the existing gerarTXTSelection function
 window.gerarTXTSelection = async function() {
+    console.log('[1] gerarTXTSelection called');
+    
     const solicitacoes = getSelectedSolicitacoes();
+    console.log('[2] Selected solicitacoes:', solicitacoes);
+    
     if (solicitacoes.length === 0) {
         showNotification('Nenhum registro selecionado', 'error');
         return;
     }
 
     showNotification('Iniciando verificação de CNPJs...', 'info');
+    console.log('[3] About to call encerramento_massa.php');
     
     // Get CNPJs for verification
     $.ajax({
         url: '/teste/Andre/tabler_portalexpresso_paginaEncerramento/control/encerramento/encerramento_massa.php',
         method: 'POST',
+        dataType: 'json',
         data: {
             acao: 'get_cnpjs_for_verification',
             solicitacoes: JSON.stringify(solicitacoes)
         },
+        beforeSend: function() {
+            console.log('[4] AJAX beforeSend - request is being sent');
+        },
         success: async function(data) {
+            console.log('[5] AJAX Success! Received data:', data);
+            
             if (!data.success) {
                 showNotification('Erro: ' + data.message, 'error');
+                console.error('[6] Data.success is false:', data.message);
                 return;
             }
             
             const cnpjList = data.cnpjs;
+            console.log('[7] CNPJ List received:', cnpjList);
             
             // Show progress modal
             const progressModal = createProgressModal();
             document.body.appendChild(progressModal);
+            console.log('[8] Progress modal created');
             
             // Verify all CNPJs
+            console.log('[9] Starting CNPJ verification loop');
             await verifyAllCNPJs(cnpjList, (processed, total, updated, errors) => {
                 updateProgressModal(progressModal, processed, total, updated, errors);
             });
+            
+            console.log('[10] CNPJ verification complete');
             
             // Close progress modal
             setTimeout(() => progressModal.remove(), 2000);
             
             showNotification('Verificação concluída! Gerando TXT...', 'success');
+            console.log('[11] Starting TXT generation');
             
             // Now generate TXT
             $.ajax({
@@ -176,6 +194,7 @@ window.gerarTXTSelection = async function() {
                     responseType: 'blob'
                 },
                 success: function(blob) {
+                    console.log('[12] TXT generation successful');
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
@@ -187,16 +206,29 @@ window.gerarTXTSelection = async function() {
                     showNotification('Arquivo TXT gerado com sucesso!', 'success');
                 },
                 error: function(xhr, status, error) {
-                    console.error('TXT generation error:', error);
+                    console.error('[13] TXT generation error');
+                    console.error('Status:', status);
+                    console.error('Error:', error);
+                    console.error('Response:', xhr.responseText);
                     showNotification('Erro ao gerar arquivo TXT: ' + error, 'error');
                 }
             });
         },
         error: function(xhr, status, error) {
-            console.error('Get CNPJs error:', error);
+            console.error('[ERROR] AJAX call failed!');
+            console.error('Status:', status);
+            console.error('Error:', error);
+            console.error('XHR Status:', xhr.status);
+            console.error('Response Text:', xhr.responseText);
+            console.error('Ready State:', xhr.readyState);
             showNotification('Erro ao obter lista de CNPJs: ' + error, 'error');
+        },
+        complete: function() {
+            console.log('[COMPLETE] AJAX call completed (success or error)');
         }
     });
+    
+    console.log('[14] AJAX call initiated, waiting for response...');
 };
 
 // Replace the existing uploadExcelAndGenerateTXT function
@@ -332,11 +364,13 @@ function updateProgressModal(modal, processed, total, updated, errors) {
     errorCount.textContent = errors;
 }
 
----------
-
+-------
 
 <?php
 @session_start();
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
 require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
 
 class EncerramentoMassa {
@@ -348,50 +382,58 @@ class EncerramentoMassa {
     }
     
     public function generateFromSelection($solicitacoes) {
-        if (empty($solicitacoes) || !is_array($solicitacoes)) {
-            return ['success' => false, 'message' => 'Nenhuma solicitação selecionada'];
+        try {
+            if (empty($solicitacoes) || !is_array($solicitacoes)) {
+                return ['success' => false, 'message' => 'Nenhuma solicitação selecionada'];
+            }
+            
+            $where = "AND A.COD_SOLICITACAO IN (" . implode(',', array_map('intval', $solicitacoes)) . ")";
+            $dados = $this->model->solicitacoesEncerramento($where, 999999, 0);
+            
+            if (empty($dados)) {
+                return ['success' => false, 'message' => 'Dados não encontrados'];
+            }
+            
+            return $this->generateTXT($dados);
+        } catch (Exception $e) {
+            return ['success' => false, 'message' => 'Erro: ' . $e->getMessage()];
         }
-        
-        $where = "AND A.COD_SOLICITACAO IN (" . implode(',', array_map('intval', $solicitacoes)) . ")";
-        $dados = $this->model->solicitacoesEncerramento($where, 999999, 0);
-        
-        if (empty($dados)) {
-            return ['success' => false, 'message' => 'Dados não encontrados'];
-        }
-        
-        return $this->generateTXT($dados);
     }
     
     public function getCNPJsForSelectionVerification($solicitacoes) {
-        if (empty($solicitacoes) || !is_array($solicitacoes)) {
-            return ['success' => false, 'message' => 'Nenhuma solicitação selecionada'];
-        }
-        
-        $where = "AND A.COD_SOLICITACAO IN (" . implode(',', array_map('intval', $solicitacoes)) . ")";
-        $dados = $this->model->solicitacoesEncerramento($where, 999999, 0);
-        
-        if (empty($dados)) {
-            return ['success' => false, 'message' => 'Dados não encontrados'];
-        }
-        
-        $cnpjList = [];
-        foreach ($dados as $row) {
-            $cnpj = $this->formatCNPJ($row['CNPJ']);
-            $dataContrato = is_object($row['DATA_CONTRATO']) 
-                ? $row['DATA_CONTRATO']->format('Y-m-d') 
-                : date('Y-m-d', strtotime($row['DATA_CONTRATO']));
-                
-            $cnpjList[] = [
-                'cod_solicitacao' => $row['COD_SOLICITACAO'],
-                'cnpj' => $cnpj,
-                'data_contrato' => $dataContrato
+        try {
+            if (empty($solicitacoes) || !is_array($solicitacoes)) {
+                return ['success' => false, 'message' => 'Nenhuma solicitação selecionada'];
+            }
+            
+            $where = "AND A.COD_SOLICITACAO IN (" . implode(',', array_map('intval', $solicitacoes)) . ")";
+            $dados = $this->model->solicitacoesEncerramento($where, 999999, 0);
+            
+            if (empty($dados)) {
+                return ['success' => false, 'message' => 'Dados não encontrados'];
+            }
+            
+            $cnpjList = [];
+            foreach ($dados as $row) {
+                $cnpj = $this->formatCNPJ($row['CNPJ']);
+                $dataContrato = is_object($row['DATA_CONTRATO']) 
+                    ? $row['DATA_CONTRATO']->format('Y-m-d') 
+                    : date('Y-m-d', strtotime($row['DATA_CONTRATO']));
+                    
+                $cnpjList[] = [
+                    'cod_solicitacao' => $row['COD_SOLICITACAO'],
+                    'cnpj' => $cnpj,
+                    'data_contrato' => $dataContrato
+                ];
+            }
+            
+            return [
+                'success' => true,
+                'cnpjs' => $cnpjList
             ];
+        } catch (Exception $e) {
+            return ['success' => false, 'message' => 'Erro ao obter CNPJs: ' . $e->getMessage()];
         }
-        
-        return [
-            'success' => true,
-            'cnpjs' => $cnpjList
-        ];
     }
     
     public function generateFromExcel($filePath) {
@@ -609,49 +651,34 @@ class EncerramentoMassa {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $handler = new EncerramentoMassa();
-    
-    if (isset($_POST['acao']) && $_POST['acao'] === 'get_cnpjs_for_verification') {
-        $solicitacoes = json_decode($_POST['solicitacoes'] ?? '[]', true);
-        $result = $handler->getCNPJsForSelectionVerification($solicitacoes);
+    try {
+        $handler = new EncerramentoMassa();
         
-        header('Content-Type: application/json');
-        echo json_encode($result);
-        exit;
-    }
-    
-    if (isset($_POST['acao']) && $_POST['acao'] === 'get_cnpjs_for_verification_excel') {
-        if (isset($_FILES['excel_file']) && $_FILES['excel_file']['error'] === UPLOAD_ERR_OK) {
-            $result = $handler->getCNPJsForExcelVerification($_FILES['excel_file']['tmp_name']);
+        if (isset($_POST['acao']) && $_POST['acao'] === 'get_cnpjs_for_verification') {
+            $solicitacoes = json_decode($_POST['solicitacoes'] ?? '[]', true);
+            $result = $handler->getCNPJsForSelectionVerification($solicitacoes);
             
             header('Content-Type: application/json');
             echo json_encode($result);
-        } else {
-            header('Content-Type: application/json');
-            echo json_encode(['success' => false, 'message' => 'Arquivo não enviado']);
+            exit;
         }
-        exit;
-    }
-    
-    if (isset($_POST['acao']) && $_POST['acao'] === 'gerar_txt_selection') {
-        $solicitacoes = json_decode($_POST['solicitacoes'] ?? '[]', true);
-        $result = $handler->generateFromSelection($solicitacoes);
         
-        if ($result['success']) {
-            header('Content-Type: text/plain');
-            header('Content-Disposition: attachment; filename="' . $result['nomeArquivo'] . '"');
-            header('Content-Length: ' . strlen($result['conteudo']));
-            echo $result['conteudo'];
-        } else {
-            header('Content-Type: application/json');
-            echo json_encode($result);
+        if (isset($_POST['acao']) && $_POST['acao'] === 'get_cnpjs_for_verification_excel') {
+            if (isset($_FILES['excel_file']) && $_FILES['excel_file']['error'] === UPLOAD_ERR_OK) {
+                $result = $handler->getCNPJsForExcelVerification($_FILES['excel_file']['tmp_name']);
+                
+                header('Content-Type: application/json');
+                echo json_encode($result);
+            } else {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'Arquivo não enviado']);
+            }
+            exit;
         }
-        exit;
-    }
-    
-    if (isset($_POST['acao']) && $_POST['acao'] === 'gerar_txt_excel') {
-        if (isset($_FILES['excel_file']) && $_FILES['excel_file']['error'] === UPLOAD_ERR_OK) {
-            $result = $handler->generateFromExcel($_FILES['excel_file']['tmp_name']);
+        
+        if (isset($_POST['acao']) && $_POST['acao'] === 'gerar_txt_selection') {
+            $solicitacoes = json_decode($_POST['solicitacoes'] ?? '[]', true);
+            $result = $handler->generateFromSelection($solicitacoes);
             
             if ($result['success']) {
                 header('Content-Type: text/plain');
@@ -662,10 +689,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('Content-Type: application/json');
                 echo json_encode($result);
             }
-        } else {
-            header('Content-Type: application/json');
-            echo json_encode(['success' => false, 'message' => 'Arquivo não enviado']);
+            exit;
         }
+        
+        if (isset($_POST['acao']) && $_POST['acao'] === 'gerar_txt_excel') {
+            if (isset($_FILES['excel_file']) && $_FILES['excel_file']['error'] === UPLOAD_ERR_OK) {
+                $result = $handler->generateFromExcel($_FILES['excel_file']['tmp_name']);
+                
+                if ($result['success']) {
+                    header('Content-Type: text/plain');
+                    header('Content-Disposition: attachment; filename="' . $result['nomeArquivo'] . '"');
+                    header('Content-Length: ' . strlen($result['conteudo']));
+                    echo $result['conteudo'];
+                } else {
+                    header('Content-Type: application/json');
+                    echo json_encode($result);
+                }
+            } else {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'Arquivo não enviado']);
+            }
+            exit;
+        }
+        
+        // If no action matched
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Ação não reconhecida: ' . ($_POST['acao'] ?? 'nenhuma')]);
+        exit;
+        
+    } catch (Exception $e) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Erro fatal: ' . $e->getMessage(), 'trace' => $e->getTraceAsString()]);
         exit;
     }
 }
@@ -907,3 +961,281 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 ?>
 
+
+-----------
+
+
+# Debug: AJAX Callbacks Not Firing
+
+## 🔍 Current Situation
+
+**What works:**
+- Console log BEFORE $.ajax() ✅
+
+**What doesn't work:**
+- Console logs INSIDE $.ajax() (success/error/complete) ❌
+
+**This means:** The AJAX request is failing silently before even being sent, OR there's a JavaScript error preventing it.
+
+## 🛠️ Updated Code Features
+
+### JavaScript (analise_encerramento.js)
+- ✅ Added 14 numbered console.log statements
+- ✅ Added beforeSend, success, error, complete callbacks
+- ✅ Added dataType: 'json' for proper parsing
+
+### PHP (encerramento_massa.php)
+- ✅ Added error_reporting and display_errors
+- ✅ Added try-catch blocks
+- ✅ Added proper Content-Type headers
+- ✅ Added fallback for unrecognized actions
+
+## 📋 Debugging Steps
+
+### Step 1: Check Console Output
+
+After clicking "Gerar TXT BACEN", you should see:
+
+```
+[1] gerarTXTSelection called
+[2] Selected solicitacoes: [123]
+[3] About to call encerramento_massa.php
+[4] AJAX beforeSend - request is being sent
+[14] AJAX call initiated, waiting for response...
+```
+
+**Then ONE of these:**
+```
+[COMPLETE] AJAX call completed (success or error)
+[5] AJAX Success! Received data: {...}
+```
+OR
+```
+[COMPLETE] AJAX call completed (success or error)
+[ERROR] AJAX call failed!
+```
+
+### Step 2: What Console Shows vs Issue
+
+| Console Output | Problem | Solution |
+|----------------|---------|----------|
+| Only `[1]` and `[2]` | `getSelectedSolicitacoes()` failing | Check function exists |
+| Up to `[3]` | AJAX not starting | Check jQuery loaded |
+| No `[4]` | AJAX blocked before send | JavaScript error before $.ajax |
+| `[4]` but no `[14]` | Syntax error in $.ajax block | Check browser console for errors |
+| `[14]` but no `[COMPLETE]` | Request never completes | PHP crash/timeout |
+| `[COMPLETE]` + `[ERROR]` | PHP error | Check response text |
+
+### Step 3: Check for JavaScript Errors
+
+**Open Console (F12) and look for RED errors:**
+
+Common errors:
+```
+Uncaught ReferenceError: getSelectedSolicitacoes is not defined
+Uncaught SyntaxError: Unexpected token
+Uncaught TypeError: Cannot read property 'length' of undefined
+```
+
+If you see ANY red errors, that's your problem!
+
+### Step 4: Test PHP Endpoint Directly
+
+**Save this as `test_endpoint.html` in your project:**
+
+(See artifact "test_php_endpoint")
+
+**Open in browser:**
+```
+http://your-server/test_endpoint.html
+```
+
+**Enter a valid COD_SOLICITACAO and click "Test Get CNPJs"**
+
+**Expected:**
+```json
+{
+  "success": true,
+  "cnpjs": [
+    {
+      "cod_solicitacao": 1234,
+      "cnpj": "12345678",
+      "data_contrato": "2021-01-18"
+    }
+  ]
+}
+```
+
+**If you get an error, the PHP is broken!**
+
+### Step 5: Check PHP Errors
+
+**Look in PHP error log** or check response in Network tab:
+
+```
+Fatal error: Call to undefined function...
+Parse error: syntax error...
+Warning: require_once()...
+```
+
+### Step 6: Network Tab Analysis
+
+**Open F12 → Network tab**
+
+1. Filter by "encerramento_massa"
+2. Click "Gerar TXT BACEN"
+3. Check if request appears
+
+**If NO request appears:**
+- JavaScript error preventing AJAX call
+- Check console for RED errors
+
+**If request appears:**
+- Click on request
+- Check "Preview" or "Response" tab
+- Look for PHP errors or JSON response
+
+### Step 7: Simplify Test
+
+**In browser console, run this:**
+
+```javascript
+// Test 1: Is jQuery loaded?
+console.log('jQuery:', typeof $);
+// Should print: jQuery: function
+
+// Test 2: Does function exist?
+console.log('gerarTXTSelection:', typeof gerarTXTSelection);
+// Should print: gerarTXTSelection: function
+
+// Test 3: Test AJAX directly
+$.ajax({
+    url: '/teste/Andre/tabler_portalexpresso_paginaEncerramento/control/encerramento/encerramento_massa.php',
+    method: 'POST',
+    dataType: 'json',
+    data: {
+        acao: 'get_cnpjs_for_verification',
+        solicitacoes: JSON.stringify([1234])
+    },
+    beforeSend: () => console.log('TEST: beforeSend'),
+    success: (data) => console.log('TEST: success', data),
+    error: (xhr, status, error) => console.log('TEST: error', status, error, xhr.responseText),
+    complete: () => console.log('TEST: complete')
+});
+```
+
+**Expected output:**
+```
+TEST: beforeSend
+TEST: complete
+TEST: success {success: true, cnpjs: [...]}
+```
+
+**If this works but the app doesn't:**
+- Issue is in the app's gerarTXTSelection function
+- Check if function is being replaced/overwritten
+
+**If this also fails:**
+- Issue is with PHP endpoint
+- Check PHP file exists at that path
+- Check PHP syntax errors
+
+## 🎯 Quick Fixes
+
+### Fix 1: jQuery Not Loaded
+
+**Add to page before your script:**
+```html
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+```
+
+### Fix 2: Function Doesn't Exist
+
+**Check if file is loaded:**
+```html
+<script src="./js/encerramento/analise_encerramento/analise_encerramento.js"></script>
+```
+
+### Fix 3: Path Wrong
+
+**Try absolute path:**
+```javascript
+url: window.location.origin + '/teste/Andre/tabler_portalexpresso_paginaEncerramento/control/encerramento/encerramento_massa.php',
+```
+
+### Fix 4: PHP Syntax Error
+
+**Check PHP file for:**
+- Missing semicolons
+- Unclosed brackets
+- Typos in function names
+
+**Run PHP lint:**
+```bash
+php -l encerramento_massa.php
+```
+
+### Fix 5: Model Method Missing
+
+**Verify this method exists in model:**
+```php
+public function solicitacoesEncerramento($where, $limit, $offset) {
+    // Should exist in analise_encerramento_model.class.php
+}
+```
+
+## 🆘 Still Not Working?
+
+**Provide these exact details:**
+
+1. **Full console output** (copy ALL text from console)
+2. **Network tab screenshot** (show request to encerramento_massa.php)
+3. **Result of Test 3** (the direct AJAX test above)
+4. **PHP lint result:** `php -l encerramento_massa.php`
+5. **File exists check:**
+   ```
+   Does this file exist?
+   /teste/Andre/tabler_portalexpresso_paginaEncerramento/control/encerramento/encerramento_massa.php
+   ```
+
+## 🎁 Bonus: Skip Verification Test
+
+**If you just want to test TXT generation without verification:**
+
+```javascript
+// In console, override function:
+window.gerarTXTSelection = function() {
+    const solicitacoes = getSelectedSolicitacoes();
+    if (solicitacoes.length === 0) {
+        alert('Select something first');
+        return;
+    }
+    
+    console.log('Generating TXT for:', solicitacoes);
+    
+    $.ajax({
+        url: '/teste/Andre/tabler_portalexpresso_paginaEncerramento/control/encerramento/encerramento_massa.php',
+        method: 'POST',
+        data: {
+            acao: 'gerar_txt_selection',
+            solicitacoes: JSON.stringify(solicitacoes)
+        },
+        xhrFields: { responseType: 'blob' },
+        success: function(blob) {
+            console.log('SUCCESS!');
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'TEST.txt';
+            a.click();
+        },
+        error: function(xhr, status, error) {
+            console.error('ERROR:', error, xhr.responseText);
+        }
+    });
+};
+
+// Then click button
+```
+
+This skips CNPJ verification and goes straight to TXT generation.
