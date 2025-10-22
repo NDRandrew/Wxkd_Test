@@ -1,414 +1,155 @@
-<?php
-@session_start();
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+// CORRECTED JavaScript functions for analise_encerramento.js
 
-require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
-
-class EncerramentoMassa {
-    private $model;
-    private $instituicao = '60746948';
-    
-    public function __construct() {
-        $this->model = new Analise();
+// Replace parseDateFromResponse function
+function parseDateFromResponse(apiResponseData) {
+    if (!apiResponseData || !apiResponseData.success) {
+        return null;
     }
     
-    public function generateFromSelection($solicitacoes) {
-        try {
-            if (empty($solicitacoes) || !is_array($solicitacoes)) {
-                return ['success' => false, 'message' => 'Nenhuma solicitação selecionada'];
-            }
-            
-            $where = "AND A.COD_SOLICITACAO IN (" . implode(',', array_map('intval', $solicitacoes)) . ")";
-            $dados = $this->model->solicitacoesEncerramento($where, 999999, 0);
-            
-            if (empty($dados)) {
-                return ['success' => false, 'message' => 'Dados não encontrados'];
-            }
-            
-            return $this->generateTXT($dados);
-        } catch (Exception $e) {
-            return ['success' => false, 'message' => 'Erro: ' . $e->getMessage()];
+    // Use the 'dates' array from API response
+    if (apiResponseData.dates && Array.isArray(apiResponseData.dates) && apiResponseData.dates.length > 0) {
+        // Convert DD/MM/YYYY to YYYY-MM-DD for each date
+        const dates = apiResponseData.dates.map(dateStr => {
+            const match = dateStr.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+            return match ? `${match[3]}-${match[2]}-${match[1]}` : null;
+        }).filter(d => d !== null);
+        
+        return dates.length > 0 ? dates.join(',') : null;
+    }
+    
+    // Fallback: try to parse from result string (backward compatibility)
+    if (apiResponseData.result && typeof apiResponseData.result === 'string') {
+        const match = apiResponseData.result.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+        if (match) {
+            return `${match[3]}-${match[2]}-${match[1]}`;
         }
     }
     
-    public function getCNPJsForSelectionVerification($solicitacoes) {
-        try {
-            if (empty($solicitacoes) || !is_array($solicitacoes)) {
-                return ['success' => false, 'message' => 'Nenhuma solicitação selecionada'];
-            }
-            
-            $where = "AND A.COD_SOLICITACAO IN (" . implode(',', array_map('intval', $solicitacoes)) . ")";
-            $dados = $this->model->solicitacoesEncerramento($where, 999999, 0);
-            
-            if (empty($dados)) {
-                return ['success' => false, 'message' => 'Dados não encontrados'];
-            }
-            
-            $cnpjList = [];
-            foreach ($dados as $row) {
-                $cnpj = $this->formatCNPJ($row['CNPJ']);
-                $dataContrato = is_object($row['DATA_CONTRATO']) 
-                    ? $row['DATA_CONTRATO']->format('Y-m-d') 
-                    : date('Y-m-d', strtotime($row['DATA_CONTRATO']));
+    return null;
+}
+
+// Replace verifySingleCNPJ function
+async function verifySingleCNPJ(cnpjData) {
+    console.log('Verifying CNPJ:', cnpjData.cnpj);
+    
+    return new Promise((resolve) => {
+        $.ajax({
+            url: BACEN_API_CONFIG.url,
+            method: 'POST',
+            contentType: 'application/json',
+            dataType: 'json',
+            data: JSON.stringify({
+                user: BACEN_API_CONFIG.user,
+                pwd: BACEN_API_CONFIG.pwd,
+                cnpj: cnpjData.cnpj
+            }),
+            success: function(data) {
+                console.log('API Success for CNPJ', cnpjData.cnpj, ':', data);
+                
+                if (data.success) {
+                    // Pass entire response object to parser
+                    const verifiedDate = parseDateFromResponse(data);
+                    console.log('Verified date(s):', verifiedDate, 'Original date:', cnpjData.data_contrato);
                     
-                $cnpjList[] = [
-                    'cod_solicitacao' => $row['COD_SOLICITACAO'],
-                    'cnpj' => $cnpj,
-                    'data_contrato' => $dataContrato
-                ];
-            }
-            
-            return [
-                'success' => true,
-                'cnpjs' => $cnpjList
-            ];
-        } catch (Exception $e) {
-            return ['success' => false, 'message' => 'Erro ao obter CNPJs: ' . $e->getMessage()];
-        }
-    }
-    
-    public function generateFromExcel($filePath, $originalFilename = null) {
-        if (!file_exists($filePath)) {
-            return ['success' => false, 'message' => 'Arquivo não encontrado'];
-        }
-        
-        // Get extension from original filename, not temp file path
-        if ($originalFilename) {
-            $extension = strtolower(pathinfo($originalFilename, PATHINFO_EXTENSION));
-        } else {
-            $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
-        }
-        
-        if ($extension === 'csv') {
-            $chaveLojas = $this->parseCSV($filePath);
-        } else if (in_array($extension, ['xlsx', 'xls'])) {
-            $chaveLojas = $this->parseExcel($filePath);
-        } else {
-            return ['success' => false, 'message' => 'Formato não suportado. Use CSV, XLS ou XLSX. Extensão detectada: ' . $extension];
-        }
-        
-        if (empty($chaveLojas)) {
-            return ['success' => false, 'message' => 'Nenhuma Chave Loja encontrada no arquivo'];
-        }
-        
-        $where = "AND A.CHAVE_LOJA IN (" . implode(',', array_map('intval', $chaveLojas)) . ")";
-        $dados = $this->model->solicitacoesEncerramento($where, 9999, 0);
-        
-        if (empty($dados)) {
-            return ['success' => false, 'message' => 'Dados não encontrados para as Chaves Loja fornecidas'];
-        }
-        
-        return $this->generateTXT($dados);
-    }
-    
-    public function getCNPJsForExcelVerification($filePath, $originalFilename = null) {
-        if (!file_exists($filePath)) {
-            return ['success' => false, 'message' => 'Arquivo não encontrado'];
-        }
-        
-        // Get extension from original filename, not temp file path
-        if ($originalFilename) {
-            $extension = strtolower(pathinfo($originalFilename, PATHINFO_EXTENSION));
-        } else {
-            $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
-        }
-        
-        if ($extension === 'csv') {
-            $chaveLojas = $this->parseCSV($filePath);
-        } else if (in_array($extension, ['xlsx', 'xls'])) {
-            $chaveLojas = $this->parseExcel($filePath);
-        } else {
-            return ['success' => false, 'message' => 'Formato não suportado. Extensão detectada: ' . $extension];
-        }
-        
-        if (empty($chaveLojas)) {
-            return ['success' => false, 'message' => 'Nenhuma Chave Loja encontrada'];
-        }
-        
-        $where = "AND A.CHAVE_LOJA IN (" . implode(',', array_map('intval', $chaveLojas)) . ")";
-        $dados = $this->model->solicitacoesEncerramento($where, 9999, 0);
-        
-        if (empty($dados)) {
-            return ['success' => false, 'message' => 'Dados não encontrados'];
-        }
-        
-        $cnpjList = [];
-        foreach ($dados as $row) {
-            $cnpj = $this->formatCNPJ($row['CNPJ']);
-            $dataContrato = is_object($row['DATA_CONTRATO']) 
-                ? $row['DATA_CONTRATO']->format('Y-m-d') 
-                : date('Y-m-d', strtotime($row['DATA_CONTRATO']));
-                
-            $cnpjList[] = [
-                'cod_solicitacao' => $row['COD_SOLICITACAO'],
-                'cnpj' => $cnpj,
-                'data_contrato' => $dataContrato
-            ];
-        }
-        
-        return [
-            'success' => true,
-            'cnpjs' => $cnpjList
-        ];
-    }
-    
-    private function formatCNPJ($cnpj) {
-        $cnpj = preg_replace('/[^0-9]/', '', $cnpj);
-        return str_pad(substr($cnpj, 0, 8), 8, '0', STR_PAD_LEFT);
-    }
-    
-    private function parseCSV($filePath) {
-        $chaveLojas = [];
-        $handle = fopen($filePath, 'r');
-        
-        if ($handle) {
-            $header = fgetcsv($handle);
-            
-            while (($row = fgetcsv($handle)) !== false) {
-                if (!empty($row[0])) {
-                    $chaveLojas[] = $row[0];
+                    if (verifiedDate) {
+                        console.log('Updating database with date(s)...');
+                        updateDataContVerified(cnpjData.cod_solicitacao, verifiedDate)
+                            .then(() => {
+                                console.log('Database updated successfully');
+                                resolve({ success: true, updated: true });
+                            })
+                            .catch((err) => {
+                                console.error('Database update failed:', err);
+                                resolve({ success: true, updated: false });
+                            });
+                    } else {
+                        console.log('No verified date, skipping update');
+                        resolve({ success: true, updated: false });
+                    }
+                } else {
+                    console.error('API returned success:false');
+                    resolve({ success: false, error: data.result || 'Erro desconhecido' });
                 }
+            },
+            error: function(xhr, status, error) {
+                console.error('AJAX Error for CNPJ', cnpjData.cnpj);
+                console.error('Status:', status);
+                console.error('Error:', error);
+                console.error('Response:', xhr.responseText);
+                resolve({ success: false, error: 'Erro na API: ' + error });
             }
-            fclose($handle);
-        }
-        
-        return $chaveLojas;
-    }
-    
-    private function parseExcel($filePath) {
-        $phpSpreadsheetPath = '\\\\D4920S010\\D4920_2\\Secoes\\D4920S012\\Comum_S012\\Servidor_Portal_Expresso\\Server2Go\\htdocs\\Lib\\PhpSpreadsheet\\vendor\\autoload.php';
-        
-        if (!file_exists($phpSpreadsheetPath)) {
-            return $this->parseCSV($filePath);
-        }
-        
-        try {
-            require_once $phpSpreadsheetPath;
-            
-            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($filePath);
-            $worksheet = $spreadsheet->getActiveSheet();
-            $rows = $worksheet->toArray();
-            
-            $chaveLojas = [];
-            foreach ($rows as $index => $row) {
-                if ($index === 0) continue;
-                if (!empty($row[0])) {
-                    $chaveLojas[] = $row[0];
-                }
-            }
-            
-            return $chaveLojas;
-            
-        } catch (Exception $e) {
-            return [];
-        }
-    }
-    
-    private function generateTXT($dados) {
-        $linhas = [];
-        $totalLinhas = 0;
-        
-        // Count total lines (including multiple contracts per solicitacao)
-        foreach ($dados as $row) {
-            $verifiedDate = null;
-            if (isset($row['COD_SOLICITACAO'])) {
-                $verifiedDate = $this->model->getDataContVerified($row['COD_SOLICITACAO']);
-            }
-            
-            if ($verifiedDate && strpos($verifiedDate, ',') !== false) {
-                // Multiple dates
-                $dates = explode(',', $verifiedDate);
-                $totalLinhas += count($dates);
-            } else {
-                $totalLinhas++;
-            }
-        }
-        
-        $linhas[] = $this->gerarHeader($totalLinhas);
-        
-        $sequencial = 2;
-        foreach ($dados as $row) {
-            $verifiedDate = null;
-            if (isset($row['COD_SOLICITACAO'])) {
-                $verifiedDate = $this->model->getDataContVerified($row['COD_SOLICITACAO']);
-            }
-            
-            if ($verifiedDate && strpos($verifiedDate, ',') !== false) {
-                // Multiple dates - create one line per date
-                $dates = explode(',', $verifiedDate);
-                foreach ($dates as $date) {
-                    $rowCopy = $row;
-                    $rowCopy['DATA_CONTRATO'] = trim($date);
-                    $linhas[] = $this->gerarDetalhe($rowCopy, $sequencial);
-                    $sequencial++;
-                }
-            } else {
-                // Single date
-                $linhas[] = $this->gerarDetalhe($row, $sequencial);
-                $sequencial++;
-            }
-        }
-        
-        $linhas[] = $this->gerarTrailer($totalLinhas);
-        
-        $conteudo = implode("\r\n", $linhas);
-        $nomeArquivo = 'ENCERRAMENTO_' . date('Ymd_His') . '.txt';
-        
-        return [
-            'success' => true,
-            'conteudo' => $conteudo,
-            'nomeArquivo' => $nomeArquivo,
-            'totalRegistros' => $totalLinhas
-        ];
-    }
-    
-    private function gerarHeader($totalRegistros) {
-        $tipo = '#A1';
-        $codigoDocumento = '5021';
-        $instituicao = str_pad($this->instituicao, 8, '0', STR_PAD_LEFT);
-        $dataGeracao = date('Ymd');
-        $contato = str_pad('YGOR SANTINI', 30, ' ', STR_PAD_RIGHT);
-        $ddd = '00011';
-        $telefone = '0036849907';
-        $livreFiller = str_pad(' ', 112, ' ', STR_PAD_RIGHT);
-        $sequencial = '00001';
-        
-        $linha = $tipo . $codigoDocumento . $instituicao . $dataGeracao . $contato . $ddd . $telefone . $livreFiller . $sequencial;
-        return substr($linha, 0, 250);
-    }
-    
-    private function gerarDetalhe($row, $sequencial) {
-        $tipo = 'D01';
-        $metodo = '02';
-        $instituicao = str_pad($this->instituicao, 8, '0', STR_PAD_LEFT);
-        $cnpj = str_pad($row['CNPJ'], 8, '0', STR_PAD_LEFT);
-        $cnpjSubs = str_pad(' ', 8, ' ', STR_PAD_RIGHT);
-        
-        // Get verified dates (can be multiple, comma-separated)
-        $dataToUse = null;
-        
-        if (isset($row['COD_SOLICITACAO'])) {
-            $verifiedDate = $this->model->getDataContVerified($row['COD_SOLICITACAO']);
-            if ($verifiedDate) {
-                $dataToUse = $verifiedDate;
-            }
-        }
-        
-        // If no verified date, use DATA_CONTRATO
-        if (!$dataToUse) {
-            $dataToUse = $row['DATA_CONTRATO'];
-        }
-        
-        // Handle data formatting
-        if (is_object($dataToUse)) {
-            $dataContrato = $dataToUse->format('Ymd');
-        } else {
-            $dataContrato = date('Ymd', strtotime($dataToUse));
-        }
-        
-        $dataEncerramento = date('Ymd');
-        $linhaFiller = str_pad(' ', 135, ' ', STR_PAD_LEFT);
-        $sequencialStr = str_pad($sequencial, 5, '0', STR_PAD_LEFT);
-        
-        $linha = $tipo . $metodo . $instituicao . $cnpj . $cnpjSubs . $dataContrato . $dataEncerramento . $linhaFiller . $sequencialStr;
-        
-        return substr($linha, 0, 250);
-    }
-    
-    private function gerarTrailer($totalRegistros) {
-        $tipo = '9';
-        $quantidadeRegistros = str_pad($totalRegistros, 10, '0', STR_PAD_LEFT);
-        
-        $linha = $tipo . $quantidadeRegistros . str_repeat(' ', 250 - strlen($tipo . $quantidadeRegistros));
-        
-        return substr($linha, 0, 250);
-    }
+        });
+    });
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    try {
-        $handler = new EncerramentoMassa();
+// uploadExcelAndGenerateTXT remains the same as before
+window.uploadExcelAndGenerateTXT = function() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.xlsx,.xls,.csv';
+    
+    input.onchange = function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
         
-        if (isset($_POST['acao']) && $_POST['acao'] === 'get_cnpjs_for_verification') {
-            $solicitacoes = json_decode($_POST['solicitacoes'] ?? '[]', true);
-            $result = $handler->getCNPJsForSelectionVerification($solicitacoes);
+        showNotification('Processando arquivo...', 'info');
+        
+        const formData = new FormData();
+        formData.append('acao', 'get_cnpjs_for_verification_excel');
+        formData.append('excel_file', file);
+        
+        fetch('/teste/Andre/tabler_portalexpresso_paginaEncerramento/control/encerramento/encerramento_massa.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (!data.success) {
+                showNotification('Erro: ' + data.message, 'error');
+                return;
+            }
             
-            header('Content-Type: application/json');
-            echo json_encode($result);
-            exit;
-        }
-        
-        if (isset($_POST['acao']) && $_POST['acao'] === 'get_cnpjs_for_verification_excel') {
-            if (isset($_FILES['excel_file']) && $_FILES['excel_file']['error'] === UPLOAD_ERR_OK) {
-                // Pass both temp path AND original filename
-                $result = $handler->getCNPJsForExcelVerification(
-                    $_FILES['excel_file']['tmp_name'],
-                    $_FILES['excel_file']['name']
-                );
-                
-                header('Content-Type: application/json');
-                echo json_encode($result);
-            } else {
-                header('Content-Type: application/json');
-                echo json_encode(['success' => false, 'message' => 'Arquivo não enviado ou erro no upload']);
-            }
-            exit;
-        }
-        
-        if (isset($_POST['acao']) && $_POST['acao'] === 'gerar_txt_selection') {
-            $solicitacoes = json_decode($_POST['solicitacoes'] ?? '[]', true);
-            $result = $handler->generateFromSelection($solicitacoes);
+            const cnpjList = data.cnpjs;
+            const progressModal = createProgressModal();
+            document.body.appendChild(progressModal);
             
-            if ($result['success']) {
-                header('Content-Type: text/plain');
-                header('Content-Disposition: attachment; filename="' . $result['nomeArquivo'] . '"');
-                header('Content-Length: ' . strlen($result['conteudo']));
-                echo $result['conteudo'];
-            } else {
-                header('Content-Type: application/json');
-                echo json_encode($result);
-            }
-            exit;
-        }
-        
-        if (isset($_POST['acao']) && $_POST['acao'] === 'gerar_txt_excel') {
-            if (isset($_FILES['excel_file']) && $_FILES['excel_file']['error'] === UPLOAD_ERR_OK) {
-                // Pass both temp path AND original filename
-                $result = $handler->generateFromExcel(
-                    $_FILES['excel_file']['tmp_name'],
-                    $_FILES['excel_file']['name']
-                );
+            verifyAllCNPJs(cnpjList, (processed, total, updated, errors) => {
+                updateProgressModal(progressModal, processed, total, updated, errors);
+            }).then(() => {
+                setTimeout(() => progressModal.remove(), 2000);
+                showNotification('Verificação concluída! Gerando TXT...', 'success');
                 
-                if ($result['success']) {
-                    header('Content-Type: text/plain');
-                    header('Content-Disposition: attachment; filename="' . $result['nomeArquivo'] . '"');
-                    header('Content-Length: ' . strlen($result['conteudo']));
-                    echo $result['conteudo'];
-                } else {
-                    header('Content-Type: application/json');
-                    echo json_encode($result);
-                }
-            } else {
-                header('Content-Type: application/json');
-                $errorMsg = 'Arquivo não enviado';
-                if (isset($_FILES['excel_file']['error'])) {
-                    $errorMsg .= ' - Erro código: ' . $_FILES['excel_file']['error'];
-                }
-                echo json_encode(['success' => false, 'message' => $errorMsg]);
-            }
-            exit;
-        }
-        
-        // If no action matched
-        header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'message' => 'Ação não reconhecida: ' . ($_POST['acao'] ?? 'nenhuma')]);
-        exit;
-        
-    } catch (Exception $e) {
-        header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'message' => 'Erro fatal: ' . $e->getMessage(), 'trace' => $e->getTraceAsString()]);
-        exit;
-    }
-}
-?>
+                const txtFormData = new FormData();
+                txtFormData.append('acao', 'gerar_txt_excel');
+                txtFormData.append('excel_file', file);
+                
+                fetch('/teste/Andre/tabler_portalexpresso_paginaEncerramento/control/encerramento/encerramento_massa.php', {
+                    method: 'POST',
+                    body: txtFormData
+                })
+                .then(response => response.blob())
+                .then(blob => {
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'ENCERRAMENTO_' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '.txt';
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+                    showNotification('Arquivo TXT gerado com sucesso!', 'success');
+                })
+                .catch(error => {
+                    console.error('Excel processing error:', error);
+                    showNotification('Erro ao processar arquivo: ' + error, 'error');
+                });
+            });
+        })
+        .catch(error => {
+            console.error('Get CNPJs from Excel error:', error);
+            showNotification('Erro ao processar Excel: ' + error, 'error');
+        });
+    };
+    
+    input.click();
+};
