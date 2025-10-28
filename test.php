@@ -1,9 +1,93 @@
-## Fix: Ocorrências showing wrong data
+## Fix: JSON parsing error
 
-**In JH.txt (ajax_encerramento.php)**, fix the load_ocorrencias handler:
+**In JH.txt (ajax_encerramento.php)**, fix the `json_encode_custom` function:
 
 ```php
-// Load Ocorrências accordion view
+function json_encode_custom($data) {
+    if (is_null($data)) return 'null';
+    if ($data === true) return 'true';
+    if ($data === false) return 'false';
+    if (is_int($data) || is_float($data)) return (string)$data;
+    
+    if (is_string($data)) {
+        // Properly escape special characters
+        $data = str_replace(['\\', '"', "\r", "\n", "\t"], ['\\\\', '\\"', '\\r', '\\n', '\\t'], $data);
+        // Remove other control characters
+        $data = preg_replace('/[\x00-\x1F\x7F]/', '', $data);
+        return '"' . $data . '"';
+    }
+    
+    if (is_array($data)) {
+        $isAssoc = array_keys($data) !== range(0, count($data) - 1);
+        $items = [];
+        foreach ($data as $key => $value) {
+            $encodedValue = json_encode_custom($value);
+            $items[] = $isAssoc ? '"' . addslashes($key) . '":' . $encodedValue : $encodedValue;
+        }
+        return $isAssoc ? '{' . implode(',', $items) . '}' : '[' . implode(',', $items) . ']';
+    }
+    
+    if (is_object($data)) {
+        $items = [];
+        foreach (get_object_vars($data) as $key => $value) {
+            $items[] = '"' . addslashes($key) . '":' . json_encode_custom($value);
+        }
+        return '{' . implode(',', $items) . '}';
+    }
+    
+    return 'null';
+}
+```
+
+**In C.txt (analise_encerramento_control.php)**, fix renderOcorrenciasDetails to escape data:
+
+```php
+public function renderOcorrenciasDetails($ocorrencias) {
+    if (empty($ocorrencias)) {
+        return '<div class="p-3 text-center">Nenhum detalhe encontrado</div>';
+    }
+    
+    $html = '<div class="table-responsive">
+                <table class="table table-sm table-bordered mb-0">
+                    <thead>
+                        <tr style="background-color: #d8d8d8;">
+                            <th>ID</th>
+                            <th>Data</th>
+                            <th>CNPJs</th>
+                            <th>Ocorrência</th>
+                        </tr>
+                    </thead>
+                    <tbody>';
+    
+    foreach ($ocorrencias as $occ) {
+        $dataOcorrencia = is_object($occ['DT_OCORRENCIA']) 
+            ? $occ['DT_OCORRENCIA']->format('d/m/Y H:i:s') 
+            : date('d/m/Y H:i:s', strtotime($occ['DT_OCORRENCIA']));
+        
+        // Clean and escape the ocorrencia text
+        $ocorrenciaText = $occ['OCORRENCIA'];
+        $ocorrenciaText = str_replace(["\r\n", "\r", "\n"], ' ', $ocorrenciaText);
+        $ocorrenciaText = preg_replace('/\s+/', ' ', $ocorrenciaText);
+        $ocorrenciaText = htmlspecialchars($ocorrenciaText, ENT_QUOTES, 'UTF-8');
+        
+        $html .= '<tr>
+                    <td>' . htmlspecialchars($occ['ID']) . '</td>
+                    <td>' . $dataOcorrencia . '</td>
+                    <td>' . htmlspecialchars($occ['CNPJs']) . '</td>
+                    <td><small>' . $ocorrenciaText . '</small></td>
+                  </tr>';
+    }
+    
+    $html .= '</tbody></table></div>';
+    return $html;
+}
+```
+
+**Alternative: Use native JSON encoding in ajax handler**
+
+Replace the entire `load_ocorrencias` handler with this safer version:
+
+```php
 if ((isset($_POST['acao']) && $_POST['acao'] == 'load_ocorrencias') || 
     (isset($_GET['acao']) && $_GET['acao'] == 'load_ocorrencias')) {
     ob_start();
@@ -17,11 +101,11 @@ if ((isset($_POST['acao']) && $_POST['acao'] == 'load_ocorrencias') ||
         }
         
         if (isset($_GET['data_inicio']) && !empty($_GET['data_inicio'])) {
-            $where .= " AND DT_OCORRENCIA >= '" . $_GET['data_inicio'] . "'";
+            $where .= " AND DT_OCORRENCIA >= '" . addslashes($_GET['data_inicio']) . "'";
         }
         
         if (isset($_GET['data_fim']) && !empty($_GET['data_fim'])) {
-            $where .= " AND DT_OCORRENCIA <= '" . $_GET['data_fim'] . " 23:59:59'";
+            $where .= " AND DT_OCORRENCIA <= '" . addslashes($_GET['data_fim']) . " 23:59:59'";
         }
         
         $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
@@ -38,8 +122,10 @@ if ((isset($_POST['acao']) && $_POST['acao'] == 'load_ocorrencias') ||
         $html = $controller->renderOcorrenciasAccordions($dados);
         
         ob_end_clean();
-        header('Content-Type: application/json');
-        echo json_encode_custom([
+        header('Content-Type: application/json; charset=utf-8');
+        
+        // Use native json_encode with proper flags
+        echo json_encode([
             'success' => true,
             'html' => $html,
             'totalRecords' => $totalRecords,
@@ -48,136 +134,15 @@ if ((isset($_POST['acao']) && $_POST['acao'] == 'load_ocorrencias') ||
             'perPage' => $perPage,
             'startRecord' => $offset + 1,
             'endRecord' => min($offset + $perPage, $totalRecords)
-        ]);
+        ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+        
     } catch (Exception $e) {
         ob_end_clean();
-        header('Content-Type: application/json');
-        echo json_encode_custom(['success' => false, 'message' => $e->getMessage()]);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => false, 'message' => $e->getMessage()], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
     }
     exit;
 }
 ```
 
-**In J.txt**, update filter functions to be view-aware:
-
-```javascript
-function handleFormSubmit() {
-    if (currentView === 'ocorrencias') {
-        loadOcorrencias();
-    } else {
-        loadSolicitacoes();
-    }
-}
-
-function loadSolicitacoes() {
-    const filterForm = document.getElementById('filterForm');
-    const formData = new FormData(filterForm);
-    const params = new URLSearchParams();
-    
-    for (let [key, value] of formData.entries()) {
-        if (value && value.trim() !== '') {
-            params.append(key, value);
-        }
-    }
-    
-    if (currentSort.column) {
-        params.append('sort_column', currentSort.column);
-        params.append('sort_direction', currentSort.direction);
-    }
-    
-    params.append('page', currentPage);
-    params.append('per_page', perPage);
-    
-    showLoading();
-    
-    fetch(AJAX_URL + '?' + params.toString())
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                updateUI(data, params);
-            } else {
-                throw new Error(data.error || 'Erro ao carregar dados');
-            }
-        })
-        .catch(error => {
-            console.error('Fetch Error:', error);
-            showNotification('Erro ao carregar os dados: ' + error.message, 'error');
-        })
-        .finally(() => hideLoading());
-}
-
-function switchToOcorrenciasView() {
-    currentView = 'ocorrencias';
-    currentPage = 1; // Reset to first page
-    updateTableHeaders();
-    loadOcorrencias();
-    
-    // Update header styling
-    document.getElementById('headerSolicitacoes').classList.remove('active');
-    document.getElementById('headerOcorrencias').classList.add('active');
-    
-    // Hide bulk actions for ocorrencias view
-    const bulkActions = document.getElementById('bulkActions');
-    if (bulkActions) bulkActions.style.display = 'none';
-}
-
-function switchToSolicitacoesView() {
-    currentView = 'solicitacoes';
-    currentPage = 1; // Reset to first page
-    updateTableHeaders();
-    loadSolicitacoes();
-    
-    // Update header styling
-    document.getElementById('headerOcorrencias').classList.remove('active');
-    document.getElementById('headerSolicitacoes').classList.add('active');
-}
-```
-
-**Update initializeEventListeners to use view-aware submit:**
-
-```javascript
-function initializeEventListeners() {
-    const elements = {
-        clearFilters: () => clearAllFilters(),
-        searchBtn: () => { currentPage = 1; handleFormSubmit(); },
-        applyFiltersBtn: () => { currentPage = 1; handleFormSubmit(); },
-        perPageSelect: function() { perPage = parseInt(this.value); currentPage = 1; handleFormSubmit(); },
-        prevPage: () => { if (currentPage > 1) { currentPage--; handleFormSubmit(); } },
-        nextPage: () => { if (currentPage < totalPages) { currentPage++; handleFormSubmit(); } }
-    };
-
-    Object.entries(elements).forEach(([id, handler]) => {
-        const el = document.getElementById(id);
-        if (el) el.addEventListener('click', handler);
-    });
-
-    const searchInput = document.getElementById('searchInput');
-    if (searchInput) {
-        searchInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                currentPage = 1;
-                handleFormSubmit();
-            }
-        });
-    }
-}
-```
-
-**Update clearAllFilters:**
-
-```javascript
-function clearAllFilters() {
-    ['searchInput', 'bloqueioFilter', 'orgaoPagadorFilter', 'statusSolicFilter', 'motivoEncFilter', 'clusterSelecFilter',
-     'dataInicioFilter', 'dataInicioDisplay', 'dataFimFilter', 'dataFimDisplay']
-        .forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.value = '';
-        });
-    
-    currentPage = 1;
-    handleFormSubmit();
-}
-```
-
-These changes ensure the correct data loads for each view and filters work properly in both contexts.
+Use native `json_encode` instead of the custom function - it handles special characters properly.
