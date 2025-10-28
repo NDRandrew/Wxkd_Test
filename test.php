@@ -1,368 +1,295 @@
-## Fix: Bulk Encerramento Modal & Database Updates
+I'll help you remove email sending from TXT generation and add chat message notifications. Here are the necessary code changes:
 
-**1. In E.txt (analise_encerramento.php)**, add bulk encerramento modal before `</body>`:
+## 1. Database Schema Change
 
-```html
-<!-- Bulk Encerramento Modal -->
-<div class="modal fade" id="bulkEncerramentoModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-danger">
-                <h5 class="modal-title text-white">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon me-2">
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
-                        <path d="M12 9v2m0 4v.01"/>
-                        <path d="M5 19h14a2 2 0 0 0 1.84 -2.75l-7.1 -12.25a2 2 0 0 0 -3.5 0l-7.1 12.25a2 2 0 0 0 1.75 2.75"/>
-                    </svg>
-                    Confirmar Encerramento em Massa
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body" id="bulkEncerramentoContent">
-                <!-- Content will be injected here -->
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-danger" id="bulkEncerramentoConfirm">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon me-1">
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
-                        <path d="M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0"/>
-                        <path d="M18.364 5.636l-12.728 12.728"/>
-                    </svg>
-                    Encerrar Todos
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-```
+<artifact identifier="db-schema-chat" type="application/vnd.ant.code" language="sql" title="Add READ_FLAG to Chat Table">
+-- Add READ_FLAG column to track unread messages
+ALTER TABLE ENCERRAMENTO_TB_PORTAL_CHAT 
+ADD READ_FLAG BIT NULL DEFAULT 0;
 
-**2. In J.txt**, update `sendBulkEmail` to handle encerramento:
+-- Add index for performance
+CREATE INDEX IX_CHAT_READ_FLAG ON ENCERRAMENTO_TB_PORTAL_CHAT(DESTINATARIO, READ_FLAG, REMETENTE);
+</artifact>
 
-```javascript
-window.sendBulkEmail = function(tipo) {
-    const solicitacoes = getSelectedSolicitacoes();
-    if (solicitacoes.length === 0) {
-        showNotification('Nenhum registro selecionado', 'error');
-        return;
+## 2. Update ajax_encerramento.php (JH.txt)
+
+<artifact identifier="ajax-handler-updates" type="application/vnd.ant.code" language="php" title="Remove Email Sending & Add Chat Count">
+// REMOVE these sections from both 'gerar_txt_selection' and 'gerar_txt_excel' actions:
+// DELETE THIS CODE:
+/*
+if ($result['has_errors']) {
+    require_once 'X:\...\email_functions.php';
+    sendTXTErrorEmail($result['errors'], $result['nomeArquivo']);
+}
+*/
+
+// ADD: New action to get unread chat message count
+if (isset($_POST['acao']) && $_POST['acao'] == 'get_unread_chat_count') {
+    ob_start();
+    try {
+        require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
+        require_once '../permissions_config.php';
+        
+        $cod_usu = isset($_SESSION['cod_usu']) ? intval($_SESSION['cod_usu']) : 0;
+        $userGroup = getUserGroup($cod_usu);
+        
+        $model = new Analise();
+        $count = $model->getUnreadChatCount($cod_usu, $userGroup);
+        
+        ob_end_clean();
+        header('Content-Type: application/json');
+        echo json_encode_custom([
+            'success' => true,
+            'count' => $count
+        ]);
+    } catch (Exception $e) {
+        ob_end_clean();
+        header('Content-Type: application/json');
+        echo json_encode_custom(['success' => false, 'message' => $e->getMessage()]);
     }
+    exit;
+}
 
-    const btnElement = event.target.closest('button');
-
-    if (tipo === 'encerramento') {
-        // Special handling for encerramento
-        checkBulkEncerramentoStatus(solicitacoes, btnElement);
-        return;
+// UPDATE: Mark messages as read when loading chat
+if (isset($_POST['acao']) && $_POST['acao'] == 'load_chat') {
+    ob_start();
+    try {
+        require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
+        require_once '../permissions_config.php';
+        
+        $cod_solicitacao = isset($_POST['cod_solicitacao']) ? intval($_POST['cod_solicitacao']) : 0;
+        $target_group = isset($_POST['target_group']) ? $_POST['target_group'] : '';
+        $cod_usu = isset($_SESSION['cod_usu']) ? intval($_SESSION['cod_usu']) : 0;
+        $userGroup = getUserGroup($cod_usu);
+        
+        $model = new Analise();
+        $chat_id = $model->createChatIfNotExists($cod_solicitacao);
+        
+        // Mark messages as read
+        $model->markChatMessagesAsRead($chat_id, $cod_usu, $userGroup, $target_group);
+        
+        $messages = $model->getChatMessagesByGroup($chat_id, $userGroup, $target_group);
+        
+        if (!$messages) {
+            $messages = [];
+        } else if (!is_array($messages)) {
+            $messages = [$messages];
+        }
+        
+        $messages = formatMessagesForJson($messages);
+        
+        ob_end_clean();
+        header('Content-Type: application/json');
+        echo json_encode_custom([
+            'success' => true,
+            'chat_id' => $chat_id,
+            'messages' => $messages,
+            'target_group' => $target_group
+        ]);
+    } catch (Exception $e) {
+        ob_end_clean();
+        header('Content-Type: application/json');
+        echo json_encode_custom(['success' => false, 'message' => $e->getMessage()]);
     }
+    exit;
+}
+</artifact>
 
+## 3. Update Model (M.txt)
+
+<artifact identifier="model-updates" type="application/vnd.ant.code" language="php" title="Add Chat Notification Methods">
+// ADD these methods to the Analise class:
+
+public function getUnreadChatCount($cod_usu, $userGroup) {
+    $query = "SELECT COUNT(*) as TOTAL 
+            FROM MESU..ENCERRAMENTO_TB_PORTAL_CHAT 
+            WHERE (READ_FLAG IS NULL OR READ_FLAG = 0)
+            AND REMETENTE != " . intval($cod_usu) . "
+            AND (
+                (RECIPIENT_GROUP = '" . addslashes($userGroup) . "')
+                OR 
+                (SENDER_GROUP = '" . addslashes($userGroup) . "' AND RECIPIENT_GROUP = 'ENC_MANAGEMENT')
+            )";
+    $dados = $this->sql->select($query);
+    return $dados[0]['TOTAL'];
+}
+
+public function markChatMessagesAsRead($chat_id, $cod_usu, $userGroup, $target_group) {
+    $query = "UPDATE MESU..ENCERRAMENTO_TB_PORTAL_CHAT 
+            SET READ_FLAG = 1 
+            WHERE CHAT_ID = " . intval($chat_id) . "
+            AND REMETENTE != " . intval($cod_usu) . "
+            AND (
+                (SENDER_GROUP = '" . addslashes($target_group) . "' AND RECIPIENT_GROUP = '" . addslashes($userGroup) . "')
+            )
+            AND (READ_FLAG IS NULL OR READ_FLAG = 0)";
+    return $this->sql->update($query);
+}
+</artifact>
+
+## 4. Update JavaScript (J.txt)
+
+<artifact identifier="js-updates" type="application/vnd.ant.code" language="javascript" title="Add Chat Badge Updates">
+// ADD: Function to update unread chat count
+function updateUnreadChatCount() {
     const formData = new FormData();
-    formData.append('acao', 'check_bulk_status');
-    formData.append('solicitacoes', JSON.stringify(solicitacoes));
-
+    formData.append('acao', 'get_unread_chat_count');
+    
     fetch(AJAX_URL, {
         method: 'POST',
         body: formData
     })
     .then(response => response.json())
     .then(data => {
-        if (data.has_pendentes) {
-            showBulkWarningModal(data.pendentes, tipo, solicitacoes, btnElement);
+        if (data.success) {
+            const badge = document.getElementById('chatBadge');
+            if (badge) {
+                badge.textContent = data.count;
+                badge.style.display = data.count > 0 ? 'inline' : 'none';
+            }
+        }
+    })
+    .catch(error => console.error('Error updating chat count:', error));
+}
+
+// MODIFY: loadChatForGroup to mark as read and update badge
+function loadChatForGroup(codSolicitacao, targetGroup) {
+    const formData = new FormData();
+    formData.append('acao', 'load_chat');
+    formData.append('cod_solicitacao', codSolicitacao);
+    formData.append('target_group', targetGroup);
+    
+    fetch(AJAX_URL, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log('Chat response:', data);
+        if (data.success) {
+            renderChatMessages(codSolicitacao, data.messages);
+            updateUnreadChatCount(); // Update badge after loading
         } else {
-            executeBulkEmail(tipo, solicitacoes, btnElement);
+            console.error('Chat error:', data.message);
+            const container = document.getElementById('chatMessages-' + codSolicitacao);
+            if (container) {
+                container.innerHTML = '<div class="text-center text-danger py-4"><p>Erro ao carregar chat: ' + (data.message || 'Erro desconhecido') + '</p></div>';
+            }
         }
     })
     .catch(error => {
-        console.error('Status check error:', error);
-        executeBulkEmail(tipo, solicitacoes, btnElement);
+        console.error('Chat load error:', error);
+        const container = document.getElementById('chatMessages-' + codSolicitacao);
+        if (container) {
+            container.innerHTML = '<div class="text-center text-danger py-4"><p>Erro ao carregar chat</p></div>';
+        }
+    });
+}
+
+// MODIFY: initialize function to include chat badge update
+function initialize() {
+    setupDateInputs();
+    initializeEventListeners();
+    initializeCheckboxHandlers();
+    initializeColumnSort();
+    highlightActiveFilters();
+    attachPageNumberHandlers();
+    initializeViewSwitching();
+    updateUnreadChatCount(); // Add this line
+    
+    // Poll for new messages every 30 seconds
+    setInterval(updateUnreadChatCount, 30000);
+    
+    if (window.pageState && window.pageState.autoLoadData) {
+        setTimeout(() => handleFormSubmit(), 100);
+    }
+}
+
+// MODIFY: sendChatMessage to update badge after sending
+window.sendChatMessage = function(codSolicitacao) {
+    const input = document.getElementById('chatInput-' + codSolicitacao);
+    const fileInput = document.getElementById('chatFile-' + codSolicitacao);
+    const selectedGroupInput = document.getElementById('chatSelectedGroup-' + codSolicitacao);
+    
+    const mensagem = input.value.trim();
+    const targetGroup = selectedGroupInput ? selectedGroupInput.value : '';
+    
+    if (!mensagem && !fileInput.files.length) {
+        showNotification('Digite uma mensagem ou selecione um arquivo', 'error');
+        return;
+    }
+    
+    if (!targetGroup) {
+        showNotification('Selecione um contato', 'error');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('acao', 'send_message');
+    formData.append('cod_solicitacao', codSolicitacao);
+    formData.append('mensagem', mensagem);
+    formData.append('target_group', targetGroup);
+    
+    if (fileInput.files.length) {
+        formData.append('arquivo', fileInput.files[0]);
+    }
+    
+    input.disabled = true;
+    
+    fetch(AJAX_URL, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            input.value = '';
+            fileInput.value = '';
+            document.getElementById('chatFileName-' + codSolicitacao).textContent = '';
+            loadChatForGroup(codSolicitacao, targetGroup);
+            updateUnreadChatCount(); // Update badge after sending
+        } else {
+            showNotification('Erro ao enviar mensagem: ' + data.message, 'error');
+        }
+        input.disabled = false;
+        input.focus();
+    })
+    .catch(error => {
+        console.error('Send message error:', error);
+        showNotification('Erro ao enviar mensagem', 'error');
+        input.disabled = false;
     });
 };
+</artifact>
 
-function checkBulkEncerramentoStatus(solicitacoes, btnElement) {
-    const formData = new FormData();
-    formData.append('acao', 'check_encerramento_status');
-    formData.append('solicitacoes', JSON.stringify(solicitacoes));
+## 5. Update View (E.txt)
 
-    fetch(AJAX_URL, {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showBulkEncerramentoModal(data.pendentes, data.list, solicitacoes, btnElement);
-        } else {
-            showNotification('Erro: ' + data.message, 'error');
-        }
-    })
-    .catch(error => {
-        console.error('Status check error:', error);
-        showNotification('Erro ao verificar status', 'error');
-    });
-}
+<artifact identifier="view-chat-badge" type="application/vnd.ant.code" language="php" title="Add Chat Badge to Header">
+<!-- MODIFY: Add chat badge to the tab header -->
+<!-- Find the chat tab in buildModalBody and add badge: -->
 
-function showBulkEncerramentoModal(pendentes, lojasList, solicitacoes, btnElement) {
-    let content = '<div class="alert alert-danger mb-3">';
-    content += '<strong>Atenção!</strong> Você está prestes a encerrar <strong>' + solicitacoes.length + '</strong> correspondente(s) no BACEN.';
-    content += '</div>';
-    
-    // Show list of lojas
-    content += '<div class="mb-3"><strong>Correspondentes:</strong></div>';
-    content += '<div class="table-responsive" style="max-height: 300px; overflow-y: auto;">';
-    content += '<table class="table table-bordered table-sm">';
-    content += '<thead class="thead-encerramento">';
-    content += '<tr><th>Chave Loja</th><th>Nome</th><th>Status Pendentes</th></tr>';
-    content += '</thead><tbody>';
-    
-    for (const loja of lojasList) {
-        const hasPendentes = pendentes[loja.chave_loja];
-        content += '<tr>';
-        content += '<td class="text-center"><strong>' + loja.chave_loja + '</strong></td>';
-        content += '<td>' + loja.nome_loja + '</td>';
-        content += '<td>';
-        if (hasPendentes && hasPendentes.length > 0) {
-            content += '<span class="badge bg-warning text-dark">' + hasPendentes.join(', ') + '</span>';
-        } else {
-            content += '<span class="badge bg-success">Todos efetuados</span>';
-        }
-        content += '</td>';
-        content += '</tr>';
-    }
-    
-    content += '</tbody></table></div>';
-    
-    if (Object.keys(pendentes).length > 0) {
-        content += '<div class="alert alert-warning mt-3 mb-0">';
-        content += '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon me-2"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M12 9v2m0 4v.01"/><path d="M5 19h14a2 2 0 0 0 1.84 -2.75l-7.1 -12.25a2 2 0 0 0 -3.5 0l-7.1 12.25a2 2 0 0 0 1.75 2.75"/></svg>';
-        content += 'Alguns correspondentes possuem status pendentes. Deseja continuar?';
-        content += '</div>';
-    }
-    
-    document.getElementById('bulkEncerramentoContent').innerHTML = content;
-    
-    const modalElement = document.getElementById('bulkEncerramentoModal');
-    const modal = new bootstrap.Modal(modalElement);
-    modal.show();
-    
-    const confirmBtn = document.getElementById('bulkEncerramentoConfirm');
-    const newConfirmBtn = confirmBtn.cloneNode(true);
-    confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
-    
-    newConfirmBtn.addEventListener('click', function() {
-        modal.hide();
-        executeBulkEncerramento(solicitacoes, btnElement);
-    });
-}
+<li class="nav-item">
+    <a href="#tabs-chat-' . $codSolicitacao . '" class="nav-link" data-bs-toggle="tab" onclick="initializeChat(' . $codSolicitacao . ')">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon me-2" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+            <path d="M3 20l1.3 -3.9a9 9 0 1 1 3.4 2.9l-4.7 1" />
+            <line x1="12" y1="12" x2="12" y2="12.01" />
+            <line x1="8" y1="12" x2="8" y2="12.01" />
+            <line x1="16" y1="12" x2="16" y2="12.01" />
+        </svg>
+        Chat
+        <span id="chatBadge" class="badge badge-sm bg-red text-red-fg" style="position:relative; bottom:6px; margin-left:2px; display: none;">0</span>
+    </a>
+</li>
+</artifact>
 
-function executeBulkEncerramento(solicitacoes, btnElement) {
-    const originalText = btnElement.innerHTML;
-    btnElement.disabled = true;
-    btnElement.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Encerrando...';
+## Summary of Changes:
 
-    const formData = new FormData();
-    formData.append('acao', 'encerrar_bulk');
-    formData.append('solicitacoes', JSON.stringify(solicitacoes));
+1. **Removed email sending** from TXT generation in `ajax_encerramento.php`
+2. **Added `READ_FLAG`** column to track unread messages
+3. **Added methods** to count unread messages and mark as read
+4. **Added badge** to display unread message count
+5. **Added auto-update** every 30 seconds for the badge
+6. **Errors are stored** in `ENCERRAMENTO_TB_PORTAL_OCORRENCIA` table (already implemented)
 
-    fetch(AJAX_URL, {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showNotification('Correspondentes encerrados com sucesso!', 'success');
-            document.querySelectorAll('tbody input[type="checkbox"]:checked').forEach(cb => cb.checked = false);
-            const headerCheckbox = document.querySelector('thead input[type="checkbox"]');
-            if (headerCheckbox) headerCheckbox.checked = false;
-            updateBulkActionButtons();
-            handleFormSubmit();
-        } else {
-            showNotification('Erro: ' + data.message, 'error');
-        }
-        btnElement.innerHTML = originalText;
-        btnElement.disabled = false;
-    })
-    .catch(error => {
-        showNotification('Erro ao encerrar correspondentes', 'error');
-        btnElement.innerHTML = originalText;
-        btnElement.disabled = false;
-    });
-}
-```
-
-**3. In JH.txt (ajax_encerramento.php)**, add these handlers:
-
-```php
-// Check encerramento status for bulk
-if (isset($_POST['acao']) && $_POST['acao'] == 'check_encerramento_status') {
-    ob_start();
-    try {
-        require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
-        
-        $solicitacoes_json = isset($_POST['solicitacoes']) ? $_POST['solicitacoes'] : '';
-        $solicitacoes = json_decode($solicitacoes_json, true);
-        
-        if (!is_array($solicitacoes) || count($solicitacoes) === 0) {
-            ob_end_clean();
-            header('Content-Type: application/json');
-            echo json_encode(['success' => false, 'message' => 'Nenhuma solicitação selecionada']);
-            exit;
-        }
-        
-        $model = new Analise();
-        $pendentes = [];
-        $lojasList = [];
-        
-        foreach ($solicitacoes as $cod) {
-            $where = "AND A.COD_SOLICITACAO = " . intval($cod);
-            $dados = $model->solicitacoes($where, 1, 0);
-            
-            if (!empty($dados)) {
-                $loja = $dados[0];
-                $lojasList[] = [
-                    'cod_solicitacao' => $cod,
-                    'chave_loja' => $loja['CHAVE_LOJA'],
-                    'nome_loja' => $loja['NOME_LOJA']
-                ];
-                
-                $status = $model->getEncerramentoStatus($cod);
-                if ($status) {
-                    $pendente = [];
-                    if ($status['STATUS_OP'] !== 'EFETUADO') $pendente[] = 'Órgão Pagador';
-                    if ($status['STATUS_COM'] !== 'EFETUADO') $pendente[] = 'Comercial';
-                    if ($status['STATUS_VAN'] !== 'EFETUADO') $pendente[] = 'Van-Material';
-                    if ($status['STATUS_BLOQ'] !== 'EFETUADO') $pendente[] = 'Bloqueio';
-                    
-                    if (!empty($pendente)) {
-                        $pendentes[$loja['CHAVE_LOJA']] = $pendente;
-                    }
-                }
-            }
-        }
-        
-        ob_end_clean();
-        header('Content-Type: application/json');
-        echo json_encode([
-            'success' => true,
-            'pendentes' => $pendentes,
-            'list' => $lojasList
-        ]);
-    } catch (Exception $e) {
-        ob_end_clean();
-        header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
-    }
-    exit;
-}
-
-// Execute bulk encerramento
-if (isset($_POST['acao']) && $_POST['acao'] == 'encerrar_bulk') {
-    ob_start();
-    try {
-        require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
-        
-        $solicitacoes_json = isset($_POST['solicitacoes']) ? $_POST['solicitacoes'] : '';
-        $solicitacoes = json_decode($solicitacoes_json, true);
-        
-        if (!is_array($solicitacoes) || count($solicitacoes) === 0) {
-            ob_end_clean();
-            header('Content-Type: application/json');
-            echo json_encode(['success' => false, 'message' => 'Nenhuma solicitação selecionada']);
-            exit;
-        }
-        
-        $model = new Analise();
-        $success_count = 0;
-        
-        foreach ($solicitacoes as $cod) {
-            $where = "AND A.COD_SOLICITACAO = " . intval($cod);
-            $dados = $model->solicitacoes($where, 1, 0);
-            
-            if (!empty($dados)) {
-                $result = $model->encerrarCorrespondente($cod, $dados[0]['CHAVE_LOJA']);
-                if ($result) $success_count++;
-            }
-        }
-        
-        ob_end_clean();
-        header('Content-Type: application/json');
-        echo json_encode([
-            'success' => true,
-            'message' => $success_count . ' correspondente(s) encerrado(s)',
-            'count' => $success_count
-        ]);
-    } catch (Exception $e) {
-        ob_end_clean();
-        header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
-    }
-    exit;
-}
-```
-
-**4. In EnMa.txt (encerramento_massa.php)**, add error insertion to database:
-
-```php
-// At the top after the class definition, add:
-private function insertErrorToDatabase($errors, $fileName) {
-    if (empty($errors)) return;
-    
-    require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
-    
-    $model = new Analise();
-    $chave_lote = time(); // Use timestamp as batch key
-    
-    foreach ($errors as $error) {
-        $ocorrencia = "Arquivo: " . $fileName . "\n";
-        $ocorrencia .= "Tipo: " . $error['error_type'] . "\n";
-        $ocorrencia .= "Mensagem: " . $error['error_message'] . "\n";
-        $ocorrencia .= "Data Contrato: " . $error['data_contrato'] . "\n";
-        $ocorrencia .= "Linha TXT: " . $error['txt_line'];
-        
-        $query = "INSERT INTO MESU..ENCERRAMENTO_TB_PORTAL_OCORRENCIA 
-                  (DT_OCORRENCIA, OCORRENCIA, CNPJs, CHAVE_LOTE, VIEWED_FLAG)
-                  VALUES (
-                      GETDATE(),
-                      '" . addslashes($ocorrencia) . "',
-                      '" . addslashes($error['cnpj']) . "',
-                      " . $chave_lote . ",
-                      0
-                  )";
-        $model->insert($query);
-    }
-}
-
-// Update generateTXT method - after the return statement, add:
-private function generateTXT($dados) {
-    // ... existing code ...
-    
-    $result = [
-        'success' => true,
-        'conteudo' => $conteudo,
-        'nomeArquivo' => $nomeArquivo,
-        'totalRegistros' => $totalLinhas,
-        'errors' => $this->errors,
-        'has_errors' => !empty($this->errors)
-    ];
-    
-    // Insert errors to database
-    if (!empty($this->errors)) {
-        $this->insertErrorToDatabase($this->errors, $nomeArquivo);
-    }
-    
-    return $result;
-}
-```
-
-**5. Update email sending to also insert to database** - in `sendTXTErrorEmail` in ED.txt, add at the beginning:
-
-```php
-// Also insert to database
-if (!empty($errors)) {
-    $this->insertErrorToDatabase($errors, $fileName);
-}
-```
-
-These changes will:
-1. Show modal for bulk encerramento with pending statuses
-2. Update database instead of sending email
-3. Insert TXT errors into the ENCERRAMENTO_TB_PORTAL_OCORRENCIA table
+The system now stores TXT errors in the database instead of sending emails, and displays a notification badge for unread chat messages similar to the Ocorrências feature.
