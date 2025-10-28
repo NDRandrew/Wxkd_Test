@@ -1,49 +1,75 @@
-## Fix: Click handlers not working
+## Fix: Ocorrências showing wrong data
 
-**In J.txt (analise_encerramento.js)**, replace the initialization section:
+**In JH.txt (ajax_encerramento.php)**, fix the load_ocorrencias handler:
 
-```javascript
-function initialize() {
-    setupDateInputs();
-    initializeEventListeners();
-    initializeCheckboxHandlers();
-    initializeColumnSort();
-    highlightActiveFilters();
-    attachPageNumberHandlers();
-    initializeViewSwitching(); // ADD THIS LINE
-    
-    if (window.pageState && window.pageState.autoLoadData) {
-        setTimeout(() => handleFormSubmit(), 100);
+```php
+// Load Ocorrências accordion view
+if ((isset($_POST['acao']) && $_POST['acao'] == 'load_ocorrencias') || 
+    (isset($_GET['acao']) && $_GET['acao'] == 'load_ocorrencias')) {
+    ob_start();
+    try {
+        require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\control\encerramento\analise_encerramento_control.php';
+        
+        $where = '';
+        if (isset($_GET['search']) && !empty($_GET['search'])) {
+            $search = addslashes($_GET['search']);
+            $where .= " AND (CAST(CHAVE_LOTE AS VARCHAR) LIKE '%$search%' OR CNPJs LIKE '%$search%' OR OCORRENCIA LIKE '%$search%')";
+        }
+        
+        if (isset($_GET['data_inicio']) && !empty($_GET['data_inicio'])) {
+            $where .= " AND DT_OCORRENCIA >= '" . $_GET['data_inicio'] . "'";
+        }
+        
+        if (isset($_GET['data_fim']) && !empty($_GET['data_fim'])) {
+            $where .= " AND DT_OCORRENCIA <= '" . $_GET['data_fim'] . " 23:59:59'";
+        }
+        
+        $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+        $perPage = isset($_GET['per_page']) ? intval($_GET['per_page']) : 25;
+        $offset = ($page - 1) * $perPage;
+        
+        $model = new Analise();
+        
+        $totalRecords = $model->getTotalOcorrenciasLotes($where);
+        $totalPages = ceil($totalRecords / $perPage);
+        $dados = $model->getOcorrenciasLotes($where, $perPage, $offset);
+        
+        $controller = new AnaliseEncerramentoController();
+        $html = $controller->renderOcorrenciasAccordions($dados);
+        
+        ob_end_clean();
+        header('Content-Type: application/json');
+        echo json_encode_custom([
+            'success' => true,
+            'html' => $html,
+            'totalRecords' => $totalRecords,
+            'totalPages' => $totalPages,
+            'currentPage' => $page,
+            'perPage' => $perPage,
+            'startRecord' => $offset + 1,
+            'endRecord' => min($offset + $perPage, $totalRecords)
+        ]);
+    } catch (Exception $e) {
+        ob_end_clean();
+        header('Content-Type: application/json');
+        echo json_encode_custom(['success' => false, 'message' => $e->getMessage()]);
     }
-}
-
-// ADD THIS NEW FUNCTION
-function initializeViewSwitching() {
-    updateUnviewedCount();
-    
-    const headerSolicitacoes = document.getElementById('headerSolicitacoes');
-    const headerOcorrencias = document.getElementById('headerOcorrencias');
-    
-    if (headerSolicitacoes) {
-        headerSolicitacoes.addEventListener('click', function(e) {
-            e.preventDefault();
-            switchToSolicitacoesView();
-        });
-    }
-    
-    if (headerOcorrencias) {
-        headerOcorrencias.addEventListener('click', function(e) {
-            e.preventDefault();
-            switchToOcorrenciasView();
-        });
-    }
+    exit;
 }
 ```
 
-**Fix the AJAX URL in loadOcorrencias():**
+**In J.txt**, update filter functions to be view-aware:
 
 ```javascript
-function loadOcorrencias() {
+function handleFormSubmit() {
+    if (currentView === 'ocorrencias') {
+        loadOcorrencias();
+    } else {
+        loadSolicitacoes();
+    }
+}
+
+function loadSolicitacoes() {
     const filterForm = document.getElementById('filterForm');
     const formData = new FormData(filterForm);
     const params = new URLSearchParams();
@@ -54,53 +80,104 @@ function loadOcorrencias() {
         }
     }
     
+    if (currentSort.column) {
+        params.append('sort_column', currentSort.column);
+        params.append('sort_direction', currentSort.direction);
+    }
+    
     params.append('page', currentPage);
     params.append('per_page', perPage);
     
     showLoading();
     
-    // FIX: Don't append FormData, use POST params correctly
-    fetch(AJAX_URL + '?acao=load_ocorrencias&' + params.toString())
+    fetch(AJAX_URL + '?' + params.toString())
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                const tableBody = document.getElementById('tableBody');
-                if (tableBody) tableBody.innerHTML = data.html;
-                
-                updatePaginationInfo(data);
-                updatePaginationControls();
-                attachAccordionHandlers();
+                updateUI(data, params);
             } else {
-                showNotification('Erro: ' + data.message, 'error');
+                throw new Error(data.error || 'Erro ao carregar dados');
             }
         })
         .catch(error => {
             console.error('Fetch Error:', error);
-            showNotification('Erro ao carregar ocorrências', 'error');
+            showNotification('Erro ao carregar os dados: ' + error.message, 'error');
         })
         .finally(() => hideLoading());
 }
+
+function switchToOcorrenciasView() {
+    currentView = 'ocorrencias';
+    currentPage = 1; // Reset to first page
+    updateTableHeaders();
+    loadOcorrencias();
+    
+    // Update header styling
+    document.getElementById('headerSolicitacoes').classList.remove('active');
+    document.getElementById('headerOcorrencias').classList.add('active');
+    
+    // Hide bulk actions for ocorrencias view
+    const bulkActions = document.getElementById('bulkActions');
+    if (bulkActions) bulkActions.style.display = 'none';
+}
+
+function switchToSolicitacoesView() {
+    currentView = 'solicitacoes';
+    currentPage = 1; // Reset to first page
+    updateTableHeaders();
+    loadSolicitacoes();
+    
+    // Update header styling
+    document.getElementById('headerOcorrencias').classList.remove('active');
+    document.getElementById('headerSolicitacoes').classList.add('active');
+}
 ```
 
-**Remove the duplicate DOMContentLoaded listener at the bottom of J.txt**
+**Update initializeEventListeners to use view-aware submit:**
 
-Delete this entire block:
 ```javascript
-// Delete this - it's a duplicate
-document.addEventListener('DOMContentLoaded', function() {
-    updateUnviewedCount();
-    
-    const headerSolicitacoes = document.getElementById('headerSolicitacoes');
-    const headerOcorrencias = document.getElementById('headerOcorrencias');
-    
-    if (headerSolicitacoes) {
-        headerSolicitacoes.addEventListener('click', switchToSolicitacoesView);
+function initializeEventListeners() {
+    const elements = {
+        clearFilters: () => clearAllFilters(),
+        searchBtn: () => { currentPage = 1; handleFormSubmit(); },
+        applyFiltersBtn: () => { currentPage = 1; handleFormSubmit(); },
+        perPageSelect: function() { perPage = parseInt(this.value); currentPage = 1; handleFormSubmit(); },
+        prevPage: () => { if (currentPage > 1) { currentPage--; handleFormSubmit(); } },
+        nextPage: () => { if (currentPage < totalPages) { currentPage++; handleFormSubmit(); } }
+    };
+
+    Object.entries(elements).forEach(([id, handler]) => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('click', handler);
+    });
+
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                currentPage = 1;
+                handleFormSubmit();
+            }
+        });
     }
-    
-    if (headerOcorrencias) {
-        headerOcorrencias.addEventListener('click', switchToOcorrenciasView);
-    }
-});
+}
 ```
 
-That should fix the click issue. Test it and let me know what error you get in the browser console.
+**Update clearAllFilters:**
+
+```javascript
+function clearAllFilters() {
+    ['searchInput', 'bloqueioFilter', 'orgaoPagadorFilter', 'statusSolicFilter', 'motivoEncFilter', 'clusterSelecFilter',
+     'dataInicioFilter', 'dataInicioDisplay', 'dataFimFilter', 'dataFimDisplay']
+        .forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+    
+    currentPage = 1;
+    handleFormSubmit();
+}
+```
+
+These changes ensure the correct data loads for each view and filters work properly in both contexts.
