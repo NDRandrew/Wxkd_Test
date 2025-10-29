@@ -1,295 +1,221 @@
-I'll help you remove email sending from TXT generation and add chat message notifications. Here are the necessary code changes:
+I found the issues! There are several problems preventing errors from being inserted:
 
-## 1. Database Schema Change
+## Issues Found:
 
-<artifact identifier="db-schema-chat" type="application/vnd.ant.code" language="sql" title="Add READ_FLAG to Chat Table">
--- Add READ_FLAG column to track unread messages
-ALTER TABLE ENCERRAMENTO_TB_PORTAL_CHAT 
-ADD READ_FLAG BIT NULL DEFAULT 0;
+1. **SQL Syntax Error** - Trailing comma in INSERT statement
+2. **Missing CHAVE_LOTE** - Not being set
+3. **No error handling** - Fails silently
 
--- Add index for performance
-CREATE INDEX IX_CHAT_READ_FLAG ON ENCERRAMENTO_TB_PORTAL_CHAT(DESTINATARIO, READ_FLAG, REMETENTE);
-</artifact>
+<artifact identifier="encerramento-massa-fix" type="application/vnd.ant.code" language="php" title="Fixed Error Insertion in encerramento_massa.php">
+<?php
+// REPLACE the insertErrorToDatabase method in EnMa.txt with this fixed version:
 
-## 2. Update ajax_encerramento.php (JH.txt)
-
-<artifact identifier="ajax-handler-updates" type="application/vnd.ant.code" language="php" title="Remove Email Sending & Add Chat Count">
-// REMOVE these sections from both 'gerar_txt_selection' and 'gerar_txt_excel' actions:
-// DELETE THIS CODE:
-/*
-if ($result['has_errors']) {
-    require_once 'X:\...\email_functions.php';
-    sendTXTErrorEmail($result['errors'], $result['nomeArquivo']);
-}
-*/
-
-// ADD: New action to get unread chat message count
-if (isset($_POST['acao']) && $_POST['acao'] == 'get_unread_chat_count') {
-    ob_start();
-    try {
-        require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
-        require_once '../permissions_config.php';
-        
-        $cod_usu = isset($_SESSION['cod_usu']) ? intval($_SESSION['cod_usu']) : 0;
-        $userGroup = getUserGroup($cod_usu);
-        
-        $model = new Analise();
-        $count = $model->getUnreadChatCount($cod_usu, $userGroup);
-        
-        ob_end_clean();
-        header('Content-Type: application/json');
-        echo json_encode_custom([
-            'success' => true,
-            'count' => $count
-        ]);
-    } catch (Exception $e) {
-        ob_end_clean();
-        header('Content-Type: application/json');
-        echo json_encode_custom(['success' => false, 'message' => $e->getMessage()]);
-    }
-    exit;
-}
-
-// UPDATE: Mark messages as read when loading chat
-if (isset($_POST['acao']) && $_POST['acao'] == 'load_chat') {
-    ob_start();
-    try {
-        require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
-        require_once '../permissions_config.php';
-        
-        $cod_solicitacao = isset($_POST['cod_solicitacao']) ? intval($_POST['cod_solicitacao']) : 0;
-        $target_group = isset($_POST['target_group']) ? $_POST['target_group'] : '';
-        $cod_usu = isset($_SESSION['cod_usu']) ? intval($_SESSION['cod_usu']) : 0;
-        $userGroup = getUserGroup($cod_usu);
-        
-        $model = new Analise();
-        $chat_id = $model->createChatIfNotExists($cod_solicitacao);
-        
-        // Mark messages as read
-        $model->markChatMessagesAsRead($chat_id, $cod_usu, $userGroup, $target_group);
-        
-        $messages = $model->getChatMessagesByGroup($chat_id, $userGroup, $target_group);
-        
-        if (!$messages) {
-            $messages = [];
-        } else if (!is_array($messages)) {
-            $messages = [$messages];
-        }
-        
-        $messages = formatMessagesForJson($messages);
-        
-        ob_end_clean();
-        header('Content-Type: application/json');
-        echo json_encode_custom([
-            'success' => true,
-            'chat_id' => $chat_id,
-            'messages' => $messages,
-            'target_group' => $target_group
-        ]);
-    } catch (Exception $e) {
-        ob_end_clean();
-        header('Content-Type: application/json');
-        echo json_encode_custom(['success' => false, 'message' => $e->getMessage()]);
-    }
-    exit;
-}
-</artifact>
-
-## 3. Update Model (M.txt)
-
-<artifact identifier="model-updates" type="application/vnd.ant.code" language="php" title="Add Chat Notification Methods">
-// ADD these methods to the Analise class:
-
-public function getUnreadChatCount($cod_usu, $userGroup) {
-    $query = "SELECT COUNT(*) as TOTAL 
-            FROM MESU..ENCERRAMENTO_TB_PORTAL_CHAT 
-            WHERE (READ_FLAG IS NULL OR READ_FLAG = 0)
-            AND REMETENTE != " . intval($cod_usu) . "
-            AND (
-                (RECIPIENT_GROUP = '" . addslashes($userGroup) . "')
-                OR 
-                (SENDER_GROUP = '" . addslashes($userGroup) . "' AND RECIPIENT_GROUP = 'ENC_MANAGEMENT')
-            )";
-    $dados = $this->sql->select($query);
-    return $dados[0]['TOTAL'];
-}
-
-public function markChatMessagesAsRead($chat_id, $cod_usu, $userGroup, $target_group) {
-    $query = "UPDATE MESU..ENCERRAMENTO_TB_PORTAL_CHAT 
-            SET READ_FLAG = 1 
-            WHERE CHAT_ID = " . intval($chat_id) . "
-            AND REMETENTE != " . intval($cod_usu) . "
-            AND (
-                (SENDER_GROUP = '" . addslashes($target_group) . "' AND RECIPIENT_GROUP = '" . addslashes($userGroup) . "')
-            )
-            AND (READ_FLAG IS NULL OR READ_FLAG = 0)";
-    return $this->sql->update($query);
-}
-</artifact>
-
-## 4. Update JavaScript (J.txt)
-
-<artifact identifier="js-updates" type="application/vnd.ant.code" language="javascript" title="Add Chat Badge Updates">
-// ADD: Function to update unread chat count
-function updateUnreadChatCount() {
-    const formData = new FormData();
-    formData.append('acao', 'get_unread_chat_count');
+public function insertErrorToDatabase($errors, $fileName) {
+    if (empty($errors)) return;
     
-    fetch(AJAX_URL, {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            const badge = document.getElementById('chatBadge');
-            if (badge) {
-                badge.textContent = data.count;
-                badge.style.display = data.count > 0 ? 'inline' : 'none';
+    require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
+    
+    $model = new Analise();
+    
+    // Generate a unique batch ID for this file
+    $chaveLote = $this->generateChaveLote($model);
+    
+    foreach ($errors as $error) {
+        $ocorrencia = "Arquivo: " . $fileName . "\n";
+        $ocorrencia .= "Tipo: " . $error['error_type'] . "\n";
+        $ocorrencia .= "Mensagem: " . $error['error_message'] . "\n";
+        $ocorrencia .= "Data Contrato: " . $error['data_contrato'] . "\n";
+        $ocorrencia .= "Linha TXT: " . $error['txt_line'];
+        
+        // FIX 1: Remove trailing comma
+        // FIX 2: Add CHAVE_LOTE
+        $query = "INSERT INTO MESU..ENCERRAMENTO_TB_PORTAL_OCORRENCIA 
+                (OCORRENCIA, CNPJs, CHAVE_LOTE)
+                VALUES (
+                    '" . addslashes($ocorrencia) . "',
+                    '" . addslashes($error['cnpj']) . "',
+                    " . intval($chaveLote) . "
+                )";
+        
+        try {
+            $result = $model->insert($query);
+            
+            // FIX 3: Add error logging
+            if (!$result) {
+                error_log("Failed to insert error to database for CNPJ: " . $error['cnpj']);
+                error_log("Query: " . $query);
+            } else {
+                error_log("Successfully inserted error for CNPJ: " . $error['cnpj'] . " to batch: " . $chaveLote);
             }
+        } catch (Exception $e) {
+            error_log("Exception inserting error to database: " . $e->getMessage());
+            error_log("Query: " . $query);
         }
-    })
-    .catch(error => console.error('Error updating chat count:', error));
+    }
 }
 
-// MODIFY: loadChatForGroup to mark as read and update badge
-function loadChatForGroup(codSolicitacao, targetGroup) {
-    const formData = new FormData();
-    formData.append('acao', 'load_chat');
-    formData.append('cod_solicitacao', codSolicitacao);
-    formData.append('target_group', targetGroup);
+// ADD this new method to generate CHAVE_LOTE
+private function generateChaveLote($model) {
+    // Get the next available batch number
+    $query = "SELECT ISNULL(MAX(CHAVE_LOTE), 99) + 1 AS NEXT_LOTE 
+              FROM MESU..ENCERRAMENTO_TB_PORTAL_OCORRENCIA";
     
-    fetch(AJAX_URL, {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        console.log('Chat response:', data);
-        if (data.success) {
-            renderChatMessages(codSolicitacao, data.messages);
-            updateUnreadChatCount(); // Update badge after loading
+    try {
+        $result = $model->sql->select($query);
+        return isset($result[0]['NEXT_LOTE']) ? intval($result[0]['NEXT_LOTE']) : 100;
+    } catch (Exception $e) {
+        error_log("Error generating CHAVE_LOTE: " . $e->getMessage());
+        // Fallback to timestamp-based ID
+        return 100 + intval(date('His'));
+    }
+}
+?>
+</artifact>
+
+## Testing the Fix
+
+Now let's add better debugging to see what's happening:
+
+<artifact identifier="debugging-updates" type="application/vnd.ant.code" language="php" title="Add Debugging to generateTXT">
+<?php
+// REPLACE the generateTXT method ending in EnMa.txt with this version that has debugging:
+
+private function generateTXT($dados) {
+    $linhas = [];
+    $totalLinhas = 0;
+    
+    // Count total lines
+    foreach ($dados as $row) {
+        $verifiedDate = null;
+        if (isset($row['COD_SOLICITACAO'])) {
+            $verifiedDate = $this->model->getDataContVerified($row['COD_SOLICITACAO']);
+        }
+        
+        if ($verifiedDate && strpos($verifiedDate, ',') !== false) {
+            $dates = explode(',', $verifiedDate);
+            $totalLinhas += count($dates);
         } else {
-            console.error('Chat error:', data.message);
-            const container = document.getElementById('chatMessages-' + codSolicitacao);
-            if (container) {
-                container.innerHTML = '<div class="text-center text-danger py-4"><p>Erro ao carregar chat: ' + (data.message || 'Erro desconhecido') + '</p></div>';
+            $totalLinhas++;
+        }
+    }
+    
+    $linhas[] = $this->gerarHeader($totalLinhas);
+    
+    $sequencial = 2;
+    foreach ($dados as $row) {
+        $verifiedDate = null;
+        if (isset($row['COD_SOLICITACAO'])) {
+            $verifiedDate = $this->model->getDataContVerified($row['COD_SOLICITACAO']);
+        }
+        
+        if ($verifiedDate && strpos($verifiedDate, ',') !== false) {
+            $dates = explode(',', $verifiedDate);
+            foreach ($dates as $date) {
+                $rowCopy = $row;
+                $rowCopy['DATA_CONTRATO_OVERRIDE'] = trim($date);
+                
+                $lineResult = $this->gerarDetalhe($rowCopy, $sequencial);
+                $linhas[] = $lineResult['line'];
+                
+                if ($lineResult['error']) {
+                    $this->errors[] = [
+                        'cod_solicitacao' => $row['COD_SOLICITACAO'],
+                        'chave_loja' => $row['CHAVE_LOJA'],
+                        'nome_loja' => $row['NOME_LOJA'],
+                        'cnpj' => $row['CNPJ'],
+                        'data_contrato' => trim($date),
+                        'error_type' => $lineResult['error_type'],
+                        'error_message' => $lineResult['error_message'],
+                        'txt_line' => $lineResult['line'],
+                        'sequencial' => $sequencial
+                    ];
+                }
+                
+                $sequencial++;
             }
-        }
-    })
-    .catch(error => {
-        console.error('Chat load error:', error);
-        const container = document.getElementById('chatMessages-' + codSolicitacao);
-        if (container) {
-            container.innerHTML = '<div class="text-center text-danger py-4"><p>Erro ao carregar chat</p></div>';
-        }
-    });
-}
-
-// MODIFY: initialize function to include chat badge update
-function initialize() {
-    setupDateInputs();
-    initializeEventListeners();
-    initializeCheckboxHandlers();
-    initializeColumnSort();
-    highlightActiveFilters();
-    attachPageNumberHandlers();
-    initializeViewSwitching();
-    updateUnreadChatCount(); // Add this line
-    
-    // Poll for new messages every 30 seconds
-    setInterval(updateUnreadChatCount, 30000);
-    
-    if (window.pageState && window.pageState.autoLoadData) {
-        setTimeout(() => handleFormSubmit(), 100);
-    }
-}
-
-// MODIFY: sendChatMessage to update badge after sending
-window.sendChatMessage = function(codSolicitacao) {
-    const input = document.getElementById('chatInput-' + codSolicitacao);
-    const fileInput = document.getElementById('chatFile-' + codSolicitacao);
-    const selectedGroupInput = document.getElementById('chatSelectedGroup-' + codSolicitacao);
-    
-    const mensagem = input.value.trim();
-    const targetGroup = selectedGroupInput ? selectedGroupInput.value : '';
-    
-    if (!mensagem && !fileInput.files.length) {
-        showNotification('Digite uma mensagem ou selecione um arquivo', 'error');
-        return;
-    }
-    
-    if (!targetGroup) {
-        showNotification('Selecione um contato', 'error');
-        return;
-    }
-    
-    const formData = new FormData();
-    formData.append('acao', 'send_message');
-    formData.append('cod_solicitacao', codSolicitacao);
-    formData.append('mensagem', mensagem);
-    formData.append('target_group', targetGroup);
-    
-    if (fileInput.files.length) {
-        formData.append('arquivo', fileInput.files[0]);
-    }
-    
-    input.disabled = true;
-    
-    fetch(AJAX_URL, {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            input.value = '';
-            fileInput.value = '';
-            document.getElementById('chatFileName-' + codSolicitacao).textContent = '';
-            loadChatForGroup(codSolicitacao, targetGroup);
-            updateUnreadChatCount(); // Update badge after sending
         } else {
-            showNotification('Erro ao enviar mensagem: ' + data.message, 'error');
+            $lineResult = $this->gerarDetalhe($row, $sequencial);
+            $linhas[] = $lineResult['line'];
+            
+            if ($lineResult['error']) {
+                $this->errors[] = [
+                    'cod_solicitacao' => $row['COD_SOLICITACAO'],
+                    'chave_loja' => $row['CHAVE_LOJA'],
+                    'nome_loja' => $row['NOME_LOJA'],
+                    'cnpj' => $row['CNPJ'],
+                    'data_contrato' => $verifiedDate ?: (is_object($row['DATA_CONTRATO']) ? $row['DATA_CONTRATO']->format('Y-m-d') : $row['DATA_CONTRATO']),
+                    'error_type' => $lineResult['error_type'],
+                    'error_message' => $lineResult['error_message'],
+                    'txt_line' => $lineResult['line'],
+                    'sequencial' => $sequencial
+                ];
+            }
+            
+            $sequencial++;
         }
-        input.disabled = false;
-        input.focus();
-    })
-    .catch(error => {
-        console.error('Send message error:', error);
-        showNotification('Erro ao enviar mensagem', 'error');
-        input.disabled = false;
-    });
-};
+    }
+    
+    $linhas[] = $this->gerarTrailer($totalLinhas);
+    
+    $conteudo = implode("\r\n", $linhas);
+    $nomeArquivo = 'ENCERRAMENTO_' . date('Ymd_His') . '.txt';
+    
+    // DEBUG: Log error count
+    error_log("TXT Generation completed. Total errors: " . count($this->errors));
+    if (!empty($this->errors)) {
+        error_log("Error details: " . print_r($this->errors, true));
+    }
+    
+    $result = [
+        'success' => true,
+        'conteudo' => $conteudo,
+        'nomeArquivo' => $nomeArquivo,
+        'totalRegistros' => $totalLinhas,
+        'errors' => $this->errors,
+        'has_errors' => !empty($this->errors)
+    ];
+
+    // Insert errors to database
+    if (!empty($this->errors)) {
+        error_log("Calling insertErrorToDatabase with " . count($this->errors) . " errors");
+        $this->insertErrorToDatabase($this->errors, $nomeArquivo);
+    } else {
+        error_log("No errors to insert");
+    }
+
+    return $result;
+}
+?>
 </artifact>
 
-## 5. Update View (E.txt)
+## How to Test
 
-<artifact identifier="view-chat-badge" type="application/vnd.ant.code" language="php" title="Add Chat Badge to Header">
-<!-- MODIFY: Add chat badge to the tab header -->
-<!-- Find the chat tab in buildModalBody and add badge: -->
+1. **Check PHP Error Log** - Enable error logging:
+```php
+// Add to the top of encerramento_massa.php
+ini_set('log_errors', 1);
+ini_set('error_log', 'X:/path/to/error_log.txt');
+```
 
-<li class="nav-item">
-    <a href="#tabs-chat-' . $codSolicitacao . '" class="nav-link" data-bs-toggle="tab" onclick="initializeChat(' . $codSolicitacao . ')">
-        <svg xmlns="http://www.w3.org/2000/svg" class="icon me-2" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-            <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-            <path d="M3 20l1.3 -3.9a9 9 0 1 1 3.4 2.9l-4.7 1" />
-            <line x1="12" y1="12" x2="12" y2="12.01" />
-            <line x1="8" y1="12" x2="8" y2="12.01" />
-            <line x1="16" y1="12" x2="16" y2="12.01" />
-        </svg>
-        Chat
-        <span id="chatBadge" class="badge badge-sm bg-red text-red-fg" style="position:relative; bottom:6px; margin-left:2px; display: none;">0</span>
-    </a>
-</li>
-</artifact>
+2. **Force an error** by clearing verified dates:
+```sql
+-- Run this SQL to clear verified dates for testing
+UPDATE MESU..ENCERRAMENTO_TB_PORTAL 
+SET DATA_CONT_VERIFIED = NULL 
+WHERE COD_SOLICITACAO IN (your_test_ids);
+```
 
-## Summary of Changes:
+3. **Generate TXT** - Now when you generate TXT, it should:
+   - Detect missing DATA_CONT_VERIFIED
+   - Create `missing_verification` errors
+   - Insert them into ENCERRAMENTO_TB_PORTAL_OCORRENCIA
+   - Show them in the Ocorrências view
 
-1. **Removed email sending** from TXT generation in `ajax_encerramento.php`
-2. **Added `READ_FLAG`** column to track unread messages
-3. **Added methods** to count unread messages and mark as read
-4. **Added badge** to display unread message count
-5. **Added auto-update** every 30 seconds for the badge
-6. **Errors are stored** in `ENCERRAMENTO_TB_PORTAL_OCORRENCIA` table (already implemented)
+4. **Check the database**:
+```sql
+SELECT TOP 10 * 
+FROM MESU..ENCERRAMENTO_TB_PORTAL_OCORRENCIA 
+ORDER BY ID DESC;
+```
 
-The system now stores TXT errors in the database instead of sending emails, and displays a notification badge for unread chat messages similar to the Ocorrências feature.
+The main issue was the **trailing comma** in the SQL INSERT statement which would cause a syntax error. With these fixes, errors should now be properly inserted into the database.
