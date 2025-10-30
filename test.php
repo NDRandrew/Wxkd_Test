@@ -1,129 +1,4 @@
 <?php
-require_once('\\\\D4920S010\D4920_2\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\Lib\ClassRepository\geral\MSSQL\NEW_MSSQL.class.php');
-
-#[AllowDynamicProperties]
-class EstatisticaEncerramento {
-    private $sql;
-    
-    public function __construct() {
-        $this->sql = new MSSQL('ERP');
-    }
-    
-    public function getSql() {
-        return $this->sql;
-    }
-    
-    // Get blocking reasons statistics
-    public function getMotivosBloqueio($dataInicio = null, $dataFim = null) {
-        $where = "1=1";
-        
-        if ($dataInicio && $dataFim) {
-            $where .= " AND F.DATA_BLOQUEIO BETWEEN '$dataInicio' AND '$dataFim'";
-        }
-        
-        $query = "
-            SELECT 
-                F.MOTIVO_BLOQUEIO,
-                COUNT(*) as QTDE,
-                FORMAT(F.DATA_BLOQUEIO, 'yyyy-MM') as MES_ANO
-            FROM 
-                DATALAKE..DL_BRADESCO_EXPRESSO F WITH (NOLOCK)
-            WHERE 
-                $where
-                AND F.BE_INAUGURADO = 1
-                AND F.DATA_BLOQUEIO IS NOT NULL
-            GROUP BY 
-                F.MOTIVO_BLOQUEIO,
-                FORMAT(F.DATA_BLOQUEIO, 'yyyy-MM')
-            ORDER BY 
-                MES_ANO DESC, QTDE DESC
-        ";
-        
-        return $this->sql->select($query);
-    }
-}
-?>
-
-
----------------
-
-<?php
-require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento_estat\estatistica_encerramento_model.class.php';
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action = $_POST['action'] ?? '';
-    
-    if ($action === 'getMotivosBloqueio') {
-        $dataInicio = $_POST['data_inicio'] ?? null;
-        $dataFim = $_POST['data_fim'] ?? null;
-        
-        $model = new EstatisticaEncerramento();
-        $dados = $model->getMotivosBloqueio($dataInicio, $dataFim);
-        
-        // Process data for table display
-        $processedData = processarMotivosBloqueio($dados);
-        
-        echo json_encode([
-            'success' => true,
-            'data' => $processedData
-        ]);
-        exit;
-    }
-}
-
-function processarMotivosBloqueio($dados) {
-    $motivos = [
-        'Em processo de Cancelamento' => [],
-        'Inoperante - Retirada de Equipamento' => [],
-        'Depto - Falta de prestação de contas' => [],
-        'Não Liberar - Falar c/ gerente geral' => [],
-        'Correspondente abaixo do ponto' => [],
-        'Inadimplência' => [],
-        'Falta de prestação de contas' => [],
-        'Demais' => []
-    ];
-    
-    $meses = [];
-    $total = 0;
-    
-    foreach ($dados as $row) {
-        $motivo = $row['MOTIVO_BLOQUEIO'];
-        $mes = $row['MES_ANO'];
-        $qtde = (int)$row['QTDE'];
-        
-        if (!in_array($mes, $meses)) {
-            $meses[] = $mes;
-        }
-        
-        if (!isset($motivos[$motivo])) {
-            if (!isset($motivos['Demais'][$mes])) {
-                $motivos['Demais'][$mes] = 0;
-            }
-            $motivos['Demais'][$mes] += $qtde;
-        } else {
-            if (!isset($motivos[$motivo][$mes])) {
-                $motivos[$motivo][$mes] = 0;
-            }
-            $motivos[$motivo][$mes] += $qtde;
-        }
-        
-        $total += $qtde;
-    }
-    
-    rsort($meses);
-    
-    return [
-        'motivos' => $motivos,
-        'meses' => $meses,
-        'total' => $total
-    ];
-}
-?>
-
-
------------
-
-<?php
 session_start();
 ?>
 <!DOCTYPE html>
@@ -194,11 +69,11 @@ session_start();
             <div class="row g-3">
                 <div class="col-md-4">
                     <label class="form-label">Data Início</label>
-                    <input type="date" class="form-control" id="dataInicio">
+                    <input type="date" class="form-control" id="dataInicio" value="<?php echo date('Y-01-01'); ?>">
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">Data Fim</label>
-                    <input type="date" class="form-control" id="dataFim">
+                    <input type="date" class="form-control" id="dataFim" value="<?php echo date('Y-m-d'); ?>">
                 </div>
                 <div class="col-md-4 d-flex align-items-end">
                     <button class="btn btn-primary" id="aplicarFiltros">
@@ -272,13 +147,161 @@ session_start();
 </html>
 
 
+------------
+
+<?php
+require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento_estat\estatistica_encerramento_model.class.php';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'] ?? '';
+    
+    if ($action === 'getMotivosBloqueio') {
+        try {
+            $dataInicio = $_POST['data_inicio'] ?? null;
+            $dataFim = $_POST['data_fim'] ?? null;
+            
+            $model = new EstatisticaEncerramento();
+            $dados = $model->getMotivosBloqueio($dataInicio, $dataFim);
+            
+            // Process data for table display
+            $processedData = processarMotivosBloqueio($dados);
+            
+            echo json_encode([
+                'success' => true,
+                'data' => $processedData
+            ]);
+        } catch (Exception $e) {
+            echo json_encode([
+                'success' => false,
+                'error' => $e->getMessage()
+            ]);
+        }
+        exit;
+    }
+}
+
+function processarMotivosBloqueio($dados) {
+    $motivos = [
+        'Em processo de Cancelamento' => [],
+        'Inoperante - Retirada de Equipamento' => [],
+        'Depto - Falta de prestação de contas' => [],
+        'Não Liberar - Falar c/ gerente geral' => [],
+        'Correspondente abaixo do ponto' => [],
+        'Inadimplência' => [],
+        'Falta de prestação de contas' => [],
+        'Demais' => []
+    ];
+    
+    $meses = [];
+    $total = 0;
+    
+    if (!$dados || !is_array($dados)) {
+        return [
+            'motivos' => $motivos,
+            'meses' => [],
+            'total' => 0
+        ];
+    }
+    
+    foreach ($dados as $row) {
+        $motivo = trim($row['MOTIVO_BLOQUEIO'] ?? '');
+        $mes = $row['MES_ANO'] ?? '';
+        $qtde = (int)($row['QTDE'] ?? 0);
+        
+        if (empty($mes)) continue;
+        
+        if (!in_array($mes, $meses)) {
+            $meses[] = $mes;
+        }
+        
+        if (!isset($motivos[$motivo])) {
+            if (!isset($motivos['Demais'][$mes])) {
+                $motivos['Demais'][$mes] = 0;
+            }
+            $motivos['Demais'][$mes] += $qtde;
+        } else {
+            if (!isset($motivos[$motivo][$mes])) {
+                $motivos[$motivo][$mes] = 0;
+            }
+            $motivos[$motivo][$mes] += $qtde;
+        }
+        
+        $total += $qtde;
+    }
+    
+    rsort($meses);
+    
+    return [
+        'motivos' => $motivos,
+        'meses' => $meses,
+        'total' => $total
+    ];
+}
+?>
+
+
 -----------
 
+<?php
+require_once('\\\\D4920S010\D4920_2\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\Lib\ClassRepository\geral\MSSQL\NEW_MSSQL.class.php');
+
+#[AllowDynamicProperties]
+class EstatisticaEncerramento {
+    private $sql;
+    
+    public function __construct() {
+        $this->sql = new MSSQL('ERP');
+    }
+    
+    public function getSql() {
+        return $this->sql;
+    }
+    
+    // Get blocking reasons statistics
+    public function getMotivosBloqueio($dataInicio = null, $dataFim = null) {
+        $where = "1=1";
+        
+        if ($dataInicio && $dataFim) {
+            $where .= " AND F.DATA_BLOQUEIO BETWEEN '$dataInicio' AND '$dataFim'";
+        }
+        
+        $query = "
+            SELECT 
+                F.MOTIVO_BLOQUEIO,
+                COUNT(*) as QTDE,
+                FORMAT(F.DATA_BLOQUEIO, 'yyyy-MM') as MES_ANO
+            FROM 
+                DATALAKE..DL_BRADESCO_EXPRESSO F WITH (NOLOCK)
+            WHERE 
+                $where
+                AND F.BE_INAUGURADO = 1
+                AND F.DATA_BLOQUEIO IS NOT NULL
+            GROUP BY 
+                F.MOTIVO_BLOQUEIO,
+                FORMAT(F.DATA_BLOQUEIO, 'yyyy-MM')
+            ORDER BY 
+                MES_ANO DESC, QTDE DESC
+        ";
+        
+        return $this->sql->select($query);
+    }
+}
+?>
+
+
+-------------
+
+```javascript
 document.addEventListener('DOMContentLoaded', function() {
     const aplicarFiltrosBtn = document.getElementById('aplicarFiltros');
     const loadingOverlay = document.getElementById('loadingOverlay');
     
     aplicarFiltrosBtn.addEventListener('click', carregarDados);
+    
+    // Auto-load data on page load
+    setTimeout(() => {
+        carregarDados();
+    }, 200);
     
     function carregarDados() {
         const dataInicio = document.getElementById('dataInicio').value;
@@ -300,15 +323,29 @@ document.addEventListener('DOMContentLoaded', function() {
             method: 'POST',
             body: formData
         })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                renderizarTabela(data.data);
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.text();
+        })
+        .then(text => {
+            console.log('Response:', text);
+            try {
+                const data = JSON.parse(text);
+                if (data.success) {
+                    renderizarTabela(data.data);
+                } else {
+                    alert('Erro ao carregar dados: ' + (data.error || 'Erro desconhecido'));
+                }
+            } catch (e) {
+                console.error('Parse error:', e);
+                alert('Erro ao processar resposta do servidor');
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Erro ao carregar dados');
+            alert('Erro ao carregar dados: ' + error.message);
         })
         .finally(() => {
             loadingOverlay.classList.remove('active');
@@ -357,6 +394,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 totalMotivo += motivos[motivo][mes] || 0;
             });
             
+            // Skip if no data for this motivo
+            if (totalMotivo === 0) return;
+            
             // QTDE column
             const tdQtde = document.createElement('td');
             tdQtde.className = 'text-center';
@@ -379,6 +419,10 @@ document.addEventListener('DOMContentLoaded', function() {
             
             tbody.appendChild(tr);
         });
+        
+        if (tbody.children.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="' + (3 + data.meses.length) + '" class="text-center py-5">Nenhum dado encontrado para o período selecionado</td></tr>';
+        }
         
         // Update total footer
         document.getElementById('totalQtde').textContent = totalGeral;
@@ -403,3 +447,4 @@ document.addEventListener('DOMContentLoaded', function() {
         return `${meses[parseInt(mes) - 1]}/${ano}`;
     }
 });
+```
