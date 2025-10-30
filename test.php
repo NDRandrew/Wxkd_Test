@@ -1,63 +1,89 @@
-Looking at the error, the issue is that `markChatAsRead` function in the JavaScript file is not exposed globally, but the modal button is trying to call it with `onclick="markChatAsRead(...)"`.
+<?php
+@session_start();
 
-## Fix
+require_once '../permissions_config.php';
 
-In **J.txt (analise_encerramento.js)**, change line ~289 from:
-
-```javascript
-function markChatAsRead(chatId, btnElement) {
-```
-
-to:
-
-```javascript
-window.markChatAsRead = function(chatId, btnElement) {
-```
-
-This exposes the function globally so the onclick handler in the modal can access it.
-
-<artifact identifier="js-fix" type="application/vnd.ant.code" language="javascript" title="Fixed markChatAsRead function">
-// Around line 289 in analise_encerramento.js
-window.markChatAsRead = function(chatId, btnElement) {
-    if (!chatId || chatId <= 0) {
-        showNotification('Erro: chatId inválido', 'error');
-        return;
+function json_encode_custom($data) {
+    if (is_null($data)) return 'null';
+    if ($data === true) return 'true';
+    if ($data === false) return 'false';
+    if (is_int($data) || is_float($data)) return (string)$data;
+    
+    if (is_string($data)) {
+        $data = str_replace(['\\', '"', "\r", "\n", "\t"], ['\\\\', '\\"', '\\r', '\\n', '\\t'], $data);
+        $data = preg_replace('/[\x00-\x1F\x7F]/', '', $data);
+        return '"' . $data . '"';
     }
-    if (!btnElement) {
-        showNotification('Erro: Elemento do botão não encontrado', 'error');
-        return;
-    }
-
-    const originalHtml = btnElement.innerHTML;
-    btnElement.disabled = true;
-    btnElement.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Marcando...';
-
-    const formData = new FormData();
-    formData.append('acao', 'marcar_chat_lido');      
-    formData.append('chat_id', String(chatId));      
-
-    fetch(AJAX_URL, {
-        method: 'POST',
-        body: formData,
-        credentials: 'same-origin'
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.success) {
-            showNotification(data.message || 'Mensagens marcadas como lidas!', 'success');
-        } else {
-            showNotification('Erro: ' + (data.message || 'não foi possível marcar como lido'), 'error');
-            btnElement.innerHTML = originalHtml;
-            btnElement.disabled = false;
+    
+    if (is_array($data)) {
+        $isAssoc = array_keys($data) !== range(0, count($data) - 1);
+        $items = [];
+        foreach ($data as $key => $value) {
+            $encodedValue = json_encode_custom($value);
+            $items[] = $isAssoc ? '"' . addslashes($key) . '":' . $encodedValue : $encodedValue;
         }
-    })
-    .catch(err => {
-        console.error(err);
-        showNotification('Erro de comunicação. Tente novamente.', 'error');
-        btnElement.innerHTML = originalHtml;
-        btnElement.disabled = false;
-    });
-};
-</artifact>
+        return $isAssoc ? '{' . implode(',', $items) . '}' : '[' . implode(',', $items) . ']';
+    }
+    
+    if (is_object($data)) {
+        $items = [];
+        foreach (get_object_vars($data) as $key => $value) {
+            $items[] = '"' . addslashes($key) . '":' . json_encode_custom($value);
+        }
+        return '{' . implode(',', $items) . '}';
+    }
+    
+    return 'null';
+}
 
-**Alternative location to verify**: The function should be around line 289 in the JavaScript file, just search for `function markChatAsRead` and change it to `window.markChatAsRead = function`.
+function formatMessagesForJson($messages) {
+    if (!is_array($messages)) {
+        return $messages;
+    }
+    
+    foreach ($messages as &$message) {
+        if (isset($message['MESSAGE_DATE'])) {
+            if (is_object($message['MESSAGE_DATE'])) {
+                $message['MESSAGE_DATE'] = $message['MESSAGE_DATE']->format('Y-m-d H:i:s');
+            }
+        }
+    }
+    
+    return $messages;
+}
+
+// FIX: Add require_once BEFORE using the class
+if (isset($_POST['acao']) && $_POST['acao'] === 'marcar_chat_lido') {
+    header('Content-Type: application/json; charset=utf-8');
+    
+    // ADD THIS LINE
+    require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento\analise_encerramento_model.class.php';
+
+    $cod_usu = isset($_SESSION['cod_usu']) ? (int)$_SESSION['cod_usu'] : 0;
+    if ($cod_usu <= 0) {
+        echo json_encode(['success' => false, 'message' => 'Sessão expirada ou usuário inválido.']);
+        exit;
+    }
+
+    $chatId = isset($_POST['chat_id']) ? (int)$_POST['chat_id'] : 0;
+    if ($chatId <= 0) {
+        echo json_encode(['success' => false, 'message' => 'chat_id inválido.']);
+        exit;
+    }
+
+    try {
+        $model = new Analise();
+        $ok = $model->markChatMessagesAsReadButton($chatId, $cod_usu);
+
+        echo json_encode([
+            'success' => (bool)$ok,
+            'message' => $ok ? 'Mensagens marcadas como lidas.' : 'Nenhuma mensagem atualizada.',
+        ]);
+    } catch (Throwable $e) {
+        error_log('markChatAsRead error: ' . $e->getMessage());
+        echo json_encode(['success' => false, 'message' => 'Erro interno: ' . $e->getMessage()]);
+    }
+    exit;
+}
+
+// ... rest of the file remains the same
