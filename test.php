@@ -522,3 +522,544 @@ $dataFim = date('Y-m-d'); // Today
 
 --------
 
+(function() {
+    'use strict';
+    
+    const AJAX_URL_BLOQUEIO = './control/encerramento_estat/estatistica_encerramento_control.php';
+    const AJAX_URL_ENCERRAMENTO = './control/encerramento_estat/motivos_encerramento_control.php';
+    const AJAX_URL_TEMPO = './control/encerramento_estat/tempo_atuacao_control.php';
+    
+    let currentView = 'bloqueio'; // Default view
+    
+    // Wait for DOM
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+    
+    function init() {
+        const aplicarFiltrosBtn = document.getElementById('aplicarFiltros');
+        const exportarCSVBtn = document.getElementById('exportarCSV');
+        const tabs = document.querySelectorAll('#viewTabs .nav-link');
+        
+        if (!aplicarFiltrosBtn || !exportarCSVBtn) {
+            console.error('Required elements not found');
+            return;
+        }
+        
+        // Setup event listeners
+        aplicarFiltrosBtn.addEventListener('click', () => carregarDados(currentView));
+        exportarCSVBtn.addEventListener('click', () => exportarCSV(currentView));
+        
+        // Setup tab switching
+        tabs.forEach(tab => {
+            tab.addEventListener('click', function(e) {
+                e.preventDefault();
+                switchView(this.getAttribute('data-view'));
+            });
+        });
+        
+        // Auto-load data for initial view on page load
+        setTimeout(() => {
+            carregarDados(currentView);
+        }, 200);
+    }
+    
+    function switchView(view) {
+        currentView = view;
+        
+        // Update tabs
+        document.querySelectorAll('#viewTabs .nav-link').forEach(tab => {
+            if (tab.getAttribute('data-view') === view) {
+                tab.classList.add('active');
+            } else {
+                tab.classList.remove('active');
+            }
+        });
+        
+        // Update content visibility
+        document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.remove('active');
+        });
+        
+        const activeContent = document.getElementById(view + '-content');
+        if (activeContent) {
+            activeContent.classList.add('active');
+        }
+        
+        // Load data for the new view
+        carregarDados(view);
+    }
+    
+    function carregarDados(view) {
+        const dataInicio = document.getElementById('dataInicio')?.value;
+        const dataFim = document.getElementById('dataFim')?.value;
+        
+        if (!dataInicio || !dataFim) {
+            showNotification('Por favor, selecione ambas as datas', 'warning');
+            return;
+        }
+        
+        if (view === 'bloqueio') {
+            carregarMotivosBloqueio(dataInicio, dataFim);
+        } else if (view === 'encerramento') {
+            carregarMotivosEncerramento(dataInicio, dataFim);
+        } else if (view === 'tempo') {
+            carregarTempoAtuacao(dataInicio, dataFim);
+        }
+    }
+    
+    function carregarMotivosBloqueio(dataInicio, dataFim) {
+        const loadingOverlay = document.getElementById('loadingOverlayBloqueio');
+        
+        if (loadingOverlay) {
+            loadingOverlay.classList.add('active');
+        }
+        
+        const formData = new FormData();
+        formData.append('action', 'getMotivosBloqueio');
+        formData.append('data_inicio', dataInicio);
+        formData.append('data_fim', dataFim);
+        
+        fetch(AJAX_URL_BLOQUEIO, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Bloqueio Response:', data);
+            if (data.success) {
+                renderizarTabelaBloqueio(data.data);
+                showNotification('Dados de bloqueio carregados com sucesso!', 'success');
+            } else {
+                throw new Error(data.error || 'Erro ao processar dados');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification('Erro ao carregar dados de bloqueio: ' + error.message, 'error');
+        })
+        .finally(() => {
+            if (loadingOverlay) {
+                loadingOverlay.classList.remove('active');
+            }
+        });
+    }
+    
+    function carregarMotivosEncerramento(dataInicio, dataFim) {
+        const loadingOverlay = document.getElementById('loadingOverlayEncerramento');
+        
+        if (loadingOverlay) {
+            loadingOverlay.classList.add('active');
+        }
+        
+        const formData = new FormData();
+        formData.append('action', 'getMotivosEncerramento');
+        formData.append('data_inicio', dataInicio);
+        formData.append('data_fim', dataFim);
+        
+        fetch(AJAX_URL_ENCERRAMENTO, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Encerramento Response:', data);
+            if (data.success) {
+                renderizarTabelaEncerramento(data.data);
+                showNotification('Dados de encerramento carregados com sucesso!', 'success');
+            } else {
+                throw new Error(data.error || 'Erro ao processar dados');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification('Erro ao carregar dados de encerramento: ' + error.message, 'error');
+        })
+        .finally(() => {
+            if (loadingOverlay) {
+                loadingOverlay.classList.remove('active');
+            }
+        });
+    }
+    
+    function carregarTempoAtuacao(dataInicio, dataFim) {
+        const loadingOverlay = document.getElementById('loadingOverlayTempo');
+        
+        if (loadingOverlay) {
+            loadingOverlay.classList.add('active');
+        }
+        
+        const formData = new FormData();
+        formData.append('action', 'getTempoAtuacao');
+        formData.append('data_inicio', dataInicio);
+        formData.append('data_fim', dataFim);
+        
+        fetch(AJAX_URL_TEMPO, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Tempo Response:', data);
+            if (data.success) {
+                renderizarTabelaTempo(data.data);
+                showNotification('Dados de tempo de atuação carregados com sucesso!', 'success');
+            } else {
+                throw new Error(data.error || 'Erro ao processar dados');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification('Erro ao carregar dados de tempo de atuação: ' + error.message, 'error');
+        })
+        .finally(() => {
+            if (loadingOverlay) {
+                loadingOverlay.classList.remove('active');
+            }
+        });
+    }
+    
+    function exportarCSV(view) {
+        const dataInicio = document.getElementById('dataInicio')?.value;
+        const dataFim = document.getElementById('dataFim')?.value;
+        
+        if (!dataInicio || !dataFim) {
+            showNotification('Por favor, selecione ambas as datas', 'warning');
+            return;
+        }
+        
+        showNotification('Gerando arquivo CSV...', 'info');
+        
+        let ajaxUrl;
+        if (view === 'bloqueio') {
+            ajaxUrl = AJAX_URL_BLOQUEIO;
+        } else if (view === 'encerramento') {
+            ajaxUrl = AJAX_URL_ENCERRAMENTO;
+        } else if (view === 'tempo') {
+            ajaxUrl = AJAX_URL_TEMPO;
+        }
+        
+        const action = 'exportCSV';
+        
+        // Create a form and submit it to trigger download
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = ajaxUrl;
+        form.style.display = 'none';
+        
+        const actionInput = document.createElement('input');
+        actionInput.type = 'hidden';
+        actionInput.name = 'action';
+        actionInput.value = action;
+        form.appendChild(actionInput);
+        
+        const dataInicioInput = document.createElement('input');
+        dataInicioInput.type = 'hidden';
+        dataInicioInput.name = 'data_inicio';
+        dataInicioInput.value = dataInicio;
+        form.appendChild(dataInicioInput);
+        
+        const dataFimInput = document.createElement('input');
+        dataFimInput.type = 'hidden';
+        dataFimInput.name = 'data_fim';
+        dataFimInput.value = dataFim;
+        form.appendChild(dataFimInput);
+        
+        document.body.appendChild(form);
+        form.submit();
+        document.body.removeChild(form);
+        
+        // Show success message after a delay
+        setTimeout(() => {
+            showNotification('Arquivo CSV gerado com sucesso!', 'success');
+        }, 500);
+    }
+    
+    function renderizarTabelaBloqueio(data) {
+        const thead = document.querySelector('#tabelaMotivosBloqueio thead tr');
+        const tbody = document.getElementById('tableBodyBloqueio');
+        const tfoot = document.querySelector('#tabelaMotivosBloqueio tfoot tr');
+        
+        renderizarTabela(thead, tbody, tfoot, data, 'totalQtdeBloqueio');
+    }
+    
+    function renderizarTabelaEncerramento(data) {
+        const thead = document.querySelector('#tabelaMotivosEncerramento thead tr');
+        const tbody = document.getElementById('tableBodyEncerramento');
+        const tfoot = document.querySelector('#tabelaMotivosEncerramento tfoot tr');
+        
+        renderizarTabela(thead, tbody, tfoot, data, 'totalQtdeEncerramento');
+    }
+    
+    function renderizarTabelaTempo(data) {
+        const tbody = document.getElementById('tableBodyTempo');
+        
+        if (!tbody) {
+            console.error('Table body not found');
+            return;
+        }
+        
+        // Clear tbody
+        tbody.innerHTML = '';
+        
+        const motivos = data.motivos || {};
+        const periodos = data.periodos || [];
+        const totalPorPeriodo = data.totalPorPeriodo || {};
+        const totalGeral = data.total || 0;
+        
+        // Add rows for each motivo
+        if (Object.keys(motivos).length > 0) {
+            Object.keys(motivos).forEach(motivo => {
+                const periodosData = motivos[motivo];
+                
+                // Calculate total for this motivo
+                let totalMotivo = 0;
+                periodos.forEach(periodo => {
+                    totalMotivo += periodosData[periodo] || 0;
+                });
+                
+                // Skip if no data for this motivo
+                if (totalMotivo === 0) return;
+                
+                const tr = document.createElement('tr');
+                
+                // Motivo column
+                const tdMotivo = document.createElement('td');
+                tdMotivo.textContent = motivo;
+                tr.appendChild(tdMotivo);
+                
+                // QTDE column
+                const tdQtde = document.createElement('td');
+                tdQtde.className = 'text-center';
+                tdQtde.textContent = totalMotivo;
+                tr.appendChild(tdQtde);
+                
+                // % column
+                const tdPerc = document.createElement('td');
+                tdPerc.className = 'text-center';
+                tdPerc.textContent = totalGeral > 0 ? 
+                    ((totalMotivo / totalGeral) * 100).toFixed(1) + '%' : '0%';
+                tr.appendChild(tdPerc);
+                
+                // Period columns
+                periodos.forEach(periodo => {
+                    const td = document.createElement('td');
+                    td.className = 'text-center';
+                    td.textContent = periodosData[periodo] || 0;
+                    tr.appendChild(td);
+                });
+                
+                tbody.appendChild(tr);
+            });
+        }
+        
+        if (tbody.children.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center py-5">Nenhum dado encontrado para o período selecionado</td></tr>';
+        }
+        
+        // Update total footer
+        const totalQtdeEl = document.getElementById('totalQtdeTempo');
+        if (totalQtdeEl) {
+            totalQtdeEl.textContent = totalGeral;
+        }
+        
+        // Update period totals in footer
+        const periodFooterIds = {
+            'Menos de 1 mês': 'totalMenos1',
+            'De 1 a 6 meses': 'total1a6',
+            'De 6 meses a 1 ano': 'total6a12',
+            'De 1 a 2 anos': 'total1a2anos',
+            'De 2 a 3 anos': 'total2a3anos',
+            'Mais de 3 anos': 'totalMais3'
+        };
+        
+        periodos.forEach(periodo => {
+            const footerId = periodFooterIds[periodo];
+            if (footerId) {
+                const footerEl = document.getElementById(footerId);
+                if (footerEl) {
+                    footerEl.textContent = totalPorPeriodo[periodo] || 0;
+                }
+            }
+        });
+    }
+    
+    function renderizarTabela(thead, tbody, tfoot, data, totalElementId) {
+        if (!thead || !tbody || !tfoot) {
+            console.error('Table elements not found');
+            return;
+        }
+        
+        // Clear existing monthly columns
+        while (thead.children.length > 3) {
+            thead.removeChild(thead.lastChild);
+        }
+        while (tfoot.children.length > 3) {
+            tfoot.removeChild(tfoot.lastChild);
+        }
+        
+        // Clear tbody
+        tbody.innerHTML = '';
+        
+        const motivos = data.motivos || {};
+        const meses = data.meses || [];
+        const totalGeral = data.total || 0;
+        
+        // Add monthly columns to header
+        if (meses && meses.length > 0) {
+            meses.forEach(mes => {
+                const th = document.createElement('th');
+                th.className = 'thead-estat text-center';
+                th.textContent = formatarMes(mes);
+                thead.appendChild(th);
+            });
+        }
+        
+        // Add rows for each motivo
+        if (Object.keys(motivos).length > 0) {
+            Object.keys(motivos).forEach(motivo => {
+                const tr = document.createElement('tr');
+                
+                // Motivo column
+                const tdMotivo = document.createElement('td');
+                tdMotivo.textContent = motivo;
+                tr.appendChild(tdMotivo);
+                
+                // Calculate total for this motivo
+                let totalMotivo = 0;
+                if (meses) {
+                    meses.forEach(mes => {
+                        totalMotivo += motivos[motivo][mes] || 0;
+                    });
+                }
+                
+                // Skip if no data for this motivo
+                if (totalMotivo === 0) return;
+                
+                // QTDE column
+                const tdQtde = document.createElement('td');
+                tdQtde.className = 'text-center';
+                tdQtde.textContent = totalMotivo;
+                tr.appendChild(tdQtde);
+                
+                // % column
+                const tdPerc = document.createElement('td');
+                tdPerc.className = 'text-center';
+                tdPerc.textContent = totalGeral > 0 ? 
+                    ((totalMotivo / totalGeral) * 100).toFixed(1) + '%' : '0%';
+                tr.appendChild(tdPerc);
+                
+                // Monthly columns
+                if (meses) {
+                    meses.forEach(mes => {
+                        const td = document.createElement('td');
+                        td.className = 'text-center';
+                        td.textContent = motivos[motivo][mes] || 0;
+                        tr.appendChild(td);
+                    });
+                }
+                
+                tbody.appendChild(tr);
+            });
+        }
+        
+        if (tbody.children.length === 0) {
+            const colspan = 3 + (meses ? meses.length : 0);
+            tbody.innerHTML = '<tr><td colspan="' + colspan + '" class="text-center py-5">Nenhum dado encontrado para o período selecionado</td></tr>';
+        }
+        
+        // Update total footer
+        const totalQtdeEl = document.getElementById(totalElementId);
+        if (totalQtdeEl) {
+            totalQtdeEl.textContent = totalGeral;
+        }
+        
+        // Add monthly totals to footer
+        if (meses) {
+            meses.forEach(mes => {
+                let totalMes = 0;
+                Object.keys(motivos).forEach(motivo => {
+                    totalMes += motivos[motivo][mes] || 0;
+                });
+                
+                const td = document.createElement('td');
+                td.className = 'thead-estat text-center';
+                td.textContent = totalMes;
+                tfoot.appendChild(td);
+            });
+        }
+    }
+    
+    function formatarMes(mesAno) {
+        if (!mesAno) return '';
+        const parts = mesAno.split('-');
+        if (parts.length !== 2) return mesAno;
+        
+        const ano = parts[0];
+        const mes = parts[1];
+        const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+        const mesIndex = parseInt(mes) - 1;
+        
+        return meses[mesIndex] ? `${meses[mesIndex]}/${ano}` : mesAno;
+    }
+    
+    function showNotification(message, type = 'info') {
+        const container = document.createElement('div');
+        const alertClass = type === 'error' ? 'danger' : type === 'warning' ? 'warning' : type === 'info' ? 'info' : 'success';
+        container.className = `alert alert-${alertClass} alert-dismissible fade show`;
+        
+        const existingNotifications = document.querySelectorAll('.alert[style*="position: fixed"]');
+        const topOffset = 20 + (existingNotifications.length * 80);
+        
+        container.style.cssText = `position: fixed; top: ${topOffset}px; right: 20px; z-index: 9999; min-width: 300px; max-width: 500px; transition: all 0.3s ease;`;
+        container.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        document.body.appendChild(container);
+        
+        setTimeout(() => {
+            container.style.opacity = '0';
+            setTimeout(() => {
+                container.remove();
+                repositionNotifications();
+            }, 300);
+        }, 5000);
+        
+        const closeBtn = container.querySelector('.btn-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                container.style.opacity = '0';
+                setTimeout(() => {
+                    container.remove();
+                    repositionNotifications();
+                }, 300);
+            });
+        }
+    }
+    
+    function repositionNotifications() {
+        const notifications = document.querySelectorAll('.alert[style*="position: fixed"]');
+        notifications.forEach((notif, index) => {
+            notif.style.top = (20 + (index * 80)) + 'px';
+        });
+    }
+})();
