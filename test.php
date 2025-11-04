@@ -1,56 +1,4 @@
 <?php
-require_once('\\\\D4920S010\D4920_2\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\Lib\ClassRepository\geral\MSSQL\NEW_MSSQL.class.php');
-
-#[AllowDynamicProperties]
-class TempoAtuacao {
-    private $sql;
-    
-    public function __construct() {
-        $this->sql = new MSSQL('ERP');
-    }
-    
-    public function getSql() {
-        return $this->sql;
-    }
-    
-    // Get active time statistics
-    public function getTempoAtuacao($dataInicio = null, $dataFim = null) {
-        $where = "1=1";
-        
-        if ($dataInicio && $dataFim) {
-            $where .= " AND F.DT_ENCERRAMENTO BETWEEN '$dataInicio' AND '$dataFim'";
-        }
-        
-        $query = "
-            SELECT 
-                F.DT_INAUGURACAO,
-                F.DT_ENCERRAMENTO,
-                DATEDIFF(MONTH, F.DT_INAUGURACAO, F.DT_ENCERRAMENTO) as MESES_ATIVO,
-                CASE 
-                    WHEN DATEDIFF(MONTH, F.DT_INAUGURACAO, F.DT_ENCERRAMENTO) < 1 THEN 'Menos de 1 mês'
-                    WHEN DATEDIFF(MONTH, F.DT_INAUGURACAO, F.DT_ENCERRAMENTO) BETWEEN 1 AND 5 THEN 'De 1 a 6 meses'
-                    WHEN DATEDIFF(MONTH, F.DT_INAUGURACAO, F.DT_ENCERRAMENTO) BETWEEN 6 AND 11 THEN 'De 6 meses a 1 ano'
-                    WHEN DATEDIFF(MONTH, F.DT_INAUGURACAO, F.DT_ENCERRAMENTO) BETWEEN 12 AND 23 THEN 'De 1 a 2 anos'
-                    WHEN DATEDIFF(MONTH, F.DT_INAUGURACAO, F.DT_ENCERRAMENTO) BETWEEN 24 AND 35 THEN 'De 2 a 3 anos'
-                    ELSE 'Mais de 3 anos'
-                END as PERIODO_ATUACAO
-            FROM 
-                DATALAKE..DL_BRADESCO_EXPRESSO F WITH (NOLOCK)
-            WHERE 
-                $where
-                AND F.BE_INAUGURADO = 1
-                AND F.DT_INAUGURACAO IS NOT NULL
-                AND F.DT_ENCERRAMENTO IS NOT NULL
-        ";
-        
-        return $this->sql->select($query);
-    }
-}
-?>
-
------------
-
-<?php
 // Prevent any output before JSON
 ob_start();
 
@@ -126,21 +74,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
             
             // Header row
-            $headerRow = ['Período de Atuação', 'QTDE', '%'];
+            $headerRow = ['Motivo Encerramento', 'QTDE', '%'];
+            foreach ($processedData['periodos'] as $periodo) {
+                $headerRow[] = $periodo;
+            }
             fputcsv($output, $headerRow, ';');
             
             // Data rows
-            foreach ($processedData['periodos'] as $periodo => $qtde) {
+            foreach ($processedData['motivos'] as $motivo => $periodos) {
+                $totalMotivo = array_sum($periodos);
+                
+                // Skip rows with no data
+                if ($totalMotivo === 0) continue;
+                
                 $row = [
-                    $periodo,
-                    $qtde,
-                    number_format(($qtde / $processedData['total']) * 100, 1, ',', '.') . '%'
+                    $motivo,
+                    $totalMotivo,
+                    number_format(($totalMotivo / $processedData['total']) * 100, 1, ',', '.') . '%'
                 ];
+                
+                foreach ($processedData['periodos'] as $periodo) {
+                    $row[] = $periodos[$periodo] ?? 0;
+                }
+                
                 fputcsv($output, $row, ';');
             }
             
             // Total row
             $totalRow = ['TOTAL', $processedData['total'], '100,0%'];
+            foreach ($processedData['periodos'] as $periodo) {
+                $totalRow[] = $processedData['totalPorPeriodo'][$periodo] ?? 0;
+            }
             fputcsv($output, $totalRow, ';');
             
             fclose($output);
@@ -170,43 +134,74 @@ exit;
 
 function processarTempoAtuacao($dados) {
     // Define the order of periods
-    $periodos = [
-        'Menos de 1 mês' => 0,
-        'De 1 a 6 meses' => 0,
-        'De 6 meses a 1 ano' => 0,
-        'De 1 a 2 anos' => 0,
-        'De 2 a 3 anos' => 0,
-        'Mais de 3 anos' => 0
+    $periodosOrdem = [
+        'Menos de 1 mês',
+        'De 1 a 6 meses',
+        'De 6 meses a 1 ano',
+        'De 1 a 2 anos',
+        'De 2 a 3 anos',
+        'Mais de 3 anos'
     ];
     
+    $motivos = [];
+    $totalPorPeriodo = [];
     $total = 0;
+    
+    // Initialize totals for each period
+    foreach ($periodosOrdem as $periodo) {
+        $totalPorPeriodo[$periodo] = 0;
+    }
     
     if (!$dados || !is_array($dados)) {
         return [
-            'periodos' => $periodos,
+            'motivos' => [],
+            'periodos' => $periodosOrdem,
+            'totalPorPeriodo' => $totalPorPeriodo,
             'total' => 0
         ];
     }
     
-    // Count occurrences for each period
+    // Group by motivo and count by period
     foreach ($dados as $row) {
+        $motivo = trim($row['DESC_MOTIVO_ENCERRAMENTO'] ?? '');
         $periodo = $row['PERIODO_ATUACAO'] ?? '';
         
-        if (isset($periodos[$periodo])) {
-            $periodos[$periodo]++;
+        if (empty($motivo) || empty($periodo)) continue;
+        
+        // Initialize motivo if not exists
+        if (!isset($motivos[$motivo])) {
+            $motivos[$motivo] = [];
+            foreach ($periodosOrdem as $p) {
+                $motivos[$motivo][$p] = 0;
+            }
+        }
+        
+        // Count this occurrence
+        if (isset($motivos[$motivo][$periodo])) {
+            $motivos[$motivo][$periodo]++;
+            $totalPorPeriodo[$periodo]++;
             $total++;
         }
     }
     
+    // Sort motivos by total count (descending)
+    uasort($motivos, function($a, $b) {
+        $totalA = array_sum($a);
+        $totalB = array_sum($b);
+        return $totalB - $totalA;
+    });
+    
     return [
-        'periodos' => $periodos,
+        'motivos' => $motivos,
+        'periodos' => $periodosOrdem,
+        'totalPorPeriodo' => $totalPorPeriodo,
         'total' => $total
     ];
 }
 ?>
 
 
-----------
+---------
 
 <?php
 session_start();
@@ -468,14 +463,20 @@ $dataFim = date('Y-m-d'); // Today
                     <table class="table table-bordered table-hover" id="tabelaTempoAtuacao">
                         <thead>
                             <tr>
-                                <th class="thead-estat">Período de Atuação</th>
+                                <th class="thead-estat">Motivo Encerramento</th>
                                 <th class="thead-estat text-center">QTDE</th>
                                 <th class="thead-estat text-center">%</th>
+                                <th class="thead-estat text-center">Menos de 1 mês</th>
+                                <th class="thead-estat text-center">De 1 a 6 meses</th>
+                                <th class="thead-estat text-center">De 6 meses a 1 ano</th>
+                                <th class="thead-estat text-center">De 1 a 2 anos</th>
+                                <th class="thead-estat text-center">De 2 a 3 anos</th>
+                                <th class="thead-estat text-center">Mais de 3 anos</th>
                             </tr>
                         </thead>
                         <tbody id="tableBodyTempo">
                             <tr>
-                                <td colspan="3" class="text-center py-5">
+                                <td colspan="9" class="text-center py-5">
                                     <div class="spinner-border text-muted" role="status">
                                         <span class="visually-hidden">Carregando...</span>
                                     </div>
@@ -488,6 +489,12 @@ $dataFim = date('Y-m-d'); // Today
                                 <th class="thead-estat">TOTAL</th>
                                 <th class="thead-estat text-center" id="totalQtdeTempo">0</th>
                                 <th class="thead-estat text-center">100%</th>
+                                <th class="thead-estat text-center" id="totalMenos1">0</th>
+                                <th class="thead-estat text-center" id="total1a6">0</th>
+                                <th class="thead-estat text-center" id="total6a12">0</th>
+                                <th class="thead-estat text-center" id="total1a2anos">0</th>
+                                <th class="thead-estat text-center" id="total2a3anos">0</th>
+                                <th class="thead-estat text-center" id="totalMais3">0</th>
                             </tr>
                         </tfoot>
                     </table>
@@ -513,510 +520,5 @@ $dataFim = date('Y-m-d'); // Today
 </html>
 
 
-----------
+--------
 
-(function() {
-    'use strict';
-    
-    const AJAX_URL_BLOQUEIO = './control/encerramento_estat/estatistica_encerramento_control.php';
-    const AJAX_URL_ENCERRAMENTO = './control/encerramento_estat/motivos_encerramento_control.php';
-    const AJAX_URL_TEMPO = './control/encerramento_estat/tempo_atuacao_control.php';
-    
-    let currentView = 'bloqueio'; // Default view
-    
-    // Wait for DOM
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-    } else {
-        init();
-    }
-    
-    function init() {
-        const aplicarFiltrosBtn = document.getElementById('aplicarFiltros');
-        const exportarCSVBtn = document.getElementById('exportarCSV');
-        const tabs = document.querySelectorAll('#viewTabs .nav-link');
-        
-        if (!aplicarFiltrosBtn || !exportarCSVBtn) {
-            console.error('Required elements not found');
-            return;
-        }
-        
-        // Setup event listeners
-        aplicarFiltrosBtn.addEventListener('click', () => carregarDados(currentView));
-        exportarCSVBtn.addEventListener('click', () => exportarCSV(currentView));
-        
-        // Setup tab switching
-        tabs.forEach(tab => {
-            tab.addEventListener('click', function(e) {
-                e.preventDefault();
-                switchView(this.getAttribute('data-view'));
-            });
-        });
-        
-        // Auto-load data for initial view on page load
-        setTimeout(() => {
-            carregarDados(currentView);
-        }, 200);
-    }
-    
-    function switchView(view) {
-        currentView = view;
-        
-        // Update tabs
-        document.querySelectorAll('#viewTabs .nav-link').forEach(tab => {
-            if (tab.getAttribute('data-view') === view) {
-                tab.classList.add('active');
-            } else {
-                tab.classList.remove('active');
-            }
-        });
-        
-        // Update content visibility
-        document.querySelectorAll('.tab-content').forEach(content => {
-            content.classList.remove('active');
-        });
-        
-        const activeContent = document.getElementById(view + '-content');
-        if (activeContent) {
-            activeContent.classList.add('active');
-        }
-        
-        // Load data for the new view
-        carregarDados(view);
-    }
-    
-    function carregarDados(view) {
-        const dataInicio = document.getElementById('dataInicio')?.value;
-        const dataFim = document.getElementById('dataFim')?.value;
-        
-        if (!dataInicio || !dataFim) {
-            showNotification('Por favor, selecione ambas as datas', 'warning');
-            return;
-        }
-        
-        if (view === 'bloqueio') {
-            carregarMotivosBloqueio(dataInicio, dataFim);
-        } else if (view === 'encerramento') {
-            carregarMotivosEncerramento(dataInicio, dataFim);
-        } else if (view === 'tempo') {
-            carregarTempoAtuacao(dataInicio, dataFim);
-        }
-    }
-    
-    function carregarMotivosBloqueio(dataInicio, dataFim) {
-        const loadingOverlay = document.getElementById('loadingOverlayBloqueio');
-        
-        if (loadingOverlay) {
-            loadingOverlay.classList.add('active');
-        }
-        
-        const formData = new FormData();
-        formData.append('action', 'getMotivosBloqueio');
-        formData.append('data_inicio', dataInicio);
-        formData.append('data_fim', dataFim);
-        
-        fetch(AJAX_URL_BLOQUEIO, {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return response.json();
-        })
-        .then(data => {
-            console.log('Bloqueio Response:', data);
-            if (data.success) {
-                renderizarTabelaBloqueio(data.data);
-                showNotification('Dados de bloqueio carregados com sucesso!', 'success');
-            } else {
-                throw new Error(data.error || 'Erro ao processar dados');
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            showNotification('Erro ao carregar dados de bloqueio: ' + error.message, 'error');
-        })
-        .finally(() => {
-            if (loadingOverlay) {
-                loadingOverlay.classList.remove('active');
-            }
-        });
-    }
-    
-    function carregarMotivosEncerramento(dataInicio, dataFim) {
-        const loadingOverlay = document.getElementById('loadingOverlayEncerramento');
-        
-        if (loadingOverlay) {
-            loadingOverlay.classList.add('active');
-        }
-        
-        const formData = new FormData();
-        formData.append('action', 'getMotivosEncerramento');
-        formData.append('data_inicio', dataInicio);
-        formData.append('data_fim', dataFim);
-        
-        fetch(AJAX_URL_ENCERRAMENTO, {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return response.json();
-        })
-        .then(data => {
-            console.log('Encerramento Response:', data);
-            if (data.success) {
-                renderizarTabelaEncerramento(data.data);
-                showNotification('Dados de encerramento carregados com sucesso!', 'success');
-            } else {
-                throw new Error(data.error || 'Erro ao processar dados');
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            showNotification('Erro ao carregar dados de encerramento: ' + error.message, 'error');
-        })
-        .finally(() => {
-            if (loadingOverlay) {
-                loadingOverlay.classList.remove('active');
-            }
-        });
-    }
-    
-    function carregarTempoAtuacao(dataInicio, dataFim) {
-        const loadingOverlay = document.getElementById('loadingOverlayTempo');
-        
-        if (loadingOverlay) {
-            loadingOverlay.classList.add('active');
-        }
-        
-        const formData = new FormData();
-        formData.append('action', 'getTempoAtuacao');
-        formData.append('data_inicio', dataInicio);
-        formData.append('data_fim', dataFim);
-        
-        fetch(AJAX_URL_TEMPO, {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return response.json();
-        })
-        .then(data => {
-            console.log('Tempo Response:', data);
-            if (data.success) {
-                renderizarTabelaTempo(data.data);
-                showNotification('Dados de tempo de atuação carregados com sucesso!', 'success');
-            } else {
-                throw new Error(data.error || 'Erro ao processar dados');
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            showNotification('Erro ao carregar dados de tempo de atuação: ' + error.message, 'error');
-        })
-        .finally(() => {
-            if (loadingOverlay) {
-                loadingOverlay.classList.remove('active');
-            }
-        });
-    }
-    
-    function exportarCSV(view) {
-        const dataInicio = document.getElementById('dataInicio')?.value;
-        const dataFim = document.getElementById('dataFim')?.value;
-        
-        if (!dataInicio || !dataFim) {
-            showNotification('Por favor, selecione ambas as datas', 'warning');
-            return;
-        }
-        
-        showNotification('Gerando arquivo CSV...', 'info');
-        
-        let ajaxUrl;
-        if (view === 'bloqueio') {
-            ajaxUrl = AJAX_URL_BLOQUEIO;
-        } else if (view === 'encerramento') {
-            ajaxUrl = AJAX_URL_ENCERRAMENTO;
-        } else if (view === 'tempo') {
-            ajaxUrl = AJAX_URL_TEMPO;
-        }
-        
-        const action = 'exportCSV';
-        
-        // Create a form and submit it to trigger download
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = ajaxUrl;
-        form.style.display = 'none';
-        
-        const actionInput = document.createElement('input');
-        actionInput.type = 'hidden';
-        actionInput.name = 'action';
-        actionInput.value = action;
-        form.appendChild(actionInput);
-        
-        const dataInicioInput = document.createElement('input');
-        dataInicioInput.type = 'hidden';
-        dataInicioInput.name = 'data_inicio';
-        dataInicioInput.value = dataInicio;
-        form.appendChild(dataInicioInput);
-        
-        const dataFimInput = document.createElement('input');
-        dataFimInput.type = 'hidden';
-        dataFimInput.name = 'data_fim';
-        dataFimInput.value = dataFim;
-        form.appendChild(dataFimInput);
-        
-        document.body.appendChild(form);
-        form.submit();
-        document.body.removeChild(form);
-        
-        // Show success message after a delay
-        setTimeout(() => {
-            showNotification('Arquivo CSV gerado com sucesso!', 'success');
-        }, 500);
-    }
-    
-    function renderizarTabelaBloqueio(data) {
-        const thead = document.querySelector('#tabelaMotivosBloqueio thead tr');
-        const tbody = document.getElementById('tableBodyBloqueio');
-        const tfoot = document.querySelector('#tabelaMotivosBloqueio tfoot tr');
-        
-        renderizarTabela(thead, tbody, tfoot, data, 'totalQtdeBloqueio');
-    }
-    
-    function renderizarTabelaEncerramento(data) {
-        const thead = document.querySelector('#tabelaMotivosEncerramento thead tr');
-        const tbody = document.getElementById('tableBodyEncerramento');
-        const tfoot = document.querySelector('#tabelaMotivosEncerramento tfoot tr');
-        
-        renderizarTabela(thead, tbody, tfoot, data, 'totalQtdeEncerramento');
-    }
-    
-    function renderizarTabelaTempo(data) {
-        const tbody = document.getElementById('tableBodyTempo');
-        
-        if (!tbody) {
-            console.error('Table body not found');
-            return;
-        }
-        
-        // Clear tbody
-        tbody.innerHTML = '';
-        
-        const periodos = data.periodos || {};
-        const totalGeral = data.total || 0;
-        
-        // Add rows for each period
-        if (Object.keys(periodos).length > 0) {
-            Object.keys(periodos).forEach(periodo => {
-                const qtde = periodos[periodo];
-                
-                // Skip if no data for this period
-                if (qtde === 0) return;
-                
-                const tr = document.createElement('tr');
-                
-                // Period column
-                const tdPeriodo = document.createElement('td');
-                tdPeriodo.textContent = periodo;
-                tr.appendChild(tdPeriodo);
-                
-                // QTDE column
-                const tdQtde = document.createElement('td');
-                tdQtde.className = 'text-center';
-                tdQtde.textContent = qtde;
-                tr.appendChild(tdQtde);
-                
-                // % column
-                const tdPerc = document.createElement('td');
-                tdPerc.className = 'text-center';
-                tdPerc.textContent = totalGeral > 0 ? 
-                    ((qtde / totalGeral) * 100).toFixed(1) + '%' : '0%';
-                tr.appendChild(tdPerc);
-                
-                tbody.appendChild(tr);
-            });
-        }
-        
-        if (tbody.children.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="3" class="text-center py-5">Nenhum dado encontrado para o período selecionado</td></tr>';
-        }
-        
-        // Update total footer
-        const totalQtdeEl = document.getElementById('totalQtdeTempo');
-        if (totalQtdeEl) {
-            totalQtdeEl.textContent = totalGeral;
-        }
-    }
-    
-    function renderizarTabela(thead, tbody, tfoot, data, totalElementId) {
-        if (!thead || !tbody || !tfoot) {
-            console.error('Table elements not found');
-            return;
-        }
-        
-        // Clear existing monthly columns
-        while (thead.children.length > 3) {
-            thead.removeChild(thead.lastChild);
-        }
-        while (tfoot.children.length > 3) {
-            tfoot.removeChild(tfoot.lastChild);
-        }
-        
-        // Clear tbody
-        tbody.innerHTML = '';
-        
-        const motivos = data.motivos || {};
-        const meses = data.meses || [];
-        const totalGeral = data.total || 0;
-        
-        // Add monthly columns to header
-        if (meses && meses.length > 0) {
-            meses.forEach(mes => {
-                const th = document.createElement('th');
-                th.className = 'thead-estat text-center';
-                th.textContent = formatarMes(mes);
-                thead.appendChild(th);
-            });
-        }
-        
-        // Add rows for each motivo
-        if (Object.keys(motivos).length > 0) {
-            Object.keys(motivos).forEach(motivo => {
-                const tr = document.createElement('tr');
-                
-                // Motivo column
-                const tdMotivo = document.createElement('td');
-                tdMotivo.textContent = motivo;
-                tr.appendChild(tdMotivo);
-                
-                // Calculate total for this motivo
-                let totalMotivo = 0;
-                if (meses) {
-                    meses.forEach(mes => {
-                        totalMotivo += motivos[motivo][mes] || 0;
-                    });
-                }
-                
-                // Skip if no data for this motivo
-                if (totalMotivo === 0) return;
-                
-                // QTDE column
-                const tdQtde = document.createElement('td');
-                tdQtde.className = 'text-center';
-                tdQtde.textContent = totalMotivo;
-                tr.appendChild(tdQtde);
-                
-                // % column
-                const tdPerc = document.createElement('td');
-                tdPerc.className = 'text-center';
-                tdPerc.textContent = totalGeral > 0 ? 
-                    ((totalMotivo / totalGeral) * 100).toFixed(1) + '%' : '0%';
-                tr.appendChild(tdPerc);
-                
-                // Monthly columns
-                if (meses) {
-                    meses.forEach(mes => {
-                        const td = document.createElement('td');
-                        td.className = 'text-center';
-                        td.textContent = motivos[motivo][mes] || 0;
-                        tr.appendChild(td);
-                    });
-                }
-                
-                tbody.appendChild(tr);
-            });
-        }
-        
-        if (tbody.children.length === 0) {
-            const colspan = 3 + (meses ? meses.length : 0);
-            tbody.innerHTML = '<tr><td colspan="' + colspan + '" class="text-center py-5">Nenhum dado encontrado para o período selecionado</td></tr>';
-        }
-        
-        // Update total footer
-        const totalQtdeEl = document.getElementById(totalElementId);
-        if (totalQtdeEl) {
-            totalQtdeEl.textContent = totalGeral;
-        }
-        
-        // Add monthly totals to footer
-        if (meses) {
-            meses.forEach(mes => {
-                let totalMes = 0;
-                Object.keys(motivos).forEach(motivo => {
-                    totalMes += motivos[motivo][mes] || 0;
-                });
-                
-                const td = document.createElement('td');
-                td.className = 'thead-estat text-center';
-                td.textContent = totalMes;
-                tfoot.appendChild(td);
-            });
-        }
-    }
-    
-    function formatarMes(mesAno) {
-        if (!mesAno) return '';
-        const parts = mesAno.split('-');
-        if (parts.length !== 2) return mesAno;
-        
-        const ano = parts[0];
-        const mes = parts[1];
-        const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-        const mesIndex = parseInt(mes) - 1;
-        
-        return meses[mesIndex] ? `${meses[mesIndex]}/${ano}` : mesAno;
-    }
-    
-    function showNotification(message, type = 'info') {
-        const container = document.createElement('div');
-        const alertClass = type === 'error' ? 'danger' : type === 'warning' ? 'warning' : type === 'info' ? 'info' : 'success';
-        container.className = `alert alert-${alertClass} alert-dismissible fade show`;
-        
-        const existingNotifications = document.querySelectorAll('.alert[style*="position: fixed"]');
-        const topOffset = 20 + (existingNotifications.length * 80);
-        
-        container.style.cssText = `position: fixed; top: ${topOffset}px; right: 20px; z-index: 9999; min-width: 300px; max-width: 500px; transition: all 0.3s ease;`;
-        container.innerHTML = `
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        `;
-        
-        document.body.appendChild(container);
-        
-        setTimeout(() => {
-            container.style.opacity = '0';
-            setTimeout(() => {
-                container.remove();
-                repositionNotifications();
-            }, 300);
-        }, 5000);
-        
-        const closeBtn = container.querySelector('.btn-close');
-        if (closeBtn) {
-            closeBtn.addEventListener('click', () => {
-                container.style.opacity = '0';
-                setTimeout(() => {
-                    container.remove();
-                    repositionNotifications();
-                }, 300);
-            });
-        }
-    }
-    
-    function repositionNotifications() {
-        const notifications = document.querySelectorAll('.alert[style*="position: fixed"]');
-        notifications.forEach((notif, index) => {
-            notif.style.top = (20 + (index * 80)) + 'px';
-        });
-    }
-})();
