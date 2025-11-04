@@ -3,7 +3,7 @@
 ob_start();
 
 try {
-    require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento_estat\motivos_encerramento_model.class.php';
+    require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento_estat\estatistica_encerramento_model.class.php';
 } catch (Exception $e) {
     ob_end_clean();
     header('Content-Type: application/json');
@@ -17,16 +17,16 @@ try {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     
-    if ($action === 'getMotivosEncerramento') {
+    if ($action === 'getMotivosBloqueio') {
         try {
             $dataInicio = $_POST['data_inicio'] ?? null;
             $dataFim = $_POST['data_fim'] ?? null;
             
-            $model = new MotivosEncerramento();
-            $dados = $model->getMotivosEncerramento($dataInicio, $dataFim);
+            $model = new EstatisticaEncerramento();
+            $dados = $model->getMotivosBloqueio($dataInicio, $dataFim);
             
             // Process data for table display
-            $processedData = processarMotivosEncerramento($dados);
+            $processedData = processarMotivosBloqueio($dados);
             
             // Clear any output buffer and send JSON
             ob_end_clean();
@@ -51,17 +51,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $dataInicio = $_POST['data_inicio'] ?? null;
             $dataFim = $_POST['data_fim'] ?? null;
             
-            $model = new MotivosEncerramento();
-            $dados = $model->getMotivosEncerramento($dataInicio, $dataFim);
+            $model = new EstatisticaEncerramento();
+            $dados = $model->getMotivosBloqueio($dataInicio, $dataFim);
             
             // Process data for CSV
-            $processedData = processarMotivosEncerramento($dados);
+            $processedData = processarMotivosBloqueio($dados);
             
             // Clear output buffer before sending file
             ob_end_clean();
             
             // Generate CSV
-            $filename = 'motivos_encerramento_' . date('Y-m-d_His') . '.csv';
+            $filename = 'motivos_bloqueio_' . date('Y-m-d_His') . '.csv';
             
             header('Content-Type: text/csv; charset=utf-8');
             header('Content-Disposition: attachment; filename="' . $filename . '"');
@@ -74,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
             
             // Header row
-            $headerRow = ['Motivo Encerramento', 'QTDE', '%'];
+            $headerRow = ['Motivo Bloqueio', 'QTDE', '%'];
             foreach ($processedData['meses'] as $mes) {
                 $headerRow[] = formatarMesCSV($mes);
             }
@@ -139,63 +139,56 @@ echo json_encode([
 ]);
 exit;
 
-function processarMotivosEncerramento($dados) {
-    $motivos = [];
+function processarMotivosBloqueio($dados) {
+    $motivos = [
+        'Em processo de Cancelamento' => [],
+        'Inoperante - Retirada de Equipamento' => [],
+        'Depto - Falta de prestação de contas' => [],
+        'Não Liberar - Falar c/ gerente geral' => [],
+        'Correspondente abaixo do ponto' => [],
+        'Inadimplência' => [],
+        'Falta de prestação de contas' => [],
+        'Demais' => []
+    ];
+    
     $meses = [];
     $total = 0;
     
     if (!$dados || !is_array($dados)) {
         return [
-            'motivos' => [],
+            'motivos' => $motivos,
             'meses' => [],
             'total' => 0
         ];
     }
     
-    // First pass: collect all unique motivos and meses
     foreach ($dados as $row) {
-        $motivo = trim($row['DESC_MOTIVO_ENCERRAMENTO'] ?? '');
+        $motivo = trim($row['MOTIVO_BLOQUEIO'] ?? '');
         $mes = $row['MES_ANO'] ?? '';
+        $qtde = (int)($row['QTDE'] ?? 0);
         
-        if (empty($motivo) || empty($mes)) continue;
-        
-        if (!isset($motivos[$motivo])) {
-            $motivos[$motivo] = [];
-        }
+        if (empty($mes)) continue;
         
         if (!in_array($mes, $meses)) {
             $meses[] = $mes;
         }
-    }
-    
-    // Second pass: populate data
-    foreach ($dados as $row) {
-        $motivo = trim($row['DESC_MOTIVO_ENCERRAMENTO'] ?? '');
-        $mes = $row['MES_ANO'] ?? '';
-        $qtde = (int)($row['QTDE'] ?? 0);
         
-        if (empty($motivo) || empty($mes)) continue;
-        
-        if (!isset($motivos[$motivo][$mes])) {
-            $motivos[$motivo][$mes] = 0;
+        if (!isset($motivos[$motivo])) {
+            if (!isset($motivos['Demais'][$mes])) {
+                $motivos['Demais'][$mes] = 0;
+            }
+            $motivos['Demais'][$mes] += $qtde;
+        } else {
+            if (!isset($motivos[$motivo][$mes])) {
+                $motivos[$motivo][$mes] = 0;
+            }
+            $motivos[$motivo][$mes] += $qtde;
         }
-        $motivos[$motivo][$mes] += $qtde;
+        
         $total += $qtde;
     }
     
-    // Sort months in descending order (newest first)
     rsort($meses);
-    
-    // Sort motivos by total count
-    uksort($motivos, function($a, $b) use ($motivos, $meses) {
-        $totalA = 0;
-        $totalB = 0;
-        foreach ($meses as $mes) {
-            $totalA += $motivos[$a][$mes] ?? 0;
-            $totalB += $motivos[$b][$mes] ?? 0;
-        }
-        return $totalB - $totalA;
-    });
     
     return [
         'motivos' => $motivos,
