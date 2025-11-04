@@ -1,245 +1,4 @@
 <?php
-require_once('\\\\D4920S010\D4920_2\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\Lib\ClassRepository\geral\MSSQL\NEW_MSSQL.class.php');
-
-#[AllowDynamicProperties]
-class MotivosEncerramento {
-    private $sql;
-    
-    public function __construct() {
-        $this->sql = new MSSQL('ERP');
-    }
-    
-    public function getSql() {
-        return $this->sql;
-    }
-    
-    // Get closure reasons statistics
-    public function getMotivosEncerramento($dataInicio = null, $dataFim = null) {
-        $where = "1=1";
-        
-        if ($dataInicio && $dataFim) {
-            $where .= " AND F.DATA_ENCERRAMENTO BETWEEN '$dataInicio' AND '$dataFim'";
-        }
-        
-        $query = "
-            SELECT 
-                F.DESC_MOTIVO_ENCERRAMENTO,
-                COUNT(*) as QTDE,
-                FORMAT(F.DATA_ENCERRAMENTO, 'yyyy-MM') as MES_ANO
-            FROM 
-                DATALAKE..DL_BRADESCO_EXPRESSO F WITH (NOLOCK)
-            WHERE 
-                $where
-                AND F.BE_INAUGURADO = 1
-                AND F.DATA_ENCERRAMENTO IS NOT NULL
-                AND F.DESC_MOTIVO_ENCERRAMENTO IS NOT NULL
-            GROUP BY 
-                F.DESC_MOTIVO_ENCERRAMENTO,
-                FORMAT(F.DATA_ENCERRAMENTO, 'yyyy-MM')
-            ORDER BY 
-                MES_ANO DESC, QTDE DESC
-        ";
-        
-        return $this->sql->select($query);
-    }
-}
-?>
-
----------
-
-
-<?php
-require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento_estat\motivos_encerramento_model.class.php';
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action = $_POST['action'] ?? '';
-    
-    if ($action === 'getMotivosEncerramento') {
-        try {
-            $dataInicio = $_POST['data_inicio'] ?? null;
-            $dataFim = $_POST['data_fim'] ?? null;
-            
-            $model = new MotivosEncerramento();
-            $dados = $model->getMotivosEncerramento($dataInicio, $dataFim);
-            
-            // Process data for table display
-            $processedData = processarMotivosEncerramento($dados);
-            
-            echo json_encode([
-                'success' => true,
-                'data' => $processedData
-            ]);
-        } catch (Exception $e) {
-            echo json_encode([
-                'success' => false,
-                'error' => $e->getMessage()
-            ]);
-        }
-        exit;
-    }
-    
-    if ($action === 'exportCSV') {
-        try {
-            $dataInicio = $_POST['data_inicio'] ?? null;
-            $dataFim = $_POST['data_fim'] ?? null;
-            
-            $model = new MotivosEncerramento();
-            $dados = $model->getMotivosEncerramento($dataInicio, $dataFim);
-            
-            // Process data for CSV
-            $processedData = processarMotivosEncerramento($dados);
-            
-            // Generate CSV
-            $filename = 'motivos_encerramento_' . date('Y-m-d_His') . '.csv';
-            
-            header('Content-Type: text/csv; charset=utf-8');
-            header('Content-Disposition: attachment; filename="' . $filename . '"');
-            header('Pragma: no-cache');
-            header('Expires: 0');
-            
-            $output = fopen('php://output', 'w');
-            
-            // Add BOM for Excel UTF-8 support
-            fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
-            
-            // Header row
-            $headerRow = ['Motivo Encerramento', 'QTDE', '%'];
-            foreach ($processedData['meses'] as $mes) {
-                $headerRow[] = formatarMesCSV($mes);
-            }
-            fputcsv($output, $headerRow, ';');
-            
-            // Data rows
-            foreach ($processedData['motivos'] as $motivo => $mesesData) {
-                $totalMotivo = 0;
-                foreach ($processedData['meses'] as $mes) {
-                    $totalMotivo += $mesesData[$mes] ?? 0;
-                }
-                
-                // Skip rows with no data
-                if ($totalMotivo === 0) continue;
-                
-                $row = [
-                    $motivo,
-                    $totalMotivo,
-                    number_format(($totalMotivo / $processedData['total']) * 100, 1, ',', '.') . '%'
-                ];
-                
-                foreach ($processedData['meses'] as $mes) {
-                    $row[] = $mesesData[$mes] ?? 0;
-                }
-                
-                fputcsv($output, $row, ';');
-            }
-            
-            // Total row
-            $totalRow = ['TOTAL', $processedData['total'], '100,0%'];
-            foreach ($processedData['meses'] as $mes) {
-                $totalMes = 0;
-                foreach ($processedData['motivos'] as $mesesData) {
-                    $totalMes += $mesesData[$mes] ?? 0;
-                }
-                $totalRow[] = $totalMes;
-            }
-            fputcsv($output, $totalRow, ';');
-            
-            fclose($output);
-            exit;
-            
-        } catch (Exception $e) {
-            http_response_code(500);
-            echo json_encode([
-                'success' => false,
-                'error' => $e->getMessage()
-            ]);
-        }
-        exit;
-    }
-}
-
-function processarMotivosEncerramento($dados) {
-    $motivos = [];
-    $meses = [];
-    $total = 0;
-    
-    if (!$dados || !is_array($dados)) {
-        return [
-            'motivos' => [],
-            'meses' => [],
-            'total' => 0
-        ];
-    }
-    
-    // First pass: collect all unique motivos and meses
-    foreach ($dados as $row) {
-        $motivo = trim($row['DESC_MOTIVO_ENCERRAMENTO'] ?? '');
-        $mes = $row['MES_ANO'] ?? '';
-        
-        if (empty($motivo) || empty($mes)) continue;
-        
-        if (!isset($motivos[$motivo])) {
-            $motivos[$motivo] = [];
-        }
-        
-        if (!in_array($mes, $meses)) {
-            $meses[] = $mes;
-        }
-    }
-    
-    // Second pass: populate data
-    foreach ($dados as $row) {
-        $motivo = trim($row['DESC_MOTIVO_ENCERRAMENTO'] ?? '');
-        $mes = $row['MES_ANO'] ?? '';
-        $qtde = (int)($row['QTDE'] ?? 0);
-        
-        if (empty($motivo) || empty($mes)) continue;
-        
-        if (!isset($motivos[$motivo][$mes])) {
-            $motivos[$motivo][$mes] = 0;
-        }
-        $motivos[$motivo][$mes] += $qtde;
-        $total += $qtde;
-    }
-    
-    // Sort months in descending order (newest first)
-    rsort($meses);
-    
-    // Sort motivos by total count
-    uksort($motivos, function($a, $b) use ($motivos, $meses) {
-        $totalA = 0;
-        $totalB = 0;
-        foreach ($meses as $mes) {
-            $totalA += $motivos[$a][$mes] ?? 0;
-            $totalB += $motivos[$b][$mes] ?? 0;
-        }
-        return $totalB - $totalA;
-    });
-    
-    return [
-        'motivos' => $motivos,
-        'meses' => $meses,
-        'total' => $total
-    ];
-}
-
-function formatarMesCSV($mesAno) {
-    if (!$mesAno) return '';
-    $parts = explode('-', $mesAno);
-    if (count($parts) !== 2) return $mesAno;
-    
-    $ano = $parts[0];
-    $mes = $parts[1];
-    $meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-    $mesIndex = (int)$mes - 1;
-    
-    return isset($meses[$mesIndex]) ? $meses[$mesIndex] . '/' . $ano : $mesAno;
-}
-?>
-
-
-------------
-
-<?php
 session_start();
 
 // Set default dates
@@ -296,19 +55,57 @@ $dataFim = date('Y-m-d'); // Today
         [data-theme="dark"] .loading-overlay {
             background: rgba(0, 0, 0, 0.8);
         }
+
+        .nav-tabs .nav-link {
+            color: #626976;
+        }
+
+        .nav-tabs .nav-link.active {
+            font-weight: 600;
+        }
+
+        [data-theme="dark"] .nav-tabs .nav-link {
+            color: #a0a0a0;
+        }
+
+        [data-theme="dark"] .nav-tabs .nav-link.active {
+            color: #ffffff;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
     </style>
 </head>
 <body>
-    <!-- Filters -->
+    <!-- Filters Card with Tabs -->
     <div class="card mb-3">
         <div class="card-header">
-            <h3 class="card-title">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon me-2">
-                    <path d="M3 3v18h18"/>
-                    <path d="m19 9-5 5-4-4-3 3"/>
-                </svg>
-                Motivos de Encerramento
-            </h3>
+            <ul class="nav nav-tabs card-header-tabs" id="viewTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="bloqueio-tab" data-bs-toggle="tab" data-view="bloqueio" type="button" role="tab">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon me-1">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                        </svg>
+                        Motivos Bloqueio
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="encerramento-tab" data-bs-toggle="tab" data-view="encerramento" type="button" role="tab">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon me-1">
+                            <circle cx="12" cy="12" r="10"/>
+                            <line x1="15" y1="9" x2="9" y2="15"/>
+                            <line x1="9" y1="9" x2="15" y2="15"/>
+                        </svg>
+                        Motivos Encerramento
+                    </button>
+                </li>
+            </ul>
         </div>
         <div class="card-body">
             <div class="row g-3">
@@ -341,52 +138,101 @@ $dataFim = date('Y-m-d'); // Today
         </div>
     </div>
 
-    <!-- Motivos de Encerramento Table -->
-    <div class="card">
-        <div class="card-header">
-            <h3 class="card-title">Estatísticas por Motivo de Encerramento</h3>
-        </div>
-        <div class="card-body position-relative">
-            <div class="loading-overlay" id="loadingOverlay">
-                <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;">
-                    <span class="visually-hidden">Carregando...</span>
-                </div>
+    <!-- Motivos Bloqueio Table -->
+    <div class="tab-content active" id="bloqueio-content">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Estatísticas por Motivo de Bloqueio</h3>
             </div>
-            
-            <div class="table-responsive">
-                <table class="table table-bordered table-hover" id="tabelaMotivosEncerramento">
-                    <thead>
-                        <tr>
-                            <th class="thead-estat">Motivo Encerramento</th>
-                            <th class="thead-estat text-center">QTDE</th>
-                            <th class="thead-estat text-center">%</th>
-                            <!-- Monthly columns will be added dynamically -->
-                        </tr>
-                    </thead>
-                    <tbody id="tableBody">
-                        <tr>
-                            <td colspan="3" class="text-center py-5">
-                                <div class="spinner-border text-muted" role="status">
-                                    <span class="visually-hidden">Carregando...</span>
-                                </div>
-                                <p class="mt-2 text-muted">Carregando dados...</p>
-                            </td>
-                        </tr>
-                    </tbody>
-                    <tfoot>
-                        <tr>
-                            <th class="thead-estat">TOTAL</th>
-                            <th class="thead-estat text-center" id="totalQtde">0</th>
-                            <th class="thead-estat text-center">100%</th>
-                            <!-- Monthly totals will be added dynamically -->
-                        </tr>
-                    </tfoot>
-                </table>
+            <div class="card-body position-relative">
+                <div class="loading-overlay" id="loadingOverlayBloqueio">
+                    <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;">
+                        <span class="visually-hidden">Carregando...</span>
+                    </div>
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover" id="tabelaMotivosBloqueio">
+                        <thead>
+                            <tr>
+                                <th class="thead-estat">Motivo Bloqueio</th>
+                                <th class="thead-estat text-center">QTDE</th>
+                                <th class="thead-estat text-center">%</th>
+                                <!-- Monthly columns will be added dynamically -->
+                            </tr>
+                        </thead>
+                        <tbody id="tableBodyBloqueio">
+                            <tr>
+                                <td colspan="3" class="text-center py-5">
+                                    <div class="spinner-border text-muted" role="status">
+                                        <span class="visually-hidden">Carregando...</span>
+                                    </div>
+                                    <p class="mt-2 text-muted">Carregando dados...</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <th class="thead-estat">TOTAL</th>
+                                <th class="thead-estat text-center" id="totalQtdeBloqueio">0</th>
+                                <th class="thead-estat text-center">100%</th>
+                                <!-- Monthly totals will be added dynamically -->
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
 
-    <script src="./js/motivos_encerramento.js"></script>
+    <!-- Motivos Encerramento Table -->
+    <div class="tab-content" id="encerramento-content">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Estatísticas por Motivo de Encerramento</h3>
+            </div>
+            <div class="card-body position-relative">
+                <div class="loading-overlay" id="loadingOverlayEncerramento">
+                    <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;">
+                        <span class="visually-hidden">Carregando...</span>
+                    </div>
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover" id="tabelaMotivosEncerramento">
+                        <thead>
+                            <tr>
+                                <th class="thead-estat">Motivo Encerramento</th>
+                                <th class="thead-estat text-center">QTDE</th>
+                                <th class="thead-estat text-center">%</th>
+                                <!-- Monthly columns will be added dynamically -->
+                            </tr>
+                        </thead>
+                        <tbody id="tableBodyEncerramento">
+                            <tr>
+                                <td colspan="3" class="text-center py-5">
+                                    <div class="spinner-border text-muted" role="status">
+                                        <span class="visually-hidden">Carregando...</span>
+                                    </div>
+                                    <p class="mt-2 text-muted">Carregando dados...</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <th class="thead-estat">TOTAL</th>
+                                <th class="thead-estat text-center" id="totalQtdeEncerramento">0</th>
+                                <th class="thead-estat text-center">100%</th>
+                                <!-- Monthly totals will be added dynamically -->
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="./js/estatisticas_unified.js"></script>
     
     <!-- Theme Script -->
     <script>
@@ -402,12 +248,15 @@ $dataFim = date('Y-m-d'); // Today
 </body>
 </html>
 
-------------
+-----------
 
 (function() {
     'use strict';
     
-    const AJAX_URL = './control/encerramento_estat/motivos_encerramento_control.php';
+    const AJAX_URL_BLOQUEIO = './control/encerramento_estat/estatistica_encerramento_control.php';
+    const AJAX_URL_ENCERRAMENTO = './control/encerramento_estat/motivos_encerramento_control.php';
+    
+    let currentView = 'bloqueio'; // Default view
     
     // Wait for DOM
     if (document.readyState === 'loading') {
@@ -419,42 +268,86 @@ $dataFim = date('Y-m-d'); // Today
     function init() {
         const aplicarFiltrosBtn = document.getElementById('aplicarFiltros');
         const exportarCSVBtn = document.getElementById('exportarCSV');
-        const loadingOverlay = document.getElementById('loadingOverlay');
+        const tabs = document.querySelectorAll('#viewTabs .nav-link');
         
-        if (!aplicarFiltrosBtn || !exportarCSVBtn || !loadingOverlay) {
+        if (!aplicarFiltrosBtn || !exportarCSVBtn) {
             console.error('Required elements not found');
             return;
         }
         
-        aplicarFiltrosBtn.addEventListener('click', carregarDados);
-        exportarCSVBtn.addEventListener('click', exportarCSV);
+        // Setup event listeners
+        aplicarFiltrosBtn.addEventListener('click', () => carregarDados(currentView));
+        exportarCSVBtn.addEventListener('click', () => exportarCSV(currentView));
         
-        // Auto-load data on page load
+        // Setup tab switching
+        tabs.forEach(tab => {
+            tab.addEventListener('click', function(e) {
+                e.preventDefault();
+                switchView(this.getAttribute('data-view'));
+            });
+        });
+        
+        // Auto-load data for initial view on page load
         setTimeout(() => {
-            carregarDados();
+            carregarDados(currentView);
         }, 200);
     }
     
-    function carregarDados() {
+    function switchView(view) {
+        currentView = view;
+        
+        // Update tabs
+        document.querySelectorAll('#viewTabs .nav-link').forEach(tab => {
+            if (tab.getAttribute('data-view') === view) {
+                tab.classList.add('active');
+            } else {
+                tab.classList.remove('active');
+            }
+        });
+        
+        // Update content visibility
+        document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.remove('active');
+        });
+        
+        const activeContent = document.getElementById(view + '-content');
+        if (activeContent) {
+            activeContent.classList.add('active');
+        }
+        
+        // Load data for the new view
+        carregarDados(view);
+    }
+    
+    function carregarDados(view) {
         const dataInicio = document.getElementById('dataInicio')?.value;
         const dataFim = document.getElementById('dataFim')?.value;
-        const loadingOverlay = document.getElementById('loadingOverlay');
         
         if (!dataInicio || !dataFim) {
             showNotification('Por favor, selecione ambas as datas', 'warning');
             return;
         }
         
+        if (view === 'bloqueio') {
+            carregarMotivosBloqueio(dataInicio, dataFim);
+        } else if (view === 'encerramento') {
+            carregarMotivosEncerramento(dataInicio, dataFim);
+        }
+    }
+    
+    function carregarMotivosBloqueio(dataInicio, dataFim) {
+        const loadingOverlay = document.getElementById('loadingOverlayBloqueio');
+        
         if (loadingOverlay) {
             loadingOverlay.classList.add('active');
         }
         
         const formData = new FormData();
-        formData.append('action', 'getMotivosEncerramento');
+        formData.append('action', 'getMotivosBloqueio');
         formData.append('data_inicio', dataInicio);
         formData.append('data_fim', dataFim);
         
-        fetch(AJAX_URL, {
+        fetch(AJAX_URL_BLOQUEIO, {
             method: 'POST',
             body: formData
         })
@@ -465,17 +358,17 @@ $dataFim = date('Y-m-d'); // Today
             return response.json();
         })
         .then(data => {
-            console.log('Response:', data);
+            console.log('Bloqueio Response:', data);
             if (data.success) {
-                renderizarTabela(data.data);
-                showNotification('Dados carregados com sucesso!', 'success');
+                renderizarTabelaBloqueio(data.data);
+                showNotification('Dados de bloqueio carregados com sucesso!', 'success');
             } else {
                 throw new Error(data.error || 'Erro ao processar dados');
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            showNotification('Erro ao carregar dados: ' + error.message, 'error');
+            showNotification('Erro ao carregar dados de bloqueio: ' + error.message, 'error');
         })
         .finally(() => {
             if (loadingOverlay) {
@@ -484,7 +377,49 @@ $dataFim = date('Y-m-d'); // Today
         });
     }
     
-    function exportarCSV() {
+    function carregarMotivosEncerramento(dataInicio, dataFim) {
+        const loadingOverlay = document.getElementById('loadingOverlayEncerramento');
+        
+        if (loadingOverlay) {
+            loadingOverlay.classList.add('active');
+        }
+        
+        const formData = new FormData();
+        formData.append('action', 'getMotivosEncerramento');
+        formData.append('data_inicio', dataInicio);
+        formData.append('data_fim', dataFim);
+        
+        fetch(AJAX_URL_ENCERRAMENTO, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Encerramento Response:', data);
+            if (data.success) {
+                renderizarTabelaEncerramento(data.data);
+                showNotification('Dados de encerramento carregados com sucesso!', 'success');
+            } else {
+                throw new Error(data.error || 'Erro ao processar dados');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification('Erro ao carregar dados de encerramento: ' + error.message, 'error');
+        })
+        .finally(() => {
+            if (loadingOverlay) {
+                loadingOverlay.classList.remove('active');
+            }
+        });
+    }
+    
+    function exportarCSV(view) {
         const dataInicio = document.getElementById('dataInicio')?.value;
         const dataFim = document.getElementById('dataFim')?.value;
         
@@ -495,16 +430,19 @@ $dataFim = date('Y-m-d'); // Today
         
         showNotification('Gerando arquivo CSV...', 'info');
         
+        const ajaxUrl = view === 'bloqueio' ? AJAX_URL_BLOQUEIO : AJAX_URL_ENCERRAMENTO;
+        const action = view === 'bloqueio' ? 'exportCSV' : 'exportCSV';
+        
         // Create a form and submit it to trigger download
         const form = document.createElement('form');
         form.method = 'POST';
-        form.action = AJAX_URL;
+        form.action = ajaxUrl;
         form.style.display = 'none';
         
         const actionInput = document.createElement('input');
         actionInput.type = 'hidden';
         actionInput.name = 'action';
-        actionInput.value = 'exportCSV';
+        actionInput.value = action;
         form.appendChild(actionInput);
         
         const dataInicioInput = document.createElement('input');
@@ -529,11 +467,23 @@ $dataFim = date('Y-m-d'); // Today
         }, 500);
     }
     
-    function renderizarTabela(data) {
+    function renderizarTabelaBloqueio(data) {
+        const thead = document.querySelector('#tabelaMotivosBloqueio thead tr');
+        const tbody = document.getElementById('tableBodyBloqueio');
+        const tfoot = document.querySelector('#tabelaMotivosBloqueio tfoot tr');
+        
+        renderizarTabela(thead, tbody, tfoot, data, 'totalQtdeBloqueio');
+    }
+    
+    function renderizarTabelaEncerramento(data) {
         const thead = document.querySelector('#tabelaMotivosEncerramento thead tr');
-        const tbody = document.getElementById('tableBody');
+        const tbody = document.getElementById('tableBodyEncerramento');
         const tfoot = document.querySelector('#tabelaMotivosEncerramento tfoot tr');
         
+        renderizarTabela(thead, tbody, tfoot, data, 'totalQtdeEncerramento');
+    }
+    
+    function renderizarTabela(thead, tbody, tfoot, data, totalElementId) {
         if (!thead || !tbody || !tfoot) {
             console.error('Table elements not found');
             return;
@@ -618,7 +568,7 @@ $dataFim = date('Y-m-d'); // Today
         }
         
         // Update total footer
-        const totalQtdeEl = document.getElementById('totalQtde');
+        const totalQtdeEl = document.getElementById(totalElementId);
         if (totalQtdeEl) {
             totalQtdeEl.textContent = totalGeral;
         }
@@ -695,3 +645,191 @@ $dataFim = date('Y-m-d'); // Today
         });
     }
 })();
+
+------------
+
+<?php
+require_once 'X:\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\teste\Andre\tabler_portalexpresso_paginaEncerramento\model\encerramento_estat\estatistica_encerramento_model.class.php';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'] ?? '';
+    
+    if ($action === 'getMotivosBloqueio') {
+        try {
+            $dataInicio = $_POST['data_inicio'] ?? null;
+            $dataFim = $_POST['data_fim'] ?? null;
+            
+            $model = new EstatisticaEncerramento();
+            $dados = $model->getMotivosBloqueio($dataInicio, $dataFim);
+            
+            // Process data for table display
+            $processedData = processarMotivosBloqueio($dados);
+            
+            echo json_encode([
+                'success' => true,
+                'data' => $processedData
+            ]);
+        } catch (Exception $e) {
+            echo json_encode([
+                'success' => false,
+                'error' => $e->getMessage()
+            ]);
+        }
+        exit;
+    }
+    
+    if ($action === 'exportCSV') {
+        try {
+            $dataInicio = $_POST['data_inicio'] ?? null;
+            $dataFim = $_POST['data_fim'] ?? null;
+            
+            $model = new EstatisticaEncerramento();
+            $dados = $model->getMotivosBloqueio($dataInicio, $dataFim);
+            
+            // Process data for CSV
+            $processedData = processarMotivosBloqueio($dados);
+            
+            // Generate CSV
+            $filename = 'motivos_bloqueio_' . date('Y-m-d_His') . '.csv';
+            
+            header('Content-Type: text/csv; charset=utf-8');
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+            header('Pragma: no-cache');
+            header('Expires: 0');
+            
+            $output = fopen('php://output', 'w');
+            
+            // Add BOM for Excel UTF-8 support
+            fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+            
+            // Header row
+            $headerRow = ['Motivo Bloqueio', 'QTDE', '%'];
+            foreach ($processedData['meses'] as $mes) {
+                $headerRow[] = formatarMesCSV($mes);
+            }
+            fputcsv($output, $headerRow, ';');
+            
+            // Data rows
+            foreach ($processedData['motivos'] as $motivo => $mesesData) {
+                $totalMotivo = 0;
+                foreach ($processedData['meses'] as $mes) {
+                    $totalMotivo += $mesesData[$mes] ?? 0;
+                }
+                
+                // Skip rows with no data
+                if ($totalMotivo === 0) continue;
+                
+                $row = [
+                    $motivo,
+                    $totalMotivo,
+                    number_format(($totalMotivo / $processedData['total']) * 100, 1, ',', '.') . '%'
+                ];
+                
+                foreach ($processedData['meses'] as $mes) {
+                    $row[] = $mesesData[$mes] ?? 0;
+                }
+                
+                fputcsv($output, $row, ';');
+            }
+            
+            // Total row
+            $totalRow = ['TOTAL', $processedData['total'], '100,0%'];
+            foreach ($processedData['meses'] as $mes) {
+                $totalMes = 0;
+                foreach ($processedData['motivos'] as $mesesData) {
+                    $totalMes += $mesesData[$mes] ?? 0;
+                }
+                $totalRow[] = $totalMes;
+            }
+            fputcsv($output, $totalRow, ';');
+            
+            fclose($output);
+            exit;
+            
+        } catch (Exception $e) {
+            http_response_code(500);
+            echo json_encode([
+                'success' => false,
+                'error' => $e->getMessage()
+            ]);
+        }
+        exit;
+    }
+}
+
+function processarMotivosBloqueio($dados) {
+    $motivos = [
+        'Em processo de Cancelamento' => [],
+        'Inoperante - Retirada de Equipamento' => [],
+        'Depto - Falta de prestação de contas' => [],
+        'Não Liberar - Falar c/ gerente geral' => [],
+        'Correspondente abaixo do ponto' => [],
+        'Inadimplência' => [],
+        'Falta de prestação de contas' => [],
+        'Demais' => []
+    ];
+    
+    $meses = [];
+    $total = 0;
+    
+    if (!$dados || !is_array($dados)) {
+        return [
+            'motivos' => $motivos,
+            'meses' => [],
+            'total' => 0
+        ];
+    }
+    
+    foreach ($dados as $row) {
+        $motivo = trim($row['MOTIVO_BLOQUEIO'] ?? '');
+        $mes = $row['MES_ANO'] ?? '';
+        $qtde = (int)($row['QTDE'] ?? 0);
+        
+        if (empty($mes)) continue;
+        
+        if (!in_array($mes, $meses)) {
+            $meses[] = $mes;
+        }
+        
+        if (!isset($motivos[$motivo])) {
+            if (!isset($motivos['Demais'][$mes])) {
+                $motivos['Demais'][$mes] = 0;
+            }
+            $motivos['Demais'][$mes] += $qtde;
+        } else {
+            if (!isset($motivos[$motivo][$mes])) {
+                $motivos[$motivo][$mes] = 0;
+            }
+            $motivos[$motivo][$mes] += $qtde;
+        }
+        
+        $total += $qtde;
+    }
+    
+    rsort($meses);
+    
+    return [
+        'motivos' => $motivos,
+        'meses' => $meses,
+        'total' => $total
+    ];
+}
+
+function formatarMesCSV($mesAno) {
+    if (!$mesAno) return '';
+    $parts = explode('-', $mesAno);
+    if (count($parts) !== 2) return $mesAno;
+    
+    $ano = $parts[0];
+    $mes = $parts[1];
+    $meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    $mesIndex = (int)$mes - 1;
+    
+    return isset($meses[$mesIndex]) ? $meses[$mesIndex] . '/' . $ano : $mesAno;
+}
+?>
+
+
+-----------
+
+
