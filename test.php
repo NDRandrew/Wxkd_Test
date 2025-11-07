@@ -1,17 +1,17 @@
-Ah, I understand now! You want aggregated data where each MOTIVO_BLOQUEIO has up to 7 rows (one per FAIXA_VOLUME), and QTD_TRANSACOES is the count of blocked stores in that combination. Here's the corrected query:
+Perfect! Using a pre-aggregated table will be much faster. Here's the updated query:
 
 ```sql
 WITH TransacoesContadas AS (
     SELECT 
-        BE.COD_EMPRESA,
+        BE.CHAVE_LOJA,
         BE.MOTIVO_BLOQUEIO,
         BE.DATA_BLOQUEIO,
         (
-            SELECT COUNT(*)
-            FROM PGTOCORSP..TB_EVT12_TRANS T
-            WHERE T.COD_EMPRESA = BE.COD_EMPRESA
-            AND CAST(CONCAT(T.ANO, '-', RIGHT('0' + CAST(T.MES AS VARCHAR(2)), 2), '-01') AS DATE) >= DATEADD(MONTH, -3, BE.DATA_BLOQUEIO)
-            AND CAST(CONCAT(T.ANO, '-', RIGHT('0' + CAST(T.MES AS VARCHAR(2)), 2), '-01') AS DATE) <= BE.DATA_BLOQUEIO
+            SELECT ISNULL(SUM(IND.QTD_ATIVOS), 0)
+            FROM DATAWAREHOUSE..TB_INDICADORES_BE IND
+            WHERE IND.CHAVE_LOJA = BE.CHAVE_LOJA
+            AND CAST(CONCAT(IND.ANO, '-', RIGHT('0' + CAST(IND.MES AS VARCHAR(2)), 2), '-01') AS DATE) >= DATEADD(MONTH, -3, BE.DATA_BLOQUEIO)
+            AND CAST(CONCAT(IND.ANO, '-', RIGHT('0' + CAST(IND.MES AS VARCHAR(2)), 2), '-01') AS DATE) <= BE.DATA_BLOQUEIO
         ) as VOLUME_COUNT
     FROM 
         DATALAKE..DL_BRADESCO_EXPRESSO BE
@@ -19,7 +19,7 @@ WITH TransacoesContadas AS (
         BE.DATA_BLOQUEIO BETWEEN @dataInicio AND @dataFim
         AND BE.MOTIVO_BLOQUEIO IS NOT NULL
     GROUP BY 
-        BE.COD_EMPRESA,
+        BE.CHAVE_LOJA,
         BE.MOTIVO_BLOQUEIO,
         BE.DATA_BLOQUEIO
 ),
@@ -60,41 +60,30 @@ ORDER BY
     END
 ```
 
-## What this returns:
+## Key Performance Improvements:
 
-```
-MOTIVO_BLOQUEIO  | FAIXA_VOLUME  | QTD_BLOQUEADOS
------------------+---------------+----------------
-Inadimplência    | Zero          | 20
-Inadimplência    | 1 a 19        | 180
-Inadimplência    | 20 a 59       | 150
-Inadimplência    | 60 a 149      | 70
-Inadimplência    | 150 a 249     | 25
-Inadimplência    | 250 a 499     | 5
-Fraude           | 1 a 19        | 5
-Fraude           | 20 a 59       | 10
-Fraude           | 60 a 149      | 25
-...
-```
-
-## Key Changes:
-
-**1. COUNT(*) at the end:**
+**1. Pre-aggregated table:**
 ```sql
-COUNT(*) as QTD_BLOQUEADOS
+FROM DATAWAREHOUSE..TB_INDICADORES_BE IND
 ```
-- Counts how many blocked stores fall into each MOTIVO_BLOQUEIO + FAIXA_VOLUME combination
+- Much smaller table with aggregated data instead of individual transactions
 
-**2. GROUP BY both dimensions:**
+**2. SUM instead of COUNT:**
 ```sql
-GROUP BY MOTIVO_BLOQUEIO, FAIXA_VOLUME
+SELECT ISNULL(SUM(IND.QTD_ATIVOS), 0)
 ```
-- Aggregates by both the blocking reason and the volume range
+- Simply sums the already-calculated transaction counts
+- `ISNULL(..., 0)` handles cases where there are no records (returns 0 instead of NULL)
 
-**3. ORDER BY for proper sorting:**
-- Sorts by MOTIVO_BLOQUEIO alphabetically
-- Then by FAIXA_VOLUME in logical order (Zero → Acima de 500)
+**3. Join on CHAVE_LOJA:**
+```sql
+WHERE IND.CHAVE_LOJA = BE.CHAVE_LOJA
+```
+- Connects using the store key
 
-Each MOTIVO_BLOQUEIO will have between 1-7 rows depending on which FAIXA_VOLUME ranges have blocked stores.
+This should be significantly faster since:
+- TB_INDICADORES_BE is pre-aggregated (fewer rows)
+- No need to scan millions of individual transaction records
+- Simple SUM operation instead of COUNT(*)
 
-Shall I update the Model file with this query?
+Would you like me to update the Model file with this optimized query?
