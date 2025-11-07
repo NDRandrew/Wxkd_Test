@@ -1,4 +1,4 @@
-Perfect! Now I understand the correct table structure. Here's the updated query:
+Ah, SQL Server! Let me adjust the syntax:
 
 ```sql
 WITH TransacoesPeriodo AS (
@@ -10,13 +10,13 @@ WITH TransacoesPeriodo AS (
             SELECT COUNT(*)
             FROM PGTOCORSP..TB_EVT12_TRANS T
             WHERE T.COD_EMPRESA = BE.COD_EMPRESA
-            AND CONCAT(T.ANO, '-', LPAD(T.MES, 2, '0'), '-01') >= DATE_SUB(BE.DATA_BLOQUEIO, INTERVAL 3 MONTH)
-            AND CONCAT(T.ANO, '-', LPAD(T.MES, 2, '0'), '-01') <= BE.DATA_BLOQUEIO
+            AND CAST(CONCAT(T.ANO, '-', RIGHT('0' + CAST(T.MES AS VARCHAR(2)), 2), '-01') AS DATE) >= DATEADD(MONTH, -3, BE.DATA_BLOQUEIO)
+            AND CAST(CONCAT(T.ANO, '-', RIGHT('0' + CAST(T.MES AS VARCHAR(2)), 2), '-01') AS DATE) <= BE.DATA_BLOQUEIO
         ) as QTD_TRANSACOES
     FROM 
         DATALAKE..DL_BRADESCO_EXPRESSO BE
     WHERE 
-        BE.DATA_BLOQUEIO BETWEEN :dataInicio AND :dataFim
+        BE.DATA_BLOQUEIO BETWEEN @dataInicio AND @dataFim
         AND BE.MOTIVO_BLOQUEIO IS NOT NULL
     GROUP BY 
         BE.COD_EMPRESA,
@@ -39,47 +39,33 @@ FROM
     TransacoesPeriodo
 ```
 
-## Key Changes:
+## SQL Server Syntax Changes:
 
-**1. Correct tables:**
-- **Main table:** `DATALAKE..DL_BRADESCO_EXPRESSO` (contains MOTIVO_BLOQUEIO and DATA_BLOQUEIO)
-- **Transaction table:** `PGTOCORSP..TB_EVT12_TRANS` (contains ANO, MES for volume counting)
-
-**2. Join on COD_EMPRESA:**
+**1. Padding with zeros (replaces LPAD):**
 ```sql
-WHERE T.COD_EMPRESA = BE.COD_EMPRESA
+RIGHT('0' + CAST(T.MES AS VARCHAR(2)), 2)
 ```
+- Adds '0' prefix, then takes rightmost 2 characters
+- Examples: MES=7 → '07', MES=12 → '12'
 
-**3. Date handling with ANO/MES:**
+**2. Date subtraction (replaces DATE_SUB):**
 ```sql
-CONCAT(T.ANO, '-', LPAD(T.MES, 2, '0'), '-01')
+DATEADD(MONTH, -3, BE.DATA_BLOQUEIO)
 ```
-- Converts ANO (year) and MES (month) into a date format
-- `LPAD(T.MES, 2, '0')` ensures month is always 2 digits (01, 02, etc.)
-- Creates dates like '2025-10-01', '2025-07-01'
+- Subtracts 3 months from DATA_BLOQUEIO
 
-**4. 3-month comparison:**
+**3. Parameters (replaces :param):**
 ```sql
-AND CONCAT(T.ANO, '-', LPAD(T.MES, 2, '0'), '-01') >= DATE_SUB(BE.DATA_BLOQUEIO, INTERVAL 3 MONTH)
-AND CONCAT(T.ANO, '-', LPAD(T.MES, 2, '0'), '-01') <= BE.DATA_BLOQUEIO
+@dataInicio AND @dataFim
 ```
+- SQL Server uses `@` prefix for parameters instead of `:`
 
-## Example:
-
-**User selects:** 2025-10-26 to 2025-10-30
-
-**Blocked store found:** 
-- COD_EMPRESA = 12345
-- DATA_BLOQUEIO = 2025-10-27
-- MOTIVO_BLOQUEIO = "Inadimplência"
-
-**Volume count logic:**
-- 3 months back: 2025-07-27
-- Counts all rows in TB_EVT12_TRANS where:
-  - COD_EMPRESA = 12345
-  - (ANO, MES) from 2025-07 to 2025-10
-  - This includes: ANO=2025 & MES IN (7, 8, 9, 10)
+**4. CAST to DATE:**
+```sql
+CAST(CONCAT(...) AS DATE)
+```
+- Explicitly converts the concatenated string to DATE type
 
 ---
 
-Would you like me to update the Model file with this corrected query?
+Would you like me to update the Model file with this SQL Server compatible query?
