@@ -1,100 +1,941 @@
-Good question! Let me search the conversation to see what the controller and view structure looks like.
+<?php
+session_start();
+?>
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        :root {
+            --chart-bg: #ffffff;
+            --text-color: #262626;
+            --border-color: #e6e6e6;
+        }
 
-Yes! The **Controller** needs to be updated because the query now returns aggregated data instead of individual records. The **View/JS** should remain mostly the same.
+        [data-theme="dark"] {
+            --chart-bg: #1a1a1a;
+            --text-color: #ffffff;
+            --border-color: #333333;
+        }
 
-Here's what needs to change:
+        .chart-container {
+            min-height: 400px;
+            padding: 1rem;
+            background: var(--chart-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
 
-## **Controller Changes**
+        .value-input {
+            margin-bottom: 0.5rem;
+        }
 
-The `processarVolumeTransacoes()` function needs to be simplified since the query already does the counting:
+        .case-tab {
+            cursor: pointer;
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--border-color);
+            margin-right: 0.5rem;
+            border-radius: 4px 4px 0 0;
+        }
 
-```php
-function processarVolumeTransacoes($dados) {
-    // Define the order of volume ranges
-    $faixasOrdem = [
-        'Zero',
-        '1 a 19',
-        '20 a 59',
-        '60 a 149',
-        '150 a 249',
-        '250 a 499',
-        'Acima de 500'
-    ];
+        .case-tab.active {
+            background: var(--chart-bg);
+            border-bottom: 1px solid var(--chart-bg);
+        }
+
+        .saved-cases {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-xl">
+        <!-- Header with Month Selector and Actions -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <div class="row align-items-center">
+                    <div class="col-auto">
+                        <h3 class="card-title">Simulador de Encerramento</h3>
+                    </div>
+                    <div class="col-auto ms-auto">
+                        <select class="form-select" id="monthSelector">
+                            <option value="">Selecione o Mês</option>
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <button class="btn btn-primary" id="btnExport">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon me-1">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="7 10 12 15 17 10"/>
+                                <line x1="12" y1="15" x2="12" y2="3"/>
+                            </svg>
+                            Exportar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Left Side - Historical Charts -->
+            <div class="col-lg-7">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Histórico</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="row" id="historicalCharts">
+                            <!-- Charts will be generated dynamically -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Side - Simulation Cases -->
+            <div class="col-lg-5">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h3 class="card-title">Simulação</h3>
+                            <button class="btn btn-sm btn-primary" id="btnAddCase">+ Novo Caso</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <!-- Case Tabs -->
+                        <div class="d-flex mb-3" id="caseTabs"></div>
+
+                        <!-- Case Content -->
+                        <div id="caseContent">
+                            <div class="chart-container mb-3" id="simulationChart"></div>
+                            
+                            <!-- Values Display -->
+                            <div class="card mb-3">
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-12">
+                                            <strong>REAL_VALUE:</strong> <span id="realValue">0</span>
+                                        </div>
+                                        <div class="col-12">
+                                            <strong>Inauguração:</strong> <span id="inauguracaoValue">0</span>
+                                        </div>
+                                        <div class="col-12">
+                                            <strong>Cancelamento:</strong> <span id="cancelamentoValue">0</span>
+                                        </div>
+                                        <div class="col-12">
+                                            <strong>TOTAL:</strong> <span id="totalValue">0</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- User Input Values -->
+                            <div class="card">
+                                <div class="card-header">
+                                    <h4 class="card-title">Valores de Cancelamento</h4>
+                                </div>
+                                <div class="card-body" id="userInputs">
+                                    <!-- Dynamic inputs will be generated -->
+                                </div>
+                            </div>
+
+                            <!-- Save Case -->
+                            <div class="mt-3">
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="caseName" placeholder="Nome do caso">
+                                    <button class="btn btn-success" id="btnSaveCase">Salvar Caso</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Saved Cases -->
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h3 class="card-title">Casos Salvos</h3>
+                    </div>
+                    <div class="card-body saved-cases" id="savedCasesList">
+                        <!-- Saved cases will appear here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.highcharts.com/highcharts.js"></script>
+    <script src="https://code.highcharts.com/modules/exporting.js"></script>
+    <script src="https://code.highcharts.com/modules/export-data.js"></script>
+    <script src="./js/encerramento/encerramento_simul/simulador_encerramento.js"></script>
+</body>
+</html>
+
+--------------
+
+<?php
+session_start();
+header('Content-Type: application/json');
+
+require_once('../../model/encerramento_simul/simulador_encerramento_model.class.php');
+
+$model = new SimuladorEncerramento();
+$acao = isset($_POST['acao']) ? $_POST['acao'] : '';
+
+try {
+    switch ($acao) {
+        case 'get_historical_data':
+            handleGetHistoricalData($model);
+            break;
+            
+        case 'get_month_data':
+            handleGetMonthData($model);
+            break;
+            
+        case 'save_case':
+            handleSaveCase($model);
+            break;
+            
+        case 'get_saved_cases':
+            handleGetSavedCases($model);
+            break;
+            
+        case 'load_case':
+            handleLoadCase($model);
+            break;
+            
+        case 'delete_case':
+            handleDeleteCase($model);
+            break;
+            
+        default:
+            echo json_encode(['success' => false, 'message' => 'Ação inválida']);
+            break;
+    }
+} catch (Exception $e) {
+    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+}
+
+function handleGetHistoricalData($model) {
+    $month = $_POST['month'];
+    $data = $model->getHistoricalData($month);
     
-    $motivos = [];
-    $totalPorFaixa = [];
-    $total = 0;
+    echo json_encode([
+        'success' => true,
+        'data' => $data
+    ]);
+}
+
+function handleGetMonthData($model) {
+    $month = $_POST['month'];
+    $data = $model->getMonthData($month);
     
-    // Initialize totals for each range
-    foreach ($faixasOrdem as $faixa) {
-        $totalPorFaixa[$faixa] = 0;
+    echo json_encode([
+        'success' => true,
+        'data' => $data
+    ]);
+}
+
+function handleSaveCase($model) {
+    $cod_func = $_SESSION['cod_func'] ?? 0;
+    $name = $_POST['name'];
+    $month = $_POST['month'];
+    $data = $_POST['data'];
+    
+    $result = $model->saveCase($cod_func, $name, $month, $data);
+    
+    echo json_encode([
+        'success' => $result,
+        'message' => $result ? 'Caso salvo com sucesso' : 'Erro ao salvar caso'
+    ]);
+}
+
+function handleGetSavedCases($model) {
+    $cod_func = $_SESSION['cod_func'] ?? 0;
+    $cases = $model->getSavedCases($cod_func);
+    
+    echo json_encode([
+        'success' => true,
+        'cases' => $cases
+    ]);
+}
+
+function handleLoadCase($model) {
+    $case_id = $_POST['case_id'];
+    $caseData = $model->loadCase($case_id);
+    
+    echo json_encode([
+        'success' => true,
+        'data' => $caseData
+    ]);
+}
+
+function handleDeleteCase($model) {
+    $case_id = $_POST['case_id'];
+    $result = $model->deleteCase($case_id);
+    
+    echo json_encode([
+        'success' => $result,
+        'message' => $result ? 'Caso excluído' : 'Erro ao excluir'
+    ]);
+}
+?>
+
+
+--------------
+
+<?php
+require_once('\\\\D4920S010\D4920_2\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\Lib\ClassRepository\geral\MSSQL\NEW_MSSQL.class.php');
+
+#[AllowDynamicProperties]
+class SimuladorEncerramento {
+    private $sql;
+    
+    public function __construct() {
+        $this->sql = new MSSQL('ERP');
     }
     
-    if (!$dados || !is_array($dados)) {
-        return [
-            'motivos' => [],
-            'faixas' => $faixasOrdem,
-            'totalPorFaixa' => $totalPorFaixa,
-            'total' => 0
-        ];
+    public function getSql() {
+        return $this->sql;
     }
+
+    /**
+     * QUERY DESCRIPTIONS NEEDED:
+     * 
+     * 1. QUERY_REAL_VALUE: Get total count for a given period
+     *    Return: COUNT of existing correspondentes
+     * 
+     * 2. QUERY_INAUGURACAO: Get inaugurated count for period
+     *    Return: COUNT of new correspondentes
+     * 
+     * 3. QUERY_CANCELAMENTO: Get cancelled count for period  
+     *    Return: COUNT of cancelled correspondentes
+     * 
+     * 4. QUERY_CANCELAMENTO_TYPES: Get cancellation categories
+     *    Return: List of cancellation reason types
+     */
     
-    // Process already-aggregated data from query
-    foreach ($dados as $row) {
-        $motivo = trim($row['MOTIVO_BLOQUEIO'] ?? '');
-        $faixa = $row['FAIXA_VOLUME'] ?? '';
-        $qtd = (int)($row['QTD_BLOQUEADOS'] ?? 0);
+    public function getHistoricalData($month) {
+        list($year, $monthNum) = explode('-', $month);
+        $periods = $this->calculateHistoricalPeriods($year, $monthNum);
         
-        if (empty($motivo) || empty($faixa)) continue;
-        
-        // Initialize motivo if not exists
-        if (!isset($motivos[$motivo])) {
-            $motivos[$motivo] = [];
-            foreach ($faixasOrdem as $f) {
-                $motivos[$motivo][$f] = 0;
-            }
+        $data = [];
+        foreach ($periods as $period) {
+            $realValue = $this->getRealValue($period['value']);
+            $inauguracao = $this->getInauguracao($period['value']);
+            $cancelamento = $this->getCancelamento($period['value']);
+            
+            $data[] = [
+                'label' => $period['label'],
+                'real_value' => $realValue,
+                'inauguracao' => $inauguracao,
+                'cancelamento' => $cancelamento,
+                'total' => $realValue - $cancelamento + $inauguracao
+            ];
         }
         
-        // Add the count directly (no need to count again)
-        $motivos[$motivo][$faixa] = $qtd;
-        $totalPorFaixa[$faixa] += $qtd;
-        $total += $qtd;
+        return $data;
     }
+
+    private function calculateHistoricalPeriods($year, $month) {
+        $periods = [];
+        
+        // Previous month
+        $prevMonth = $month - 1;
+        $prevYear = $year;
+        if ($prevMonth < 1) {
+            $prevMonth = 12;
+            $prevYear--;
+        }
+        $periods[] = [
+            'label' => date('M/Y', mktime(0, 0, 0, $prevMonth, 1, $prevYear)),
+            'value' => sprintf('%04d-%02d', $prevYear, $prevMonth),
+            'type' => 'month'
+        ];
+        
+        // Last 4 quarters
+        $currentQuarter = ceil($month / 3);
+        for ($i = 1; $i <= 4; $i++) {
+            $quarter = $currentQuarter - $i;
+            $qYear = $year;
+            
+            if ($quarter < 1) {
+                $quarter += 4;
+                $qYear--;
+            }
+            
+            $qLabel = "Q{$quarter}/{$qYear}";
+            $qMonth = ($quarter * 3);
+            
+            $periods[] = [
+                'label' => $qLabel,
+                'value' => sprintf('%04d-Q%d', $qYear, $quarter),
+                'type' => 'quarter'
+            ];
+        }
+        
+        // Same month last year
+        $periods[] = [
+            'label' => date('M/Y', mktime(0, 0, 0, $month, 1, $year - 1)),
+            'value' => sprintf('%04d-%02d', $year - 1, $month),
+            'type' => 'month'
+        ];
+        
+        return $periods;
+    }
+
+    private function getRealValue($period) {
+        // TODO: Replace with actual query
+        $query = "
+            SELECT COUNT(*) as total 
+            FROM DATALAKE..DL_BRADESCO_EXPRESSO 
+            WHERE BE_INAUGURADO = 1 
+            AND FORMAT(DATA_INAUGURACAO, 'yyyy-MM') = '{$period}'
+        ";
+        
+        $result = $this->sql->select($query);
+        return $result ? $result[0]['total'] : 0;
+    }
+
+    private function getInauguracao($period) {
+        // TODO: Replace with actual query
+        $query = "
+            SELECT COUNT(*) as total 
+            FROM DATALAKE..DL_BRADESCO_EXPRESSO 
+            WHERE FORMAT(DATA_INAUGURACAO, 'yyyy-MM') = '{$period}'
+        ";
+        
+        $result = $this->sql->select($query);
+        return $result ? $result[0]['total'] : 0;
+    }
+
+    private function getCancelamento($period) {
+        // TODO: Replace with actual query
+        $query = "
+            SELECT COUNT(*) as total 
+            FROM MESU..TB_LOJAS 
+            WHERE FORMAT(DT_ENCERRAMENTO, 'yyyy-MM') = '{$period}'
+        ";
+        
+        $result = $this->sql->select($query);
+        return $result ? $result[0]['total'] : 0;
+    }
+
+    public function getMonthData($month) {
+        $realValue = $this->getRealValue($month);
+        $inauguracao = $this->getInauguracao($month);
+        
+        return [
+            'real_value' => $realValue,
+            'inauguracao' => $inauguracao,
+            'cancelamento' => 0
+        ];
+    }
+
+    public function getCancelamentoTypes() {
+        // TODO: Replace with actual query to get cancellation reason categories
+        $query = "
+            SELECT DISTINCT MOTIVO_ENCERRAMENTO 
+            FROM MESU..ENCERRAMENTO_TB_PORTAL 
+            WHERE MOTIVO_ENCERRAMENTO IS NOT NULL
+            ORDER BY MOTIVO_ENCERRAMENTO
+        ";
+        
+        $result = $this->sql->select($query);
+        return $result;
+    }
+
+    public function saveCase($cod_func, $name, $month, $data) {
+        $query = "
+            INSERT INTO MESU..TB_SIMULADOR_ENCERRAMENTO_CASOS 
+            (COD_FUNC, NOME_CASO, MES_REF, DADOS_JSON, DATA_CAD) 
+            VALUES (
+                {$cod_func}, 
+                '" . addslashes($name) . "', 
+                '{$month}', 
+                '" . addslashes($data) . "', 
+                GETDATE()
+            )
+        ";
+        
+        return $this->sql->insert($query);
+    }
+
+    public function getSavedCases($cod_func) {
+        $query = "
+            SELECT 
+                ID_CASO as id,
+                NOME_CASO as name,
+                MES_REF as month,
+                DATA_CAD as created_at
+            FROM MESU..TB_SIMULADOR_ENCERRAMENTO_CASOS 
+            WHERE COD_FUNC = {$cod_func}
+            ORDER BY DATA_CAD DESC
+        ";
+        
+        $result = $this->sql->select($query);
+        return $result ? $result : [];
+    }
+
+    public function loadCase($case_id) {
+        $query = "
+            SELECT DADOS_JSON as data
+            FROM MESU..TB_SIMULADOR_ENCERRAMENTO_CASOS 
+            WHERE ID_CASO = " . intval($case_id);
+        
+        $result = $this->sql->select($query);
+        return $result ? json_decode($result[0]['data'], true) : null;
+    }
+
+    public function deleteCase($case_id) {
+        $query = "
+            DELETE FROM MESU..TB_SIMULADOR_ENCERRAMENTO_CASOS 
+            WHERE ID_CASO = " . intval($case_id);
+        
+        return $this->sql->delete($query);
+    }
+
+    public function insert($query) {
+        return $this->sql->insert($query);
+    }
+
+    public function update($query) {
+        return $this->sql->update($query);
+    }
+
+    public function delete($query) {
+        return $this->sql->delete($query);
+    }
+}
+?>
+
+---------------
+
+(function() {
+    'use strict';
+
+    const AJAX_URL = '/control/encerramento_simul/simulador_encerramento_control.php';
     
-    return [
-        'motivos' => $motivos,
-        'faixas' => $faixasOrdem,
-        'totalPorFaixa' => $totalPorFaixa,
-        'total' => $total
-    ];
-}
-```
+    let currentMonth = null;
+    let activeCases = [];
+    let currentCaseIndex = 0;
+    let historicalData = [];
 
-## Key Difference:
+    function initialize() {
+        loadMonthOptions();
+        loadSavedCases();
+        initializeEventListeners();
+        addNewCase();
+    }
 
-**Before (old query):**
-```php
-// Had to COUNT each occurrence
-foreach ($dados as $row) {
-    $motivos[$motivo][$faixa]++;  // Count individual rows
-}
-```
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initialize);
+    } else {
+        initialize();
+    }
 
-**Now (new query):**
-```php
-// Just use the already-counted value
-foreach ($dados as $row) {
-    $motivos[$motivo][$faixa] = $qtd;  // Use QTD_BLOQUEADOS directly
-}
-```
+    function initializeEventListeners() {
+        document.getElementById('monthSelector').addEventListener('change', handleMonthChange);
+        document.getElementById('btnAddCase').addEventListener('click', handleAddCase);
+        document.getElementById('btnSaveCase').addEventListener('click', handleSaveCase);
+        document.getElementById('btnExport').addEventListener('click', handleExport);
+    }
 
-## Files to Update:
+    function loadMonthOptions() {
+        const selector = document.getElementById('monthSelector');
+        const today = new Date();
+        
+        for (let i = 0; i < 12; i++) {
+            const date = new Date(today.getFullYear(), today.getMonth() - i, 1);
+            const option = document.createElement('option');
+            option.value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            option.textContent = date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+            selector.appendChild(option);
+        }
+    }
 
-✅ **Model** - Update query (we already have this)  
-✅ **Controller** - Update `processarVolumeTransacoes()` function (shown above)  
-❌ **View/JS** - **NO CHANGES NEEDED** (it just displays the processed data)  
-❌ **CSV Export** - **NO CHANGES NEEDED** (it uses the same processed data structure)
+    function handleMonthChange(e) {
+        currentMonth = e.target.value;
+        if (currentMonth) {
+            loadHistoricalData();
+            loadMonthData();
+        }
+    }
 
-The View and JS don't need changes because they already work with the structure returned by `processarVolumeTransacoes()`, which we're maintaining the same format.
+    function loadHistoricalData() {
+        const formData = new FormData();
+        formData.append('acao', 'get_historical_data');
+        formData.append('month', currentMonth);
 
-Would you like me to provide the complete updated files (Model + Controller)?
+        fetch(AJAX_URL, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                historicalData = data.data;
+                renderHistoricalCharts();
+            } else {
+                showNotification('Erro ao carregar dados históricos', 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification('Erro ao carregar dados', 'error');
+        });
+    }
+
+    function loadMonthData() {
+        const formData = new FormData();
+        formData.append('acao', 'get_month_data');
+        formData.append('month', currentMonth);
+
+        fetch(AJAX_URL, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                updateCurrentCase(data.data);
+            } else {
+                showNotification('Erro ao carregar dados do mês', 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification('Erro ao carregar dados', 'error');
+        });
+    }
+
+    function renderHistoricalCharts() {
+        const container = document.getElementById('historicalCharts');
+        container.innerHTML = '';
+
+        historicalData.forEach((data, index) => {
+            const col = document.createElement('div');
+            col.className = 'col-md-4 col-sm-6 mb-3';
+            
+            const chartDiv = document.createElement('div');
+            chartDiv.id = `hist-chart-${index}`;
+            chartDiv.style.height = '250px';
+            
+            col.appendChild(chartDiv);
+            container.appendChild(col);
+
+            renderBarChart(chartDiv.id, data);
+        });
+    }
+
+    function renderBarChart(containerId, data) {
+        Highcharts.chart(containerId, {
+            chart: { type: 'column' },
+            title: { text: data.label },
+            xAxis: { categories: ['Valores'] },
+            yAxis: { title: { text: 'Quantidade' } },
+            legend: { enabled: true },
+            series: [
+                { name: 'Real', data: [data.real_value], color: '#0054aa' },
+                { name: 'Inauguração', data: [data.inauguracao], color: '#28a745' },
+                { name: 'Cancelamento', data: [data.cancelamento], color: '#dc3545' },
+                { name: 'Total', data: [data.total], color: '#AC1947' }
+            ],
+            credits: { enabled: false }
+        });
+    }
+
+    function handleAddCase() {
+        if (activeCases.length >= 3) {
+            showNotification('Máximo de 3 casos simultâneos', 'warning');
+            return;
+        }
+        if (!currentMonth) {
+            showNotification('Selecione um mês primeiro', 'warning');
+            return;
+        }
+        addNewCase();
+    }
+
+    function addNewCase() {
+        const newCase = {
+            id: Date.now(),
+            name: `Caso ${activeCases.length + 1}`,
+            values: {},
+            realValue: 0,
+            inauguracao: 0,
+            cancelamento: 0,
+            total: 0
+        };
+        
+        activeCases.push(newCase);
+        currentCaseIndex = activeCases.length - 1;
+        renderCaseTabs();
+        generateInputFields();
+    }
+
+    function renderCaseTabs() {
+        const container = document.getElementById('caseTabs');
+        container.innerHTML = '';
+
+        activeCases.forEach((caseData, index) => {
+            const tab = document.createElement('div');
+            tab.className = 'case-tab' + (index === currentCaseIndex ? ' active' : '');
+            tab.textContent = caseData.name;
+            tab.addEventListener('click', () => switchCase(index));
+            
+            const closeBtn = document.createElement('span');
+            closeBtn.innerHTML = ' &times;';
+            closeBtn.style.cursor = 'pointer';
+            closeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                removeCase(index);
+            });
+            
+            tab.appendChild(closeBtn);
+            container.appendChild(tab);
+        });
+    }
+
+    function switchCase(index) {
+        currentCaseIndex = index;
+        renderCaseTabs();
+        updateCaseDisplay();
+    }
+
+    function removeCase(index) {
+        if (activeCases.length === 1) {
+            showNotification('Deve haver pelo menos um caso', 'warning');
+            return;
+        }
+        
+        activeCases.splice(index, 1);
+        if (currentCaseIndex >= activeCases.length) {
+            currentCaseIndex = activeCases.length - 1;
+        }
+        renderCaseTabs();
+        updateCaseDisplay();
+    }
+
+    function generateInputFields() {
+        const container = document.getElementById('userInputs');
+        container.innerHTML = '';
+
+        // Query will return cancelamento_types
+        const types = ['Tipo A', 'Tipo B', 'Tipo C', 'Tipo D'];
+        
+        types.forEach(type => {
+            const inputGroup = document.createElement('div');
+            inputGroup.className = 'value-input';
+            inputGroup.innerHTML = `
+                <label class="form-label">${type}</label>
+                <input type="number" class="form-control" data-type="${type}" value="0" min="0">
+            `;
+            
+            inputGroup.querySelector('input').addEventListener('input', handleInputChange);
+            container.appendChild(inputGroup);
+        });
+    }
+
+    function handleInputChange() {
+        const currentCase = activeCases[currentCaseIndex];
+        const inputs = document.querySelectorAll('#userInputs input');
+        
+        currentCase.cancelamento = 0;
+        inputs.forEach(input => {
+            const value = parseInt(input.value) || 0;
+            currentCase.values[input.dataset.type] = value;
+            currentCase.cancelamento += value;
+        });
+
+        currentCase.total = currentCase.realValue - currentCase.cancelamento + currentCase.inauguracao;
+        updateCaseDisplay();
+        updateSimulationChart();
+    }
+
+    function updateCurrentCase(data) {
+        const currentCase = activeCases[currentCaseIndex];
+        currentCase.realValue = data.real_value;
+        currentCase.inauguracao = data.inauguracao;
+        updateCaseDisplay();
+        updateSimulationChart();
+    }
+
+    function updateCaseDisplay() {
+        const currentCase = activeCases[currentCaseIndex];
+        document.getElementById('realValue').textContent = currentCase.realValue.toLocaleString();
+        document.getElementById('inauguracaoValue').textContent = currentCase.inauguracao.toLocaleString();
+        document.getElementById('cancelamentoValue').textContent = currentCase.cancelamento.toLocaleString();
+        document.getElementById('totalValue').textContent = currentCase.total.toLocaleString();
+    }
+
+    function updateSimulationChart() {
+        const currentCase = activeCases[currentCaseIndex];
+        
+        Highcharts.chart('simulationChart', {
+            chart: { type: 'column' },
+            title: { text: 'Simulação - ' + currentCase.name },
+            xAxis: { categories: ['Valores'] },
+            yAxis: { title: { text: 'Quantidade' } },
+            legend: { enabled: true },
+            series: [
+                { name: 'Real', data: [currentCase.realValue], color: '#0054aa' },
+                { name: 'Inauguração', data: [currentCase.inauguracao], color: '#28a745' },
+                { name: 'Cancelamento', data: [currentCase.cancelamento], color: '#dc3545' },
+                { name: 'Total', data: [currentCase.total], color: '#AC1947' }
+            ],
+            credits: { enabled: false }
+        });
+    }
+
+    function handleSaveCase() {
+        const caseName = document.getElementById('caseName').value.trim();
+        if (!caseName) {
+            showNotification('Digite um nome para o caso', 'warning');
+            return;
+        }
+
+        const currentCase = activeCases[currentCaseIndex];
+        const formData = new FormData();
+        formData.append('acao', 'save_case');
+        formData.append('name', caseName);
+        formData.append('month', currentMonth);
+        formData.append('data', JSON.stringify(currentCase));
+
+        fetch(AJAX_URL, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showNotification('Caso salvo com sucesso', 'success');
+                document.getElementById('caseName').value = '';
+                loadSavedCases();
+            } else {
+                showNotification('Erro ao salvar caso', 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification('Erro ao salvar', 'error');
+        });
+    }
+
+    function loadSavedCases() {
+        const formData = new FormData();
+        formData.append('acao', 'get_saved_cases');
+
+        fetch(AJAX_URL, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                renderSavedCases(data.cases);
+            }
+        })
+        .catch(error => console.error('Error:', error));
+    }
+
+    function renderSavedCases(cases) {
+        const container = document.getElementById('savedCasesList');
+        container.innerHTML = '';
+
+        if (cases.length === 0) {
+            container.innerHTML = '<p class="text-muted">Nenhum caso salvo</p>';
+            return;
+        }
+
+        cases.forEach(caseData => {
+            const item = document.createElement('div');
+            item.className = 'card mb-2';
+            item.innerHTML = `
+                <div class="card-body py-2">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>${caseData.name}</strong>
+                            <small class="text-muted d-block">${caseData.month}</small>
+                        </div>
+                        <div>
+                            <button class="btn btn-sm btn-primary" onclick="window.loadCase(${caseData.id})">Carregar</button>
+                            <button class="btn btn-sm btn-danger" onclick="window.deleteCase(${caseData.id})">Excluir</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            container.appendChild(item);
+        });
+    }
+
+    window.loadCase = function(caseId) {
+        const formData = new FormData();
+        formData.append('acao', 'load_case');
+        formData.append('case_id', caseId);
+
+        fetch(AJAX_URL, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Load case data into current case
+                showNotification('Caso carregado', 'success');
+            }
+        })
+        .catch(error => console.error('Error:', error));
+    };
+
+    window.deleteCase = function(caseId) {
+        if (!confirm('Deseja excluir este caso?')) return;
+
+        const formData = new FormData();
+        formData.append('acao', 'delete_case');
+        formData.append('case_id', caseId);
+
+        fetch(AJAX_URL, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showNotification('Caso excluído', 'success');
+                loadSavedCases();
+            }
+        })
+        .catch(error => console.error('Error:', error));
+    };
+
+    function handleExport() {
+        const chart = Highcharts.charts.find(c => c && c.renderTo.id === 'simulationChart');
+        if (!chart) return;
+
+        const menu = document.createElement('div');
+        menu.className = 'dropdown-menu show';
+        menu.style.position = 'absolute';
+        menu.innerHTML = `
+            <button class="dropdown-item" data-type="png">PNG</button>
+            <button class="dropdown-item" data-type="jpeg">JPEG</button>
+            <button class="dropdown-item" data-type="pdf">PDF</button>
+            <button class="dropdown-item" data-type="svg">SVG</button>
+        `;
+
+        menu.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('click', () => {
+                chart.exportChart({ type: 'image/' + btn.dataset.type });
+                menu.remove();
+            });
+        });
+
+        document.body.appendChild(menu);
+        setTimeout(() => menu.remove(), 5000);
+    }
+
+    function showNotification(message, type) {
+        console.log(`[${type}] ${message}`);
+        // Implement notification UI
+    }
+
+})();
