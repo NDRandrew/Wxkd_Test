@@ -1,35 +1,27 @@
-I'll search for that conversation to understand the context and make the adjustments you need.
-
-Perfect! I found the conversation. Now I understand the adjustments needed. Let me provide the updated query that:
-
-1. Uses `COUNT()` to count individual VOLUME records
-2. Filters main records by `DATA_BLOQUEIO` within the selected period
-3. For each record, counts VOLUME from the 3 months **prior to that specific DATA_BLOQUEIO**
-
-Here's the adjusted query:
+Perfect! Now I understand the correct table structure. Here's the updated query:
 
 ```sql
 WITH TransacoesPeriodo AS (
     SELECT 
-        F.ID_BE,
-        F.MOTIVO_BLOQUEIO,
-        F.DATA_BLOQUEIO,
+        BE.COD_EMPRESA,
+        BE.MOTIVO_BLOQUEIO,
+        BE.DATA_BLOQUEIO,
         (
             SELECT COUNT(*)
-            FROM FATO_TRANSACAO_CONSOLIDADO V
-            WHERE V.ID_BE = F.ID_BE
-            AND V.DATA_TRANSACAO >= DATE_SUB(F.DATA_BLOQUEIO, INTERVAL 3 MONTH)
-            AND V.DATA_TRANSACAO <= F.DATA_BLOQUEIO
+            FROM PGTOCORSP..TB_EVT12_TRANS T
+            WHERE T.COD_EMPRESA = BE.COD_EMPRESA
+            AND CONCAT(T.ANO, '-', LPAD(T.MES, 2, '0'), '-01') >= DATE_SUB(BE.DATA_BLOQUEIO, INTERVAL 3 MONTH)
+            AND CONCAT(T.ANO, '-', LPAD(T.MES, 2, '0'), '-01') <= BE.DATA_BLOQUEIO
         ) as QTD_TRANSACOES
     FROM 
-        FATO_TRANSACAO_CONSOLIDADO F
+        DATALAKE..DL_BRADESCO_EXPRESSO BE
     WHERE 
-        F.DATA_BLOQUEIO BETWEEN :dataInicio AND :dataFim
-        AND F.MOTIVO_BLOQUEIO IS NOT NULL
+        BE.DATA_BLOQUEIO BETWEEN :dataInicio AND :dataFim
+        AND BE.MOTIVO_BLOQUEIO IS NOT NULL
     GROUP BY 
-        F.ID_BE,
-        F.MOTIVO_BLOQUEIO,
-        F.DATA_BLOQUEIO
+        BE.COD_EMPRESA,
+        BE.MOTIVO_BLOQUEIO,
+        BE.DATA_BLOQUEIO
 )
 SELECT 
     MOTIVO_BLOQUEIO,
@@ -49,37 +41,45 @@ FROM
 
 ## Key Changes:
 
-**1. Subquery for VOLUME count:**
-```sql
-(
-    SELECT COUNT(*)
-    FROM FATO_TRANSACAO_CONSOLIDADO V
-    WHERE V.ID_BE = F.ID_BE
-    AND V.DATA_TRANSACAO >= DATE_SUB(F.DATA_BLOQUEIO, INTERVAL 3 MONTH)
-    AND V.DATA_TRANSACAO <= F.DATA_BLOQUEIO
-) as QTD_TRANSACOES
-```
-- Counts each VOLUME record individually using `COUNT(*)`
-- For each blocked store, it looks back **3 months from its specific DATA_BLOQUEIO**
-- Uses `DATE_SUB(F.DATA_BLOQUEIO, INTERVAL 3 MONTH)` to get the 3-month window
+**1. Correct tables:**
+- **Main table:** `DATALAKE..DL_BRADESCO_EXPRESSO` (contains MOTIVO_BLOQUEIO and DATA_BLOQUEIO)
+- **Transaction table:** `PGTOCORSP..TB_EVT12_TRANS` (contains ANO, MES for volume counting)
 
-**2. Main filter stays on DATA_BLOQUEIO:**
+**2. Join on COD_EMPRESA:**
 ```sql
-WHERE F.DATA_BLOQUEIO BETWEEN :dataInicio AND :dataFim
+WHERE T.COD_EMPRESA = BE.COD_EMPRESA
 ```
-- This determines which blocked stores appear in the view
-- Only shows stores blocked within the selected period
 
-## Example Flow:
+**3. Date handling with ANO/MES:**
+```sql
+CONCAT(T.ANO, '-', LPAD(T.MES, 2, '0'), '-01')
+```
+- Converts ANO (year) and MES (month) into a date format
+- `LPAD(T.MES, 2, '0')` ensures month is always 2 digits (01, 02, etc.)
+- Creates dates like '2025-10-01', '2025-07-01'
+
+**4. 3-month comparison:**
+```sql
+AND CONCAT(T.ANO, '-', LPAD(T.MES, 2, '0'), '-01') >= DATE_SUB(BE.DATA_BLOQUEIO, INTERVAL 3 MONTH)
+AND CONCAT(T.ANO, '-', LPAD(T.MES, 2, '0'), '-01') <= BE.DATA_BLOQUEIO
+```
+
+## Example:
 
 **User selects:** 2025-10-26 to 2025-10-30
 
-**Record found:** ID_BE = 12345, DATA_BLOQUEIO = 2025-10-27
+**Blocked store found:** 
+- COD_EMPRESA = 12345
+- DATA_BLOQUEIO = 2025-10-27
+- MOTIVO_BLOQUEIO = "Inadimplência"
 
-**Volume count period:** 2025-07-27 to 2025-10-27 (3 months back)
-
-**Result:** Count all transactions for this store in that 3-month window → assign to FAIXA_VOLUME
+**Volume count logic:**
+- 3 months back: 2025-07-27
+- Counts all rows in TB_EVT12_TRANS where:
+  - COD_EMPRESA = 12345
+  - (ANO, MES) from 2025-07 to 2025-10
+  - This includes: ANO=2025 & MES IN (7, 8, 9, 10)
 
 ---
 
-Would you like me to update the Model file with this query?
+Would you like me to update the Model file with this corrected query?
