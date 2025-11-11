@@ -186,6 +186,469 @@ session_start();
 </body>
 </html>
 
+----------
+
+<?php
+session_start();
+header('Content-Type: application/json');
+
+require_once('../../model/encerramento_simul/simulador_encerramento_model.class.php');
+
+$model = new SimuladorEncerramento();
+$acao = isset($_POST['acao']) ? $_POST['acao'] : '';
+
+try {
+    switch ($acao) {
+        case 'get_historical_data':
+            handleGetHistoricalData($model);
+            break;
+            
+        case 'get_month_data':
+            handleGetMonthData($model);
+            break;
+            
+        case 'save_case':
+            handleSaveCase($model);
+            break;
+            
+        case 'get_saved_cases':
+            handleGetSavedCases($model);
+            break;
+            
+        case 'load_case':
+            handleLoadCase($model);
+            break;
+            
+        case 'delete_case':
+            handleDeleteCase($model);
+            break;
+            
+        case 'export_pdf':
+            handleExportPDF($model);
+            break;
+            
+        default:
+            echo json_encode(['success' => false, 'message' => 'Ação inválida']);
+            break;
+    }
+} catch (Exception $e) {
+    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+}
+
+function handleGetHistoricalData($model) {
+    $month = $_POST['month'];
+    $data = $model->getHistoricalData($month);
+    
+    echo json_encode([
+        'success' => true,
+        'data' => $data
+    ]);
+}
+
+function handleGetMonthData($model) {
+    $month = $_POST['month'];
+    $data = $model->getMonthData($month);
+    
+    echo json_encode([
+        'success' => true,
+        'data' => $data
+    ]);
+}
+
+function handleSaveCase($model) {
+    $cod_func = $_SESSION['cod_func'] ?? 0;
+    $name = $_POST['name'];
+    $month = $_POST['month'];
+    $data = $_POST['data'];
+    
+    $result = $model->saveCase($cod_func, $name, $month, $data);
+    
+    echo json_encode([
+        'success' => $result,
+        'message' => $result ? 'Caso salvo com sucesso' : 'Erro ao salvar caso'
+    ]);
+}
+
+function handleGetSavedCases($model) {
+    $cod_func = $_SESSION['cod_func'] ?? 0;
+    $cases = $model->getSavedCases($cod_func);
+    
+    echo json_encode([
+        'success' => true,
+        'cases' => $cases
+    ]);
+}
+
+function handleLoadCase($model) {
+    $case_id = $_POST['case_id'];
+    $caseData = $model->loadCase($case_id);
+    
+    echo json_encode([
+        'success' => true,
+        'data' => $caseData
+    ]);
+}
+
+function handleDeleteCase($model) {
+    $case_id = $_POST['case_id'];
+    $result = $model->deleteCase($case_id);
+    
+    echo json_encode([
+        'success' => $result,
+        'message' => $result ? 'Caso excluído' : 'Erro ao excluir'
+    ]);
+}
+
+function handleExportPDF($model) {
+    $data = json_decode($_POST['data'], true);
+    
+    // Generate PDF
+    $pdfContent = $model->generatePDF($data);
+    
+    // Set headers for PDF download
+    header('Content-Type: application/pdf');
+    header('Content-Disposition: attachment; filename="simulador_encerramento_' . $data['month'] . '.pdf"');
+    header('Content-Length: ' . strlen($pdfContent));
+    
+    echo $pdfContent;
+    exit;
+}
+?>
+
+
+---------
+
+<?php
+require_once('\\\\D4920S010\D4920_2\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\Lib\ClassRepository\geral\MSSQL\NEW_MSSQL.class.php');
+
+#[AllowDynamicProperties]
+class SimuladorEncerramento {
+    private $sql;
+    
+    public function __construct() {
+        $this->sql = new MSSQL('ERP');
+    }
+    
+    public function getSql() {
+        return $this->sql;
+    }
+
+    /**
+     * QUERY DESCRIPTIONS NEEDED:
+     * 
+     * 1. QUERY_REAL_VALUE: Get total count for a given period
+     *    Return: COUNT of existing correspondentes
+     * 
+     * 2. QUERY_INAUGURACAO: Get inaugurated count for period
+     *    Return: COUNT of new correspondentes
+     * 
+     * 3. QUERY_CANCELAMENTO: Get cancelled count for period  
+     *    Return: COUNT of cancelled correspondentes
+     * 
+     * 4. QUERY_CANCELAMENTO_TYPES: Get cancellation categories
+     *    Return: List of cancellation reason types
+     */
+    
+    public function getHistoricalData($month) {
+        list($year, $monthNum) = explode('-', $month);
+        $periods = $this->calculateHistoricalPeriods($year, $monthNum);
+        
+        $data = [];
+        foreach ($periods as $period) {
+            $realValue = $this->getRealValue($period['value']);
+            $inauguracao = $this->getInauguracao($period['value']);
+            $cancelamento = $this->getCancelamento($period['value']);
+            
+            $data[] = [
+                'label' => $period['label'],
+                'real_value' => $realValue,
+                'inauguracao' => $inauguracao,
+                'cancelamento' => $cancelamento,
+                'total' => $realValue - $cancelamento + $inauguracao
+            ];
+        }
+        
+        return $data;
+    }
+
+    private function calculateHistoricalPeriods($year, $month) {
+        $periods = [];
+        
+        // Previous month
+        $prevMonth = $month - 1;
+        $prevYear = $year;
+        if ($prevMonth < 1) {
+            $prevMonth = 12;
+            $prevYear--;
+        }
+        $periods[] = [
+            'label' => date('M/Y', mktime(0, 0, 0, $prevMonth, 1, $prevYear)),
+            'value' => sprintf('%04d-%02d', $prevYear, $prevMonth),
+            'type' => 'month'
+        ];
+        
+        // Last 4 quarters
+        $currentQuarter = ceil($month / 3);
+        for ($i = 1; $i <= 4; $i++) {
+            $quarter = $currentQuarter - $i;
+            $qYear = $year;
+            
+            if ($quarter < 1) {
+                $quarter += 4;
+                $qYear--;
+            }
+            
+            $qLabel = "Q{$quarter}/{$qYear}";
+            $qMonth = ($quarter * 3);
+            
+            $periods[] = [
+                'label' => $qLabel,
+                'value' => sprintf('%04d-Q%d', $qYear, $quarter),
+                'type' => 'quarter'
+            ];
+        }
+        
+        // Same month last year
+        $periods[] = [
+            'label' => date('M/Y', mktime(0, 0, 0, $month, 1, $year - 1)),
+            'value' => sprintf('%04d-%02d', $year - 1, $month),
+            'type' => 'month'
+        ];
+        
+        return $periods;
+    }
+
+    private function getRealValue($period) {
+        error_log("SimuladorEncerramento::getRealValue - Period: " . $period);
+        
+        // TODO: Replace with actual query
+        $query = "
+            SELECT COUNT(*) as total 
+            FROM DATALAKE..DL_BRADESCO_EXPRESSO 
+            WHERE BE_INAUGURADO = 1 
+            AND FORMAT(DATA_INAUGURACAO, 'yyyy-MM') = '{$period}'
+        ";
+        
+        $result = $this->sql->select($query);
+        return $result ? $result[0]['total'] : 0;
+    }
+
+    private function getInauguracao($period) {
+        error_log("SimuladorEncerramento::getInauguracao - Period: " . $period);
+        
+        // TODO: Replace with actual query
+        $query = "
+            SELECT COUNT(*) as total 
+            FROM DATALAKE..DL_BRADESCO_EXPRESSO 
+            WHERE FORMAT(DATA_INAUGURACAO, 'yyyy-MM') = '{$period}'
+        ";
+        
+        $result = $this->sql->select($query);
+        return $result ? $result[0]['total'] : 0;
+    }
+
+    private function getCancelamento($period) {
+        error_log("SimuladorEncerramento::getCancelamento - Period: " . $period);
+        
+        // TODO: Replace with actual query
+        $query = "
+            SELECT COUNT(*) as total 
+            FROM MESU..TB_LOJAS 
+            WHERE FORMAT(DT_ENCERRAMENTO, 'yyyy-MM') = '{$period}'
+        ";
+        
+        $result = $this->sql->select($query);
+        return $result ? $result[0]['total'] : 0;
+    }
+
+    public function getMonthData($month) {
+        $realValue = $this->getRealValue($month);
+        $inauguracao = $this->getInauguracao($month);
+        
+        return [
+            'real_value' => $realValue,
+            'inauguracao' => $inauguracao,
+            'cancelamento' => 0
+        ];
+    }
+
+    public function getCancelamentoTypes() {
+        // TODO: Replace with actual query to get cancellation reason categories
+        $query = "
+            SELECT DISTINCT MOTIVO_ENCERRAMENTO 
+            FROM MESU..ENCERRAMENTO_TB_PORTAL 
+            WHERE MOTIVO_ENCERRAMENTO IS NOT NULL
+            ORDER BY MOTIVO_ENCERRAMENTO
+        ";
+        
+        $result = $this->sql->select($query);
+        return $result;
+    }
+
+    public function saveCase($cod_func, $name, $month, $data) {
+        $query = "
+            INSERT INTO MESU..TB_SIMULADOR_ENCERRAMENTO_CASOS 
+            (COD_FUNC, NOME_CASO, MES_REF, DADOS_JSON, DATA_CAD) 
+            VALUES (
+                {$cod_func}, 
+                '" . addslashes($name) . "', 
+                '{$month}', 
+                '" . addslashes($data) . "', 
+                GETDATE()
+            )
+        ";
+        
+        return $this->sql->insert($query);
+    }
+
+    public function getSavedCases($cod_func) {
+        $query = "
+            SELECT 
+                ID_CASO as id,
+                NOME_CASO as name,
+                MES_REF as month,
+                DATA_CAD as created_at
+            FROM MESU..TB_SIMULADOR_ENCERRAMENTO_CASOS 
+            WHERE COD_FUNC = {$cod_func}
+            ORDER BY DATA_CAD DESC
+        ";
+        
+        $result = $this->sql->select($query);
+        return $result ? $result : [];
+    }
+
+    public function loadCase($case_id) {
+        $query = "
+            SELECT DADOS_JSON as data
+            FROM MESU..TB_SIMULADOR_ENCERRAMENTO_CASOS 
+            WHERE ID_CASO = " . intval($case_id);
+        
+        $result = $this->sql->select($query);
+        return $result ? json_decode($result[0]['data'], true) : null;
+    }
+
+    public function deleteCase($case_id) {
+        $query = "
+            DELETE FROM MESU..TB_SIMULADOR_ENCERRAMENTO_CASOS 
+            WHERE ID_CASO = " . intval($case_id);
+        
+        return $this->sql->delete($query);
+    }
+
+    public function insert($query) {
+        return $this->sql->insert($query);
+    }
+
+    public function update($query) {
+        return $this->sql->update($query);
+    }
+
+    public function delete($query) {
+        return $this->sql->delete($query);
+    }
+
+    public function generatePDF($data) {
+        require_once('\\\\D4920S010\D4920_2\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\Lib\fpdf\fpdf.php');
+        
+        $pdf = new FPDF('P', 'mm', 'A4');
+        $pdf->AddPage();
+        $pdf->SetAutoPageBreak(true, 15);
+        
+        // Title
+        $pdf->SetFont('Arial', 'B', 18);
+        $pdf->Cell(0, 10, utf8_decode('Simulador de Encerramento'), 0, 1, 'C');
+        $pdf->SetFont('Arial', '', 12);
+        $pdf->Cell(0, 8, utf8_decode('Mês de Referência: ' . $data['month']), 0, 1, 'C');
+        $pdf->Ln(5);
+        
+        // Historical Section
+        $pdf->SetFont('Arial', 'B', 14);
+        $pdf->Cell(0, 8, utf8_decode('Histórico'), 0, 1);
+        $pdf->Ln(2);
+        
+        // Historical table header
+        $pdf->SetFillColor(172, 25, 71);
+        $pdf->SetTextColor(255, 255, 255);
+        $pdf->SetFont('Arial', 'B', 9);
+        $pdf->Cell(40, 7, utf8_decode('Período'), 1, 0, 'C', true);
+        $pdf->Cell(30, 7, 'Real', 1, 0, 'C', true);
+        $pdf->Cell(30, 7, utf8_decode('Inauguração'), 1, 0, 'C', true);
+        $pdf->Cell(30, 7, 'Cancelamento', 1, 0, 'C', true);
+        $pdf->Cell(30, 7, 'Total', 1, 1, 'C', true);
+        
+        // Historical table body
+        $pdf->SetTextColor(0, 0, 0);
+        $pdf->SetFont('Arial', '', 9);
+        foreach ($data['historical'] as $hist) {
+            $pdf->Cell(40, 6, utf8_decode($hist['label']), 1, 0, 'L');
+            $pdf->Cell(30, 6, number_format($hist['real_value'], 0, ',', '.'), 1, 0, 'R');
+            $pdf->Cell(30, 6, number_format($hist['inauguracao'], 0, ',', '.'), 1, 0, 'R');
+            $pdf->Cell(30, 6, number_format($hist['cancelamento'], 0, ',', '.'), 1, 0, 'R');
+            $pdf->Cell(30, 6, number_format($hist['total'], 0, ',', '.'), 1, 1, 'R');
+        }
+        
+        $pdf->Ln(8);
+        
+        // Cases Section
+        $pdf->SetFont('Arial', 'B', 14);
+        $pdf->Cell(0, 8, 'Casos Simulados', 0, 1);
+        $pdf->Ln(2);
+        
+        foreach ($data['cases'] as $case) {
+            // Case title
+            $pdf->SetFont('Arial', 'B', 12);
+            $pdf->Cell(0, 7, utf8_decode($case['name']), 0, 1);
+            $pdf->Ln(1);
+            
+            // Case data table
+            $pdf->SetFont('Arial', 'B', 9);
+            $pdf->Cell(100, 6, '', 0, 0);
+            $pdf->SetFont('Arial', '', 9);
+            $pdf->Ln(0);
+            
+            $pdf->SetFont('Arial', 'B', 9);
+            $pdf->Cell(100, 6, 'Real Value:', 1, 0, 'L');
+            $pdf->SetFont('Arial', '', 9);
+            $pdf->Cell(60, 6, number_format($case['realValue'], 0, ',', '.'), 1, 1, 'R');
+            
+            $pdf->SetFont('Arial', 'B', 9);
+            $pdf->Cell(100, 6, utf8_decode('Inauguração:'), 1, 0, 'L');
+            $pdf->SetFont('Arial', '', 9);
+            $pdf->Cell(60, 6, number_format($case['inauguracao'], 0, ',', '.'), 1, 1, 'R');
+            
+            $pdf->SetFont('Arial', 'B', 9);
+            $pdf->Cell(100, 6, 'Cancelamento:', 1, 0, 'L');
+            $pdf->SetFont('Arial', '', 9);
+            $pdf->Cell(60, 6, number_format($case['cancelamento'], 0, ',', '.'), 1, 1, 'R');
+            
+            $pdf->SetFillColor(240, 240, 240);
+            $pdf->SetFont('Arial', 'B', 10);
+            $pdf->Cell(100, 7, 'Total:', 1, 0, 'L', true);
+            $pdf->Cell(60, 7, number_format($case['total'], 0, ',', '.'), 1, 1, 'R', true);
+            
+            // Breakdown
+            if (!empty($case['values'])) {
+                $pdf->Ln(2);
+                $pdf->SetFont('Arial', 'B', 9);
+                $pdf->Cell(0, 6, 'Detalhamento:', 0, 1);
+                $pdf->SetFont('Arial', '', 9);
+                
+                foreach ($case['values'] as $type => $value) {
+                    if ($value > 0) {
+                        $pdf->Cell(100, 5, utf8_decode('  ' . $type), 1, 0, 'L');
+                        $pdf->Cell(60, 5, number_format($value, 0, ',', '.'), 1, 1, 'R');
+                    }
+                }
+            }
+            
+            $pdf->Ln(5);
+        }
+        
+        return $pdf->Output('S');
+    }
+}
+?>
+
 
 ---------
 
@@ -714,435 +1177,3 @@ session_start();
     }
 
 })();
-
-
-----------
-
-<?php
-session_start();
-header('Content-Type: application/json');
-
-require_once('../../model/encerramento_simul/simulador_encerramento_model.class.php');
-
-$model = new SimuladorEncerramento();
-$acao = isset($_POST['acao']) ? $_POST['acao'] : '';
-
-try {
-    switch ($acao) {
-        case 'get_historical_data':
-            handleGetHistoricalData($model);
-            break;
-            
-        case 'get_month_data':
-            handleGetMonthData($model);
-            break;
-            
-        case 'save_case':
-            handleSaveCase($model);
-            break;
-            
-        case 'get_saved_cases':
-            handleGetSavedCases($model);
-            break;
-            
-        case 'load_case':
-            handleLoadCase($model);
-            break;
-            
-        case 'delete_case':
-            handleDeleteCase($model);
-            break;
-            
-        case 'export_pdf':
-            handleExportPDF($model);
-            break;
-            
-        default:
-            echo json_encode(['success' => false, 'message' => 'Ação inválida']);
-            break;
-    }
-} catch (Exception $e) {
-    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
-}
-
-function handleGetHistoricalData($model) {
-    $month = $_POST['month'];
-    $data = $model->getHistoricalData($month);
-    
-    echo json_encode([
-        'success' => true,
-        'data' => $data
-    ]);
-}
-
-function handleGetMonthData($model) {
-    $month = $_POST['month'];
-    $data = $model->getMonthData($month);
-    
-    echo json_encode([
-        'success' => true,
-        'data' => $data
-    ]);
-}
-
-function handleSaveCase($model) {
-    $cod_func = $_SESSION['cod_func'] ?? 0;
-    $name = $_POST['name'];
-    $month = $_POST['month'];
-    $data = $_POST['data'];
-    
-    $result = $model->saveCase($cod_func, $name, $month, $data);
-    
-    echo json_encode([
-        'success' => $result,
-        'message' => $result ? 'Caso salvo com sucesso' : 'Erro ao salvar caso'
-    ]);
-}
-
-function handleGetSavedCases($model) {
-    $cod_func = $_SESSION['cod_func'] ?? 0;
-    $cases = $model->getSavedCases($cod_func);
-    
-    echo json_encode([
-        'success' => true,
-        'cases' => $cases
-    ]);
-}
-
-function handleLoadCase($model) {
-    $case_id = $_POST['case_id'];
-    $caseData = $model->loadCase($case_id);
-    
-    echo json_encode([
-        'success' => true,
-        'data' => $caseData
-    ]);
-}
-
-function handleDeleteCase($model) {
-    $case_id = $_POST['case_id'];
-    $result = $model->deleteCase($case_id);
-    
-    echo json_encode([
-        'success' => $result,
-        'message' => $result ? 'Caso excluído' : 'Erro ao excluir'
-    ]);
-}
-
-function handleExportPDF($model) {
-    $data = json_decode($_POST['data'], true);
-    
-    // Generate PDF
-    $pdfContent = $model->generatePDF($data);
-    
-    // Set headers for PDF download
-    header('Content-Type: application/pdf');
-    header('Content-Disposition: attachment; filename="simulador_encerramento_' . $data['month'] . '.pdf"');
-    header('Content-Length: ' . strlen($pdfContent));
-    
-    echo $pdfContent;
-    exit;
-}
-?>
-
-
----------
-
-<?php
-require_once('\\\\D4920S010\D4920_2\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\Lib\ClassRepository\geral\MSSQL\NEW_MSSQL.class.php');
-
-#[AllowDynamicProperties]
-class SimuladorEncerramento {
-    private $sql;
-    
-    public function __construct() {
-        $this->sql = new MSSQL('ERP');
-    }
-    
-    public function getSql() {
-        return $this->sql;
-    }
-
-    /**
-     * QUERY DESCRIPTIONS NEEDED:
-     * 
-     * 1. QUERY_REAL_VALUE: Get total count for a given period
-     *    Return: COUNT of existing correspondentes
-     * 
-     * 2. QUERY_INAUGURACAO: Get inaugurated count for period
-     *    Return: COUNT of new correspondentes
-     * 
-     * 3. QUERY_CANCELAMENTO: Get cancelled count for period  
-     *    Return: COUNT of cancelled correspondentes
-     * 
-     * 4. QUERY_CANCELAMENTO_TYPES: Get cancellation categories
-     *    Return: List of cancellation reason types
-     */
-    
-    public function getHistoricalData($month) {
-        list($year, $monthNum) = explode('-', $month);
-        $periods = $this->calculateHistoricalPeriods($year, $monthNum);
-        
-        $data = [];
-        foreach ($periods as $period) {
-            $realValue = $this->getRealValue($period['value']);
-            $inauguracao = $this->getInauguracao($period['value']);
-            $cancelamento = $this->getCancelamento($period['value']);
-            
-            $data[] = [
-                'label' => $period['label'],
-                'real_value' => $realValue,
-                'inauguracao' => $inauguracao,
-                'cancelamento' => $cancelamento,
-                'total' => $realValue - $cancelamento + $inauguracao
-            ];
-        }
-        
-        return $data;
-    }
-
-    private function calculateHistoricalPeriods($year, $month) {
-        $periods = [];
-        
-        // Previous month
-        $prevMonth = $month - 1;
-        $prevYear = $year;
-        if ($prevMonth < 1) {
-            $prevMonth = 12;
-            $prevYear--;
-        }
-        $periods[] = [
-            'label' => date('M/Y', mktime(0, 0, 0, $prevMonth, 1, $prevYear)),
-            'value' => sprintf('%04d-%02d', $prevYear, $prevMonth),
-            'type' => 'month'
-        ];
-        
-        // Last 4 quarters
-        $currentQuarter = ceil($month / 3);
-        for ($i = 1; $i <= 4; $i++) {
-            $quarter = $currentQuarter - $i;
-            $qYear = $year;
-            
-            if ($quarter < 1) {
-                $quarter += 4;
-                $qYear--;
-            }
-            
-            $qLabel = "Q{$quarter}/{$qYear}";
-            $qMonth = ($quarter * 3);
-            
-            $periods[] = [
-                'label' => $qLabel,
-                'value' => sprintf('%04d-Q%d', $qYear, $quarter),
-                'type' => 'quarter'
-            ];
-        }
-        
-        // Same month last year
-        $periods[] = [
-            'label' => date('M/Y', mktime(0, 0, 0, $month, 1, $year - 1)),
-            'value' => sprintf('%04d-%02d', $year - 1, $month),
-            'type' => 'month'
-        ];
-        
-        return $periods;
-    }
-
-    private function getRealValue($period) {
-        error_log("SimuladorEncerramento::getRealValue - Period: " . $period);
-        
-        // TODO: Replace with actual query
-        $query = "
-            SELECT COUNT(*) as total 
-            FROM DATALAKE..DL_BRADESCO_EXPRESSO 
-            WHERE BE_INAUGURADO = 1 
-            AND FORMAT(DATA_INAUGURACAO, 'yyyy-MM') = '{$period}'
-        ";
-        
-        $result = $this->sql->select($query);
-        return $result ? $result[0]['total'] : 0;
-    }
-
-    private function getInauguracao($period) {
-        error_log("SimuladorEncerramento::getInauguracao - Period: " . $period);
-        
-        // TODO: Replace with actual query
-        $query = "
-            SELECT COUNT(*) as total 
-            FROM DATALAKE..DL_BRADESCO_EXPRESSO 
-            WHERE FORMAT(DATA_INAUGURACAO, 'yyyy-MM') = '{$period}'
-        ";
-        
-        $result = $this->sql->select($query);
-        return $result ? $result[0]['total'] : 0;
-    }
-
-    private function getCancelamento($period) {
-        error_log("SimuladorEncerramento::getCancelamento - Period: " . $period);
-        
-        // TODO: Replace with actual query
-        $query = "
-            SELECT COUNT(*) as total 
-            FROM MESU..TB_LOJAS 
-            WHERE FORMAT(DT_ENCERRAMENTO, 'yyyy-MM') = '{$period}'
-        ";
-        
-        $result = $this->sql->select($query);
-        return $result ? $result[0]['total'] : 0;
-    }
-
-    public function getMonthData($month) {
-        $realValue = $this->getRealValue($month);
-        $inauguracao = $this->getInauguracao($month);
-        
-        return [
-            'real_value' => $realValue,
-            'inauguracao' => $inauguracao,
-            'cancelamento' => 0
-        ];
-    }
-
-    public function getCancelamentoTypes() {
-        // TODO: Replace with actual query to get cancellation reason categories
-        $query = "
-            SELECT DISTINCT MOTIVO_ENCERRAMENTO 
-            FROM MESU..ENCERRAMENTO_TB_PORTAL 
-            WHERE MOTIVO_ENCERRAMENTO IS NOT NULL
-            ORDER BY MOTIVO_ENCERRAMENTO
-        ";
-        
-        $result = $this->sql->select($query);
-        return $result;
-    }
-
-    public function saveCase($cod_func, $name, $month, $data) {
-        $query = "
-            INSERT INTO MESU..TB_SIMULADOR_ENCERRAMENTO_CASOS 
-            (COD_FUNC, NOME_CASO, MES_REF, DADOS_JSON, DATA_CAD) 
-            VALUES (
-                {$cod_func}, 
-                '" . addslashes($name) . "', 
-                '{$month}', 
-                '" . addslashes($data) . "', 
-                GETDATE()
-            )
-        ";
-        
-        return $this->sql->insert($query);
-    }
-
-    public function getSavedCases($cod_func) {
-        $query = "
-            SELECT 
-                ID_CASO as id,
-                NOME_CASO as name,
-                MES_REF as month,
-                DATA_CAD as created_at
-            FROM MESU..TB_SIMULADOR_ENCERRAMENTO_CASOS 
-            WHERE COD_FUNC = {$cod_func}
-            ORDER BY DATA_CAD DESC
-        ";
-        
-        $result = $this->sql->select($query);
-        return $result ? $result : [];
-    }
-
-    public function loadCase($case_id) {
-        $query = "
-            SELECT DADOS_JSON as data
-            FROM MESU..TB_SIMULADOR_ENCERRAMENTO_CASOS 
-            WHERE ID_CASO = " . intval($case_id);
-        
-        $result = $this->sql->select($query);
-        return $result ? json_decode($result[0]['data'], true) : null;
-    }
-
-    public function deleteCase($case_id) {
-        $query = "
-            DELETE FROM MESU..TB_SIMULADOR_ENCERRAMENTO_CASOS 
-            WHERE ID_CASO = " . intval($case_id);
-        
-        return $this->sql->delete($query);
-    }
-
-    public function insert($query) {
-        return $this->sql->insert($query);
-    }
-
-    public function update($query) {
-        return $this->sql->update($query);
-    }
-
-    public function delete($query) {
-        return $this->sql->delete($query);
-    }
-
-    public function generatePDF($data) {
-        // Create HTML content for PDF
-        $html = $this->buildPDFHTML($data);
-        
-        // Use TCPDF or similar library to generate PDF
-        // For now, creating a simple HTML-based approach
-        require_once('\\\\D4920S010\D4920_2\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\Lib\tcpdf\tcpdf.php');
-        
-        $pdf = new TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
-        $pdf->SetCreator('Portal Expresso');
-        $pdf->SetAuthor('Portal Expresso');
-        $pdf->SetTitle('Simulador de Encerramento - ' . $data['month']);
-        $pdf->SetMargins(15, 15, 15);
-        $pdf->SetAutoPageBreak(TRUE, 15);
-        $pdf->AddPage();
-        
-        $pdf->writeHTML($html, true, false, true, false, '');
-        
-        return $pdf->Output('', 'S');
-    }
-
-    private function buildPDFHTML($data) {
-        $html = '<h1>Simulador de Encerramento</h1>';
-        $html .= '<h2>Mês de Referência: ' . $data['month'] . '</h2>';
-        
-        // Historical data section
-        $html .= '<h3>Histórico</h3>';
-        $html .= '<table border="1" cellpadding="5" style="width:100%">';
-        $html .= '<thead>';
-        $html .= '<tr style="background-color:#AC1947;color:#fff;">';
-        $html .= '<th>Período</th><th>Real</th><th>Inauguração</th><th>Cancelamento</th><th>Total</th>';
-        $html .= '</tr></thead><tbody>';
-        
-        foreach ($data['historical'] as $hist) {
-            $html .= '<tr>';
-            $html .= '<td><strong>' . $hist['label'] . '</strong></td>';
-            $html .= '<td align="right">' . number_format($hist['real_value'], 0, ',', '.') . '</td>';
-            $html .= '<td align="right">' . number_format($hist['inauguracao'], 0, ',', '.') . '</td>';
-            $html .= '<td align="right">' . number_format($hist['cancelamento'], 0, ',', '.') . '</td>';
-            $html .= '<td align="right"><strong>' . number_format($hist['total'], 0, ',', '.') . '</strong></td>';
-            $html .= '</tr>';
-        }
-        $html .= '</tbody></table>';
-        
-        // Cases section
-        $html .= '<h3>Casos Simulados</h3>';
-        foreach ($data['cases'] as $case) {
-            $html .= '<h4>' . $case['name'] . '</h4>';
-            $html .= '<table border="1" cellpadding="5" style="width:100%;margin-bottom:20px;">';
-            $html .= '<tr><td><strong>Real Value:</strong></td><td align="right">' . number_format($case['realValue'], 0, ',', '.') . '</td></tr>';
-            $html .= '<tr><td><strong>Inauguração:</strong></td><td align="right">' . number_format($case['inauguracao'], 0, ',', '.') . '</td></tr>';
-            $html .= '<tr><td><strong>Cancelamento:</strong></td><td align="right">' . number_format($case['cancelamento'], 0, ',', '.') . '</td></tr>';
-            $html .= '<tr style="background-color:#f0f0f0;"><td><strong>Total:</strong></td><td align="right"><strong>' . number_format($case['total'], 0, ',', '.') . '</strong></td></tr>';
-            
-            if (!empty($case['values'])) {
-                $html .= '<tr><td colspan="2"><strong>Detalhamento:</strong></td></tr>';
-                foreach ($case['values'] as $type => $value) {
-                    if ($value > 0) {
-                        $html .= '<tr><td>' . $type . '</td><td align="right">' . number_format($value, 0, ',', '.') . '</td></tr>';
-                    }
-                }
-            }
-            $html .= '</table>';
-        }
-        
-        return $html;
-    }
-}
-?>
