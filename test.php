@@ -168,6 +168,9 @@ class SimuladorEncerramento {
     public function saveCase($cod_func, $name, $month, $data) {
         $month = date('Y-m-01', strtotime($month));
         
+        // Don't use addslashes on JSON - just escape single quotes for SQL
+        $dataEscaped = str_replace("'", "''", $data);
+        
         $query = "
             INSERT INTO MESU..TB_SIMULADOR_ENCERRAMENTO_CASOS 
             (COD_FUNC, NOME_CASO, MES_REF, DADOS_JSON, DATA_CAD) 
@@ -175,7 +178,7 @@ class SimuladorEncerramento {
                 {$cod_func}, 
                 '" . addslashes($name) . "', 
                 '{$month}', 
-                '" . addslashes($data) . "', 
+                '{$dataEscaped}', 
                 GETDATE()
             )
         ";
@@ -202,31 +205,23 @@ class SimuladorEncerramento {
     public function loadCase($case_id) {
         $query = "SELECT * FROM MESU..TB_SIMULADOR_ENCERRAMENTO_CASOS WHERE ID = " . intval($case_id);
         
-        echo "<!-- DEBUG: Query: " . $query . " -->\n";
-        
         $result = $this->sql->select($query);
-        echo "<!-- DEBUG: Result count: " . (is_array($result) ? count($result) : 'not array') . " -->\n";
         
         if ($result && count($result) > 0) {
             $row = $result[0];
-            echo "<!-- DEBUG: Column keys: " . implode(', ', array_keys($row)) . " -->\n";
             
-            // Try all possible column names
-            $jsonData = $row['DADOS_JSON'] ?? $row['dados_json'] ?? $row['Dados_Json'] ?? null;
+            // Try all possible column names (lowercase wins based on your output)
+            $jsonData = $row['dados_json'] ?? $row['DADOS_JSON'] ?? $row['Dados_Json'] ?? null;
             
-            echo "<!-- DEBUG: JSON found: " . ($jsonData ? 'YES' : 'NO') . " -->\n";
             if ($jsonData) {
-                echo "<!-- DEBUG: JSON length: " . strlen($jsonData) . " -->\n";
-                echo "<!-- DEBUG: JSON preview: " . substr($jsonData, 0, 100) . " -->\n";
+                // CRITICAL FIX: Strip slashes from escaped JSON
+                $jsonData = stripslashes($jsonData);
                 
                 $decoded = json_decode($jsonData, true);
-                echo "<!-- DEBUG: Decoded type: " . gettype($decoded) . " -->\n";
-                
                 return $decoded;
             }
         }
         
-        echo "<!-- DEBUG: Returning NULL -->\n";
         return null;
     }
 
