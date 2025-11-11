@@ -166,6 +166,8 @@ class SimuladorEncerramento {
     }
 
     public function saveCase($cod_func, $name, $month, $data) {
+        $month = date('Y-m-01', strtotime($month));
+        
         $query = "
             INSERT INTO MESU..TB_SIMULADOR_ENCERRAMENTO_CASOS 
             (COD_FUNC, NOME_CASO, MES_REF, DADOS_JSON, DATA_CAD) 
@@ -184,7 +186,7 @@ class SimuladorEncerramento {
     public function getSavedCases($cod_func) {
         $query = "
             SELECT 
-                ID_CASO as id,
+                ID as id,
                 NOME_CASO as name,
                 MES_REF as month,
                 DATA_CAD as created_at
@@ -198,34 +200,41 @@ class SimuladorEncerramento {
     }
 
     public function loadCase($case_id) {
-        $query = "
-            SELECT DADOS_JSON
-            FROM MESU..TB_SIMULADOR_ENCERRAMENTO_CASOS 
-            WHERE ID_CASO = " . intval($case_id);
+        $query = "SELECT * FROM MESU..TB_SIMULADOR_ENCERRAMENTO_CASOS WHERE ID = " . intval($case_id);
+        
+        error_log("=== LOADCASE DEBUG START ===");
+        error_log("Query: " . $query);
         
         $result = $this->sql->select($query);
+        error_log("Result count: " . (is_array($result) ? count($result) : 'not array'));
+        error_log("Result: " . print_r($result, true));
         
         if ($result && count($result) > 0) {
-            // Get first row
             $row = $result[0];
-            // Try different possible column names
-            $jsonData = $row['DADOS_JSON'] ?? $row['dados_json'] ?? null;
+            error_log("First row keys: " . print_r(array_keys($row), true));
+            
+            // Try all possible column names
+            $jsonData = $row['DADOS_JSON'] ?? $row['dados_json'] ?? $row['Dados_Json'] ?? null;
+            
+            error_log("JSON Data found: " . ($jsonData ? 'YES' : 'NO'));
+            error_log("JSON Data: " . substr($jsonData, 0, 200));
             
             if ($jsonData) {
                 $decoded = json_decode($jsonData, true);
-                if ($decoded && is_array($decoded)) {
-                    return $decoded;
-                }
+                error_log("Decoded: " . print_r($decoded, true));
+                error_log("=== LOADCASE DEBUG END - SUCCESS ===");
+                return $decoded;
             }
         }
         
+        error_log("=== LOADCASE DEBUG END - NULL ===");
         return null;
     }
 
     public function deleteCase($case_id) {
         $query = "
             DELETE FROM MESU..TB_SIMULADOR_ENCERRAMENTO_CASOS 
-            WHERE ID_CASO = " . intval($case_id);
+            WHERE ID = " . intval($case_id);
         
         return $this->sql->delete($query);
     }
@@ -342,4 +351,44 @@ class SimuladorEncerramento {
         return $pdf->Output('S');
     }
 }
+?>
+
+
+----------
+
+<?php
+// Quick test to debug loadCase issue
+// Place this file in the same directory as your model
+
+require_once('simulador_encerramento_model.class.php');
+
+$model = new SimuladorEncerramento();
+
+// Test 1: Check if table exists and has data
+echo "<h3>Test 1: Check table data</h3>";
+$query = "SELECT TOP 5 * FROM MESU..TB_SIMULADOR_ENCERRAMENTO_CASOS ORDER BY ID DESC";
+$result = $model->getSql()->select($query);
+echo "<pre>";
+print_r($result);
+echo "</pre>";
+
+// Test 2: Try to load a specific case (change ID to an existing one)
+echo "<h3>Test 2: Load case (check error_log for details)</h3>";
+$caseId = 1; // Change this to an actual ID from Test 1
+$loadedCase = $model->loadCase($caseId);
+echo "<pre>";
+print_r($loadedCase);
+echo "</pre>";
+
+// Test 3: Check column names
+echo "<h3>Test 3: Column names</h3>";
+if ($result && count($result) > 0) {
+    echo "Column names: ";
+    echo "<pre>";
+    print_r(array_keys($result[0]));
+    echo "</pre>";
+}
+
+// Check error_log file for detailed debug output
+echo "<hr><p><strong>Check your error_log file for detailed debug output!</strong></p>";
 ?>
