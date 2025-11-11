@@ -47,6 +47,18 @@ session_start();
             max-height: 300px;
             overflow-y: auto;
         }
+
+        .chart-values {
+            padding: 0.5rem;
+            background: var(--chart-bg);
+            border: 1px solid var(--border-color);
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+        }
+
+        .chart-values small {
+            line-height: 1.5;
+        }
     </style>
 </head>
 <body>
@@ -112,18 +124,22 @@ session_start();
                             <!-- Values Display -->
                             <div class="card mb-3">
                                 <div class="card-body">
-                                    <div class="row">
-                                        <div class="col-12">
-                                            <strong>REAL_VALUE:</strong> <span id="realValue">0</span>
+                                    <div class="row text-center">
+                                        <div class="col-6 mb-2">
+                                            <small class="text-muted d-block">REAL_VALUE</small>
+                                            <strong class="fs-3" id="realValue">0</strong>
                                         </div>
-                                        <div class="col-12">
-                                            <strong>Inauguração:</strong> <span id="inauguracaoValue">0</span>
+                                        <div class="col-6 mb-2">
+                                            <small class="text-muted d-block">Inauguração</small>
+                                            <strong class="fs-3 text-success" id="inauguracaoValue">0</strong>
                                         </div>
-                                        <div class="col-12">
-                                            <strong>Cancelamento:</strong> <span id="cancelamentoValue">0</span>
+                                        <div class="col-6">
+                                            <small class="text-muted d-block">Cancelamento</small>
+                                            <strong class="fs-3 text-danger" id="cancelamentoValue">0</strong>
                                         </div>
-                                        <div class="col-12">
-                                            <strong>TOTAL:</strong> <span id="totalValue">0</span>
+                                        <div class="col-6">
+                                            <small class="text-muted d-block">TOTAL</small>
+                                            <strong class="fs-3 text-primary" id="totalValue">0</strong>
                                         </div>
                                     </div>
                                 </div>
@@ -170,345 +186,9 @@ session_start();
 </body>
 </html>
 
---------------
 
-<?php
-session_start();
-header('Content-Type: application/json');
+-----------
 
-require_once('../../model/encerramento_simul/simulador_encerramento_model.class.php');
-
-$model = new SimuladorEncerramento();
-$acao = isset($_POST['acao']) ? $_POST['acao'] : '';
-
-try {
-    switch ($acao) {
-        case 'get_historical_data':
-            handleGetHistoricalData($model);
-            break;
-            
-        case 'get_month_data':
-            handleGetMonthData($model);
-            break;
-            
-        case 'save_case':
-            handleSaveCase($model);
-            break;
-            
-        case 'get_saved_cases':
-            handleGetSavedCases($model);
-            break;
-            
-        case 'load_case':
-            handleLoadCase($model);
-            break;
-            
-        case 'delete_case':
-            handleDeleteCase($model);
-            break;
-            
-        default:
-            echo json_encode(['success' => false, 'message' => 'Ação inválida']);
-            break;
-    }
-} catch (Exception $e) {
-    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
-}
-
-function handleGetHistoricalData($model) {
-    $month = $_POST['month'];
-    $data = $model->getHistoricalData($month);
-    
-    echo json_encode([
-        'success' => true,
-        'data' => $data
-    ]);
-}
-
-function handleGetMonthData($model) {
-    $month = $_POST['month'];
-    $data = $model->getMonthData($month);
-    
-    echo json_encode([
-        'success' => true,
-        'data' => $data
-    ]);
-}
-
-function handleSaveCase($model) {
-    $cod_func = $_SESSION['cod_func'] ?? 0;
-    $name = $_POST['name'];
-    $month = $_POST['month'];
-    $data = $_POST['data'];
-    
-    $result = $model->saveCase($cod_func, $name, $month, $data);
-    
-    echo json_encode([
-        'success' => $result,
-        'message' => $result ? 'Caso salvo com sucesso' : 'Erro ao salvar caso'
-    ]);
-}
-
-function handleGetSavedCases($model) {
-    $cod_func = $_SESSION['cod_func'] ?? 0;
-    $cases = $model->getSavedCases($cod_func);
-    
-    echo json_encode([
-        'success' => true,
-        'cases' => $cases
-    ]);
-}
-
-function handleLoadCase($model) {
-    $case_id = $_POST['case_id'];
-    $caseData = $model->loadCase($case_id);
-    
-    echo json_encode([
-        'success' => true,
-        'data' => $caseData
-    ]);
-}
-
-function handleDeleteCase($model) {
-    $case_id = $_POST['case_id'];
-    $result = $model->deleteCase($case_id);
-    
-    echo json_encode([
-        'success' => $result,
-        'message' => $result ? 'Caso excluído' : 'Erro ao excluir'
-    ]);
-}
-?>
-
-
---------------
-
-<?php
-require_once('\\\\D4920S010\D4920_2\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\Lib\ClassRepository\geral\MSSQL\NEW_MSSQL.class.php');
-
-#[AllowDynamicProperties]
-class SimuladorEncerramento {
-    private $sql;
-    
-    public function __construct() {
-        $this->sql = new MSSQL('ERP');
-    }
-    
-    public function getSql() {
-        return $this->sql;
-    }
-
-    /**
-     * QUERY DESCRIPTIONS NEEDED:
-     * 
-     * 1. QUERY_REAL_VALUE: Get total count for a given period
-     *    Return: COUNT of existing correspondentes
-     * 
-     * 2. QUERY_INAUGURACAO: Get inaugurated count for period
-     *    Return: COUNT of new correspondentes
-     * 
-     * 3. QUERY_CANCELAMENTO: Get cancelled count for period  
-     *    Return: COUNT of cancelled correspondentes
-     * 
-     * 4. QUERY_CANCELAMENTO_TYPES: Get cancellation categories
-     *    Return: List of cancellation reason types
-     */
-    
-    public function getHistoricalData($month) {
-        list($year, $monthNum) = explode('-', $month);
-        $periods = $this->calculateHistoricalPeriods($year, $monthNum);
-        
-        $data = [];
-        foreach ($periods as $period) {
-            $realValue = $this->getRealValue($period['value']);
-            $inauguracao = $this->getInauguracao($period['value']);
-            $cancelamento = $this->getCancelamento($period['value']);
-            
-            $data[] = [
-                'label' => $period['label'],
-                'real_value' => $realValue,
-                'inauguracao' => $inauguracao,
-                'cancelamento' => $cancelamento,
-                'total' => $realValue - $cancelamento + $inauguracao
-            ];
-        }
-        
-        return $data;
-    }
-
-    private function calculateHistoricalPeriods($year, $month) {
-        $periods = [];
-        
-        // Previous month
-        $prevMonth = $month - 1;
-        $prevYear = $year;
-        if ($prevMonth < 1) {
-            $prevMonth = 12;
-            $prevYear--;
-        }
-        $periods[] = [
-            'label' => date('M/Y', mktime(0, 0, 0, $prevMonth, 1, $prevYear)),
-            'value' => sprintf('%04d-%02d', $prevYear, $prevMonth),
-            'type' => 'month'
-        ];
-        
-        // Last 4 quarters
-        $currentQuarter = ceil($month / 3);
-        for ($i = 1; $i <= 4; $i++) {
-            $quarter = $currentQuarter - $i;
-            $qYear = $year;
-            
-            if ($quarter < 1) {
-                $quarter += 4;
-                $qYear--;
-            }
-            
-            $qLabel = "Q{$quarter}/{$qYear}";
-            $qMonth = ($quarter * 3);
-            
-            $periods[] = [
-                'label' => $qLabel,
-                'value' => sprintf('%04d-Q%d', $qYear, $quarter),
-                'type' => 'quarter'
-            ];
-        }
-        
-        // Same month last year
-        $periods[] = [
-            'label' => date('M/Y', mktime(0, 0, 0, $month, 1, $year - 1)),
-            'value' => sprintf('%04d-%02d', $year - 1, $month),
-            'type' => 'month'
-        ];
-        
-        return $periods;
-    }
-
-    private function getRealValue($period) {
-        // TODO: Replace with actual query
-        $query = "
-            SELECT COUNT(*) as total 
-            FROM DATALAKE..DL_BRADESCO_EXPRESSO 
-            WHERE BE_INAUGURADO = 1 
-            AND FORMAT(DATA_INAUGURACAO, 'yyyy-MM') = '{$period}'
-        ";
-        
-        $result = $this->sql->select($query);
-        return $result ? $result[0]['total'] : 0;
-    }
-
-    private function getInauguracao($period) {
-        // TODO: Replace with actual query
-        $query = "
-            SELECT COUNT(*) as total 
-            FROM DATALAKE..DL_BRADESCO_EXPRESSO 
-            WHERE FORMAT(DATA_INAUGURACAO, 'yyyy-MM') = '{$period}'
-        ";
-        
-        $result = $this->sql->select($query);
-        return $result ? $result[0]['total'] : 0;
-    }
-
-    private function getCancelamento($period) {
-        // TODO: Replace with actual query
-        $query = "
-            SELECT COUNT(*) as total 
-            FROM MESU..TB_LOJAS 
-            WHERE FORMAT(DT_ENCERRAMENTO, 'yyyy-MM') = '{$period}'
-        ";
-        
-        $result = $this->sql->select($query);
-        return $result ? $result[0]['total'] : 0;
-    }
-
-    public function getMonthData($month) {
-        $realValue = $this->getRealValue($month);
-        $inauguracao = $this->getInauguracao($month);
-        
-        return [
-            'real_value' => $realValue,
-            'inauguracao' => $inauguracao,
-            'cancelamento' => 0
-        ];
-    }
-
-    public function getCancelamentoTypes() {
-        // TODO: Replace with actual query to get cancellation reason categories
-        $query = "
-            SELECT DISTINCT MOTIVO_ENCERRAMENTO 
-            FROM MESU..ENCERRAMENTO_TB_PORTAL 
-            WHERE MOTIVO_ENCERRAMENTO IS NOT NULL
-            ORDER BY MOTIVO_ENCERRAMENTO
-        ";
-        
-        $result = $this->sql->select($query);
-        return $result;
-    }
-
-    public function saveCase($cod_func, $name, $month, $data) {
-        $query = "
-            INSERT INTO MESU..TB_SIMULADOR_ENCERRAMENTO_CASOS 
-            (COD_FUNC, NOME_CASO, MES_REF, DADOS_JSON, DATA_CAD) 
-            VALUES (
-                {$cod_func}, 
-                '" . addslashes($name) . "', 
-                '{$month}', 
-                '" . addslashes($data) . "', 
-                GETDATE()
-            )
-        ";
-        
-        return $this->sql->insert($query);
-    }
-
-    public function getSavedCases($cod_func) {
-        $query = "
-            SELECT 
-                ID_CASO as id,
-                NOME_CASO as name,
-                MES_REF as month,
-                DATA_CAD as created_at
-            FROM MESU..TB_SIMULADOR_ENCERRAMENTO_CASOS 
-            WHERE COD_FUNC = {$cod_func}
-            ORDER BY DATA_CAD DESC
-        ";
-        
-        $result = $this->sql->select($query);
-        return $result ? $result : [];
-    }
-
-    public function loadCase($case_id) {
-        $query = "
-            SELECT DADOS_JSON as data
-            FROM MESU..TB_SIMULADOR_ENCERRAMENTO_CASOS 
-            WHERE ID_CASO = " . intval($case_id);
-        
-        $result = $this->sql->select($query);
-        return $result ? json_decode($result[0]['data'], true) : null;
-    }
-
-    public function deleteCase($case_id) {
-        $query = "
-            DELETE FROM MESU..TB_SIMULADOR_ENCERRAMENTO_CASOS 
-            WHERE ID_CASO = " . intval($case_id);
-        
-        return $this->sql->delete($query);
-    }
-
-    public function insert($query) {
-        return $this->sql->insert($query);
-    }
-
-    public function update($query) {
-        return $this->sql->update($query);
-    }
-
-    public function delete($query) {
-        return $this->sql->delete($query);
-    }
-}
-?>
-
----------------
 
 (function() {
     'use strict';
@@ -618,9 +298,18 @@ class SimuladorEncerramento {
             
             const chartDiv = document.createElement('div');
             chartDiv.id = `hist-chart-${index}`;
-            chartDiv.style.height = '250px';
+            chartDiv.style.height = '200px';
+            
+            const valuesDiv = document.createElement('div');
+            valuesDiv.className = 'chart-values mt-2 text-center';
+            valuesDiv.innerHTML = `
+                <small class="d-block"><strong>Real:</strong> ${data.real_value.toLocaleString()}</small>
+                <small class="d-block"><strong>Inauguração:</strong> ${data.inauguracao.toLocaleString()}</small>
+                <small class="d-block"><strong>Cancelamento:</strong> ${data.cancelamento.toLocaleString()}</small>
+            `;
             
             col.appendChild(chartDiv);
+            col.appendChild(valuesDiv);
             container.appendChild(col);
 
             renderBarChart(chartDiv.id, data);
@@ -630,16 +319,23 @@ class SimuladorEncerramento {
     function renderBarChart(containerId, data) {
         Highcharts.chart(containerId, {
             chart: { type: 'column' },
-            title: { text: data.label },
-            xAxis: { categories: ['Valores'] },
-            yAxis: { title: { text: 'Quantidade' } },
-            legend: { enabled: true },
-            series: [
-                { name: 'Real', data: [data.real_value], color: '#0054aa' },
-                { name: 'Inauguração', data: [data.inauguracao], color: '#28a745' },
-                { name: 'Cancelamento', data: [data.cancelamento], color: '#dc3545' },
-                { name: 'Total', data: [data.total], color: '#AC1947' }
-            ],
+            title: { text: data.label, style: { fontSize: '14px' } },
+            xAxis: { categories: ['Total'], labels: { enabled: false } },
+            yAxis: { title: { text: '' } },
+            legend: { enabled: false },
+            plotOptions: {
+                column: {
+                    dataLabels: {
+                        enabled: true,
+                        format: '{y}'
+                    }
+                }
+            },
+            series: [{
+                name: 'Total',
+                data: [data.total],
+                color: '#AC1947'
+            }],
             credits: { enabled: false }
         });
     }
@@ -772,17 +468,25 @@ class SimuladorEncerramento {
         const currentCase = activeCases[currentCaseIndex];
         
         Highcharts.chart('simulationChart', {
-            chart: { type: 'column' },
-            title: { text: 'Simulação - ' + currentCase.name },
-            xAxis: { categories: ['Valores'] },
-            yAxis: { title: { text: 'Quantidade' } },
-            legend: { enabled: true },
-            series: [
-                { name: 'Real', data: [currentCase.realValue], color: '#0054aa' },
-                { name: 'Inauguração', data: [currentCase.inauguracao], color: '#28a745' },
-                { name: 'Cancelamento', data: [currentCase.cancelamento], color: '#dc3545' },
-                { name: 'Total', data: [currentCase.total], color: '#AC1947' }
-            ],
+            chart: { type: 'column', height: 250 },
+            title: { text: currentCase.name, style: { fontSize: '16px' } },
+            xAxis: { categories: ['Total'], labels: { enabled: false } },
+            yAxis: { title: { text: '' } },
+            legend: { enabled: false },
+            plotOptions: {
+                column: {
+                    dataLabels: {
+                        enabled: true,
+                        format: '{y}',
+                        style: { fontSize: '16px', fontWeight: 'bold' }
+                    }
+                }
+            },
+            series: [{
+                name: 'Total',
+                data: [currentCase.total],
+                color: '#AC1947'
+            }],
             credits: { enabled: false }
         });
     }
@@ -939,3 +643,4 @@ class SimuladorEncerramento {
     }
 
 })();
+ 
