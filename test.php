@@ -94,11 +94,11 @@ session_start();
             <div class="col-lg-7">
                 <div class="card">
                     <div class="card-header">
-                        <h3 class="card-title">Histórico</h3>
+                        <h3 class="card-title">Histórico de Encerramentos</h3>
                     </div>
                     <div class="card-body">
-                        <div class="row" id="historicalCharts">
-                            <!-- Charts will be generated dynamically -->
+                        <div id="historicalCharts">
+                            <!-- Single chart + table will be generated dynamically -->
                         </div>
                     </div>
                 </div>
@@ -187,8 +187,7 @@ session_start();
 </html>
 
 
------------
-
+---------
 
 (function() {
     'use strict';
@@ -292,36 +291,50 @@ session_start();
         const container = document.getElementById('historicalCharts');
         container.innerHTML = '';
 
-        historicalData.forEach((data, index) => {
-            const col = document.createElement('div');
-            col.className = 'col-md-4 col-sm-6 mb-3';
-            
-            const chartDiv = document.createElement('div');
-            chartDiv.id = `hist-chart-${index}`;
-            chartDiv.style.height = '200px';
-            
-            const valuesDiv = document.createElement('div');
-            valuesDiv.className = 'chart-values mt-2 text-center';
-            valuesDiv.innerHTML = `
-                <small class="d-block"><strong>Real:</strong> ${data.real_value.toLocaleString()}</small>
-                <small class="d-block"><strong>Inauguração:</strong> ${data.inauguracao.toLocaleString()}</small>
-                <small class="d-block"><strong>Cancelamento:</strong> ${data.cancelamento.toLocaleString()}</small>
-            `;
-            
-            col.appendChild(chartDiv);
-            col.appendChild(valuesDiv);
-            container.appendChild(col);
+        const chartDiv = document.createElement('div');
+        chartDiv.id = 'historical-chart';
+        chartDiv.style.height = '400px';
+        chartDiv.className = 'mb-3';
+        
+        const valuesTable = document.createElement('div');
+        valuesTable.className = 'table-responsive';
+        valuesTable.innerHTML = `
+            <table class="table table-sm table-bordered">
+                <thead>
+                    <tr>
+                        <th>Período</th>
+                        <th class="text-end">Real</th>
+                        <th class="text-end">Inauguração</th>
+                        <th class="text-end">Cancelamento</th>
+                        <th class="text-end">Total</th>
+                    </tr>
+                </thead>
+                <tbody id="historicalValuesTable"></tbody>
+            </table>
+        `;
+        
+        container.appendChild(chartDiv);
+        container.appendChild(valuesTable);
 
-            renderBarChart(chartDiv.id, data);
-        });
+        renderHistoricalBarChart();
+        renderHistoricalValuesTable();
     }
 
-    function renderBarChart(containerId, data) {
-        Highcharts.chart(containerId, {
+    function renderHistoricalBarChart() {
+        const categories = historicalData.map(d => d.label);
+        const totals = historicalData.map(d => d.total);
+
+        Highcharts.chart('historical-chart', {
             chart: { type: 'column' },
-            title: { text: data.label, style: { fontSize: '14px' } },
-            xAxis: { categories: ['Total'], labels: { enabled: false } },
-            yAxis: { title: { text: '' } },
+            title: { text: 'Histórico de Encerramentos', style: { fontSize: '16px' } },
+            xAxis: { 
+                categories: categories,
+                labels: { 
+                    rotation: -45,
+                    style: { fontSize: '11px' }
+                }
+            },
+            yAxis: { title: { text: 'Total' } },
             legend: { enabled: false },
             plotOptions: {
                 column: {
@@ -333,10 +346,27 @@ session_start();
             },
             series: [{
                 name: 'Total',
-                data: [data.total],
+                data: totals,
                 color: '#AC1947'
             }],
             credits: { enabled: false }
+        });
+    }
+
+    function renderHistoricalValuesTable() {
+        const tbody = document.getElementById('historicalValuesTable');
+        tbody.innerHTML = '';
+
+        historicalData.forEach(data => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td><strong>${data.label}</strong></td>
+                <td class="text-end">${data.real_value.toLocaleString()}</td>
+                <td class="text-end">${data.inauguracao.toLocaleString()}</td>
+                <td class="text-end">${data.cancelamento.toLocaleString()}</td>
+                <td class="text-end"><strong>${data.total.toLocaleString()}</strong></td>
+            `;
+            tbody.appendChild(row);
         });
     }
 
@@ -350,6 +380,7 @@ session_start();
             return;
         }
         addNewCase();
+        loadMonthData(); // Fetch REAL_VALUE for new case
     }
 
     function addNewCase() {
@@ -367,6 +398,7 @@ session_start();
         currentCaseIndex = activeCases.length - 1;
         renderCaseTabs();
         generateInputFields();
+        updateSimulationChart();
     }
 
     function renderCaseTabs() {
@@ -449,9 +481,14 @@ session_start();
     }
 
     function updateCurrentCase(data) {
-        const currentCase = activeCases[currentCaseIndex];
-        currentCase.realValue = data.real_value;
-        currentCase.inauguracao = data.inauguracao;
+        // Update all active cases with the same month data
+        activeCases.forEach(caseData => {
+            caseData.realValue = data.real_value;
+            caseData.inauguracao = data.inauguracao;
+            // Recalculate total
+            caseData.total = caseData.realValue - caseData.cancelamento + caseData.inauguracao;
+        });
+        
         updateCaseDisplay();
         updateSimulationChart();
     }
@@ -613,28 +650,62 @@ session_start();
     };
 
     function handleExport() {
-        const chart = Highcharts.charts.find(c => c && c.renderTo.id === 'simulationChart');
-        if (!chart) return;
+        if (!currentMonth) {
+            showNotification('Selecione um mês primeiro', 'warning');
+            return;
+        }
 
-        const menu = document.createElement('div');
-        menu.className = 'dropdown-menu show';
-        menu.style.position = 'absolute';
-        menu.innerHTML = `
-            <button class="dropdown-item" data-type="png">PNG</button>
-            <button class="dropdown-item" data-type="jpeg">JPEG</button>
-            <button class="dropdown-item" data-type="pdf">PDF</button>
-            <button class="dropdown-item" data-type="svg">SVG</button>
-        `;
+        // Collect all data for export
+        const exportData = {
+            month: currentMonth,
+            historical: historicalData,
+            cases: activeCases.map(c => ({
+                name: c.name,
+                realValue: c.realValue,
+                inauguracao: c.inauguracao,
+                cancelamento: c.cancelamento,
+                total: c.total,
+                values: c.values
+            }))
+        };
 
-        menu.querySelectorAll('button').forEach(btn => {
-            btn.addEventListener('click', () => {
-                chart.exportChart({ type: 'image/' + btn.dataset.type });
-                menu.remove();
-            });
+        // Send to backend for PDF generation
+        const formData = new FormData();
+        formData.append('acao', 'export_pdf');
+        formData.append('data', JSON.stringify(exportData));
+
+        // Show loading state
+        const btnExport = document.getElementById('btnExport');
+        const originalText = btnExport.innerHTML;
+        btnExport.disabled = true;
+        btnExport.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Gerando PDF...';
+
+        fetch(AJAX_URL, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.blob())
+        .then(blob => {
+            // Create download link
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `simulador_encerramento_${currentMonth}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            
+            showNotification('PDF exportado com sucesso', 'success');
+        })
+        .catch(error => {
+            console.error('Export error:', error);
+            showNotification('Erro ao exportar PDF', 'error');
+        })
+        .finally(() => {
+            btnExport.innerHTML = originalText;
+            btnExport.disabled = false;
         });
-
-        document.body.appendChild(menu);
-        setTimeout(() => menu.remove(), 5000);
     }
 
     function showNotification(message, type) {
@@ -643,4 +714,435 @@ session_start();
     }
 
 })();
- 
+
+
+----------
+
+<?php
+session_start();
+header('Content-Type: application/json');
+
+require_once('../../model/encerramento_simul/simulador_encerramento_model.class.php');
+
+$model = new SimuladorEncerramento();
+$acao = isset($_POST['acao']) ? $_POST['acao'] : '';
+
+try {
+    switch ($acao) {
+        case 'get_historical_data':
+            handleGetHistoricalData($model);
+            break;
+            
+        case 'get_month_data':
+            handleGetMonthData($model);
+            break;
+            
+        case 'save_case':
+            handleSaveCase($model);
+            break;
+            
+        case 'get_saved_cases':
+            handleGetSavedCases($model);
+            break;
+            
+        case 'load_case':
+            handleLoadCase($model);
+            break;
+            
+        case 'delete_case':
+            handleDeleteCase($model);
+            break;
+            
+        case 'export_pdf':
+            handleExportPDF($model);
+            break;
+            
+        default:
+            echo json_encode(['success' => false, 'message' => 'Ação inválida']);
+            break;
+    }
+} catch (Exception $e) {
+    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+}
+
+function handleGetHistoricalData($model) {
+    $month = $_POST['month'];
+    $data = $model->getHistoricalData($month);
+    
+    echo json_encode([
+        'success' => true,
+        'data' => $data
+    ]);
+}
+
+function handleGetMonthData($model) {
+    $month = $_POST['month'];
+    $data = $model->getMonthData($month);
+    
+    echo json_encode([
+        'success' => true,
+        'data' => $data
+    ]);
+}
+
+function handleSaveCase($model) {
+    $cod_func = $_SESSION['cod_func'] ?? 0;
+    $name = $_POST['name'];
+    $month = $_POST['month'];
+    $data = $_POST['data'];
+    
+    $result = $model->saveCase($cod_func, $name, $month, $data);
+    
+    echo json_encode([
+        'success' => $result,
+        'message' => $result ? 'Caso salvo com sucesso' : 'Erro ao salvar caso'
+    ]);
+}
+
+function handleGetSavedCases($model) {
+    $cod_func = $_SESSION['cod_func'] ?? 0;
+    $cases = $model->getSavedCases($cod_func);
+    
+    echo json_encode([
+        'success' => true,
+        'cases' => $cases
+    ]);
+}
+
+function handleLoadCase($model) {
+    $case_id = $_POST['case_id'];
+    $caseData = $model->loadCase($case_id);
+    
+    echo json_encode([
+        'success' => true,
+        'data' => $caseData
+    ]);
+}
+
+function handleDeleteCase($model) {
+    $case_id = $_POST['case_id'];
+    $result = $model->deleteCase($case_id);
+    
+    echo json_encode([
+        'success' => $result,
+        'message' => $result ? 'Caso excluído' : 'Erro ao excluir'
+    ]);
+}
+
+function handleExportPDF($model) {
+    $data = json_decode($_POST['data'], true);
+    
+    // Generate PDF
+    $pdfContent = $model->generatePDF($data);
+    
+    // Set headers for PDF download
+    header('Content-Type: application/pdf');
+    header('Content-Disposition: attachment; filename="simulador_encerramento_' . $data['month'] . '.pdf"');
+    header('Content-Length: ' . strlen($pdfContent));
+    
+    echo $pdfContent;
+    exit;
+}
+?>
+
+
+---------
+
+<?php
+require_once('\\\\D4920S010\D4920_2\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\Lib\ClassRepository\geral\MSSQL\NEW_MSSQL.class.php');
+
+#[AllowDynamicProperties]
+class SimuladorEncerramento {
+    private $sql;
+    
+    public function __construct() {
+        $this->sql = new MSSQL('ERP');
+    }
+    
+    public function getSql() {
+        return $this->sql;
+    }
+
+    /**
+     * QUERY DESCRIPTIONS NEEDED:
+     * 
+     * 1. QUERY_REAL_VALUE: Get total count for a given period
+     *    Return: COUNT of existing correspondentes
+     * 
+     * 2. QUERY_INAUGURACAO: Get inaugurated count for period
+     *    Return: COUNT of new correspondentes
+     * 
+     * 3. QUERY_CANCELAMENTO: Get cancelled count for period  
+     *    Return: COUNT of cancelled correspondentes
+     * 
+     * 4. QUERY_CANCELAMENTO_TYPES: Get cancellation categories
+     *    Return: List of cancellation reason types
+     */
+    
+    public function getHistoricalData($month) {
+        list($year, $monthNum) = explode('-', $month);
+        $periods = $this->calculateHistoricalPeriods($year, $monthNum);
+        
+        $data = [];
+        foreach ($periods as $period) {
+            $realValue = $this->getRealValue($period['value']);
+            $inauguracao = $this->getInauguracao($period['value']);
+            $cancelamento = $this->getCancelamento($period['value']);
+            
+            $data[] = [
+                'label' => $period['label'],
+                'real_value' => $realValue,
+                'inauguracao' => $inauguracao,
+                'cancelamento' => $cancelamento,
+                'total' => $realValue - $cancelamento + $inauguracao
+            ];
+        }
+        
+        return $data;
+    }
+
+    private function calculateHistoricalPeriods($year, $month) {
+        $periods = [];
+        
+        // Previous month
+        $prevMonth = $month - 1;
+        $prevYear = $year;
+        if ($prevMonth < 1) {
+            $prevMonth = 12;
+            $prevYear--;
+        }
+        $periods[] = [
+            'label' => date('M/Y', mktime(0, 0, 0, $prevMonth, 1, $prevYear)),
+            'value' => sprintf('%04d-%02d', $prevYear, $prevMonth),
+            'type' => 'month'
+        ];
+        
+        // Last 4 quarters
+        $currentQuarter = ceil($month / 3);
+        for ($i = 1; $i <= 4; $i++) {
+            $quarter = $currentQuarter - $i;
+            $qYear = $year;
+            
+            if ($quarter < 1) {
+                $quarter += 4;
+                $qYear--;
+            }
+            
+            $qLabel = "Q{$quarter}/{$qYear}";
+            $qMonth = ($quarter * 3);
+            
+            $periods[] = [
+                'label' => $qLabel,
+                'value' => sprintf('%04d-Q%d', $qYear, $quarter),
+                'type' => 'quarter'
+            ];
+        }
+        
+        // Same month last year
+        $periods[] = [
+            'label' => date('M/Y', mktime(0, 0, 0, $month, 1, $year - 1)),
+            'value' => sprintf('%04d-%02d', $year - 1, $month),
+            'type' => 'month'
+        ];
+        
+        return $periods;
+    }
+
+    private function getRealValue($period) {
+        error_log("SimuladorEncerramento::getRealValue - Period: " . $period);
+        
+        // TODO: Replace with actual query
+        $query = "
+            SELECT COUNT(*) as total 
+            FROM DATALAKE..DL_BRADESCO_EXPRESSO 
+            WHERE BE_INAUGURADO = 1 
+            AND FORMAT(DATA_INAUGURACAO, 'yyyy-MM') = '{$period}'
+        ";
+        
+        $result = $this->sql->select($query);
+        return $result ? $result[0]['total'] : 0;
+    }
+
+    private function getInauguracao($period) {
+        error_log("SimuladorEncerramento::getInauguracao - Period: " . $period);
+        
+        // TODO: Replace with actual query
+        $query = "
+            SELECT COUNT(*) as total 
+            FROM DATALAKE..DL_BRADESCO_EXPRESSO 
+            WHERE FORMAT(DATA_INAUGURACAO, 'yyyy-MM') = '{$period}'
+        ";
+        
+        $result = $this->sql->select($query);
+        return $result ? $result[0]['total'] : 0;
+    }
+
+    private function getCancelamento($period) {
+        error_log("SimuladorEncerramento::getCancelamento - Period: " . $period);
+        
+        // TODO: Replace with actual query
+        $query = "
+            SELECT COUNT(*) as total 
+            FROM MESU..TB_LOJAS 
+            WHERE FORMAT(DT_ENCERRAMENTO, 'yyyy-MM') = '{$period}'
+        ";
+        
+        $result = $this->sql->select($query);
+        return $result ? $result[0]['total'] : 0;
+    }
+
+    public function getMonthData($month) {
+        $realValue = $this->getRealValue($month);
+        $inauguracao = $this->getInauguracao($month);
+        
+        return [
+            'real_value' => $realValue,
+            'inauguracao' => $inauguracao,
+            'cancelamento' => 0
+        ];
+    }
+
+    public function getCancelamentoTypes() {
+        // TODO: Replace with actual query to get cancellation reason categories
+        $query = "
+            SELECT DISTINCT MOTIVO_ENCERRAMENTO 
+            FROM MESU..ENCERRAMENTO_TB_PORTAL 
+            WHERE MOTIVO_ENCERRAMENTO IS NOT NULL
+            ORDER BY MOTIVO_ENCERRAMENTO
+        ";
+        
+        $result = $this->sql->select($query);
+        return $result;
+    }
+
+    public function saveCase($cod_func, $name, $month, $data) {
+        $query = "
+            INSERT INTO MESU..TB_SIMULADOR_ENCERRAMENTO_CASOS 
+            (COD_FUNC, NOME_CASO, MES_REF, DADOS_JSON, DATA_CAD) 
+            VALUES (
+                {$cod_func}, 
+                '" . addslashes($name) . "', 
+                '{$month}', 
+                '" . addslashes($data) . "', 
+                GETDATE()
+            )
+        ";
+        
+        return $this->sql->insert($query);
+    }
+
+    public function getSavedCases($cod_func) {
+        $query = "
+            SELECT 
+                ID_CASO as id,
+                NOME_CASO as name,
+                MES_REF as month,
+                DATA_CAD as created_at
+            FROM MESU..TB_SIMULADOR_ENCERRAMENTO_CASOS 
+            WHERE COD_FUNC = {$cod_func}
+            ORDER BY DATA_CAD DESC
+        ";
+        
+        $result = $this->sql->select($query);
+        return $result ? $result : [];
+    }
+
+    public function loadCase($case_id) {
+        $query = "
+            SELECT DADOS_JSON as data
+            FROM MESU..TB_SIMULADOR_ENCERRAMENTO_CASOS 
+            WHERE ID_CASO = " . intval($case_id);
+        
+        $result = $this->sql->select($query);
+        return $result ? json_decode($result[0]['data'], true) : null;
+    }
+
+    public function deleteCase($case_id) {
+        $query = "
+            DELETE FROM MESU..TB_SIMULADOR_ENCERRAMENTO_CASOS 
+            WHERE ID_CASO = " . intval($case_id);
+        
+        return $this->sql->delete($query);
+    }
+
+    public function insert($query) {
+        return $this->sql->insert($query);
+    }
+
+    public function update($query) {
+        return $this->sql->update($query);
+    }
+
+    public function delete($query) {
+        return $this->sql->delete($query);
+    }
+
+    public function generatePDF($data) {
+        // Create HTML content for PDF
+        $html = $this->buildPDFHTML($data);
+        
+        // Use TCPDF or similar library to generate PDF
+        // For now, creating a simple HTML-based approach
+        require_once('\\\\D4920S010\D4920_2\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\Lib\tcpdf\tcpdf.php');
+        
+        $pdf = new TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
+        $pdf->SetCreator('Portal Expresso');
+        $pdf->SetAuthor('Portal Expresso');
+        $pdf->SetTitle('Simulador de Encerramento - ' . $data['month']);
+        $pdf->SetMargins(15, 15, 15);
+        $pdf->SetAutoPageBreak(TRUE, 15);
+        $pdf->AddPage();
+        
+        $pdf->writeHTML($html, true, false, true, false, '');
+        
+        return $pdf->Output('', 'S');
+    }
+
+    private function buildPDFHTML($data) {
+        $html = '<h1>Simulador de Encerramento</h1>';
+        $html .= '<h2>Mês de Referência: ' . $data['month'] . '</h2>';
+        
+        // Historical data section
+        $html .= '<h3>Histórico</h3>';
+        $html .= '<table border="1" cellpadding="5" style="width:100%">';
+        $html .= '<thead>';
+        $html .= '<tr style="background-color:#AC1947;color:#fff;">';
+        $html .= '<th>Período</th><th>Real</th><th>Inauguração</th><th>Cancelamento</th><th>Total</th>';
+        $html .= '</tr></thead><tbody>';
+        
+        foreach ($data['historical'] as $hist) {
+            $html .= '<tr>';
+            $html .= '<td><strong>' . $hist['label'] . '</strong></td>';
+            $html .= '<td align="right">' . number_format($hist['real_value'], 0, ',', '.') . '</td>';
+            $html .= '<td align="right">' . number_format($hist['inauguracao'], 0, ',', '.') . '</td>';
+            $html .= '<td align="right">' . number_format($hist['cancelamento'], 0, ',', '.') . '</td>';
+            $html .= '<td align="right"><strong>' . number_format($hist['total'], 0, ',', '.') . '</strong></td>';
+            $html .= '</tr>';
+        }
+        $html .= '</tbody></table>';
+        
+        // Cases section
+        $html .= '<h3>Casos Simulados</h3>';
+        foreach ($data['cases'] as $case) {
+            $html .= '<h4>' . $case['name'] . '</h4>';
+            $html .= '<table border="1" cellpadding="5" style="width:100%;margin-bottom:20px;">';
+            $html .= '<tr><td><strong>Real Value:</strong></td><td align="right">' . number_format($case['realValue'], 0, ',', '.') . '</td></tr>';
+            $html .= '<tr><td><strong>Inauguração:</strong></td><td align="right">' . number_format($case['inauguracao'], 0, ',', '.') . '</td></tr>';
+            $html .= '<tr><td><strong>Cancelamento:</strong></td><td align="right">' . number_format($case['cancelamento'], 0, ',', '.') . '</td></tr>';
+            $html .= '<tr style="background-color:#f0f0f0;"><td><strong>Total:</strong></td><td align="right"><strong>' . number_format($case['total'], 0, ',', '.') . '</strong></td></tr>';
+            
+            if (!empty($case['values'])) {
+                $html .= '<tr><td colspan="2"><strong>Detalhamento:</strong></td></tr>';
+                foreach ($case['values'] as $type => $value) {
+                    if ($value > 0) {
+                        $html .= '<tr><td>' . $type . '</td><td align="right">' . number_format($value, 0, ',', '.') . '</td></tr>';
+                    }
+                }
+            }
+            $html .= '</table>';
+        }
+        
+        return $html;
+    }
+}
+?>
