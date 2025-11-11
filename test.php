@@ -1,195 +1,5 @@
 <?php
 session_start();
-?>
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        :root {
-            --chart-bg: #ffffff;
-            --text-color: #262626;
-            --border-color: #e6e6e6;
-        }
-
-        [data-theme="dark"] {
-            --chart-bg: #1a1a1a;
-            --text-color: #ffffff;
-            --border-color: #333333;
-        }
-
-        .chart-container {
-            min-height: 400px;
-            padding: 1rem;
-            background: var(--chart-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            margin-bottom: 1rem;
-        }
-
-        .value-input {
-            margin-bottom: 0.5rem;
-        }
-
-        .case-tab {
-            cursor: pointer;
-            padding: 0.5rem 1rem;
-            border: 1px solid var(--border-color);
-            margin-right: 0.5rem;
-            border-radius: 4px 4px 0 0;
-        }
-
-        .case-tab.active {
-            background: var(--chart-bg);
-            border-bottom: 1px solid var(--chart-bg);
-        }
-
-        .saved-cases {
-            max-height: 300px;
-            overflow-y: auto;
-        }
-
-        .chart-values {
-            padding: 0.5rem;
-            background: var(--chart-bg);
-            border: 1px solid var(--border-color);
-            border-top: none;
-            border-radius: 0 0 4px 4px;
-        }
-
-        .chart-values small {
-            line-height: 1.5;
-        }
-    </style>
-</head>
-<body>
-    <div class="container-xl">
-        <!-- Header with Month Selector and Actions -->
-        <div class="card mb-3">
-            <div class="card-header">
-                <div class="row align-items-center">
-                    <div class="col-auto">
-                        <h3 class="card-title">Simulador de Encerramento</h3>
-                    </div>
-                    <div class="col-auto ms-auto">
-                        <select class="form-select" id="monthSelector">
-                            <option value="">Selecione o Mês</option>
-                        </select>
-                    </div>
-                    <div class="col-auto">
-                        <button class="btn btn-primary" id="btnExport">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon me-1">
-                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                                <polyline points="7 10 12 15 17 10"/>
-                                <line x1="12" y1="15" x2="12" y2="3"/>
-                            </svg>
-                            Exportar
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="row">
-            <!-- Left Side - Historical Charts -->
-            <div class="col-lg-7">
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title">Histórico de Encerramentos</h3>
-                    </div>
-                    <div class="card-body">
-                        <div id="historicalCharts">
-                            <!-- Single chart + table will be generated dynamically -->
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Right Side - Simulation Cases -->
-            <div class="col-lg-5">
-                <div class="card">
-                    <div class="card-header">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <h3 class="card-title">Simulação</h3>
-                            <button class="btn btn-sm btn-primary" id="btnAddCase">+ Novo Caso</button>
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <!-- Case Tabs -->
-                        <div class="d-flex mb-3" id="caseTabs"></div>
-
-                        <!-- Case Content -->
-                        <div id="caseContent">
-                            <div class="chart-container mb-3" id="simulationChart"></div>
-                            
-                            <!-- Values Display -->
-                            <div class="card mb-3">
-                                <div class="card-body">
-                                    <div class="row text-center">
-                                        <div class="col-6 mb-2">
-                                            <small class="text-muted d-block">REAL_VALUE</small>
-                                            <strong class="fs-3" id="realValue">0</strong>
-                                        </div>
-                                        <div class="col-6 mb-2">
-                                            <small class="text-muted d-block">Inauguração</small>
-                                            <strong class="fs-3 text-success" id="inauguracaoValue">0</strong>
-                                        </div>
-                                        <div class="col-6">
-                                            <small class="text-muted d-block">Cancelamento</small>
-                                            <strong class="fs-3 text-danger" id="cancelamentoValue">0</strong>
-                                        </div>
-                                        <div class="col-6">
-                                            <small class="text-muted d-block">TOTAL</small>
-                                            <strong class="fs-3 text-primary" id="totalValue">0</strong>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- User Input Values -->
-                            <div class="card">
-                                <div class="card-header">
-                                    <h4 class="card-title">Valores de Cancelamento</h4>
-                                </div>
-                                <div class="card-body" id="userInputs">
-                                    <!-- Dynamic inputs will be generated -->
-                                </div>
-                            </div>
-
-                            <!-- Save Case -->
-                            <div class="mt-3">
-                                <div class="input-group">
-                                    <input type="text" class="form-control" id="caseName" placeholder="Nome do caso">
-                                    <button class="btn btn-success" id="btnSaveCase">Salvar Caso</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Saved Cases -->
-                <div class="card mt-3">
-                    <div class="card-header">
-                        <h3 class="card-title">Casos Salvos</h3>
-                    </div>
-                    <div class="card-body saved-cases" id="savedCasesList">
-                        <!-- Saved cases will appear here -->
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script src="https://code.highcharts.com/highcharts.js"></script>
-    <script src="https://code.highcharts.com/modules/exporting.js"></script>
-    <script src="https://code.highcharts.com/modules/export-data.js"></script>
-    <script src="./js/encerramento/encerramento_simul/simulador_encerramento.js"></script>
-</body>
-</html>
-
-----------
-
-<?php
-session_start();
 header('Content-Type: application/json');
 
 require_once('../../model/encerramento_simul/simulador_encerramento_model.class.php');
@@ -283,10 +93,17 @@ function handleLoadCase($model) {
     $case_id = $_POST['case_id'];
     $caseData = $model->loadCase($case_id);
     
-    echo json_encode([
-        'success' => true,
-        'data' => $caseData
-    ]);
+    if ($caseData) {
+        echo json_encode([
+            'success' => true,
+            'data' => $caseData
+        ]);
+    } else {
+        echo json_encode([
+            'success' => false,
+            'message' => 'Caso não encontrado'
+        ]);
+    }
 }
 
 function handleDeleteCase($model) {
@@ -316,7 +133,7 @@ function handleExportPDF($model) {
 ?>
 
 
----------
+-------------
 
 <?php
 require_once('\\\\D4920S010\D4920_2\Secoes\D4920S012\Comum_S012\Servidor_Portal_Expresso\Server2Go\htdocs\Lib\ClassRepository\geral\MSSQL\NEW_MSSQL.class.php');
@@ -524,7 +341,18 @@ class SimuladorEncerramento {
             WHERE ID_CASO = " . intval($case_id);
         
         $result = $this->sql->select($query);
-        return $result ? json_decode($result[0]['data'], true) : null;
+        
+        if ($result && isset($result[0]['data'])) {
+            $jsonData = $result[0]['data'];
+            $decoded = json_decode($jsonData, true);
+            
+            // Validate decoded data
+            if ($decoded && is_array($decoded)) {
+                return $decoded;
+            }
+        }
+        
+        return null;
     }
 
     public function deleteCase($case_id) {
@@ -890,7 +718,9 @@ class SimuladorEncerramento {
     function switchCase(index) {
         currentCaseIndex = index;
         renderCaseTabs();
+        generateInputFields(); // Regenerate inputs with current case values
         updateCaseDisplay();
+        updateSimulationChart();
     }
 
     function removeCase(index) {
@@ -904,22 +734,35 @@ class SimuladorEncerramento {
             currentCaseIndex = activeCases.length - 1;
         }
         renderCaseTabs();
+        generateInputFields(); // Regenerate inputs for current case
         updateCaseDisplay();
+        updateSimulationChart();
     }
 
     function generateInputFields() {
         const container = document.getElementById('userInputs');
         container.innerHTML = '';
 
-        // Query will return cancelamento_types
-        const types = ['Tipo A', 'Tipo B', 'Tipo C', 'Tipo D'];
+        const currentCase = activeCases[currentCaseIndex];
+        
+        // Get types from current case values or use defaults
+        let types = [];
+        if (currentCase && currentCase.values && Object.keys(currentCase.values).length > 0) {
+            types = Object.keys(currentCase.values);
+        } else {
+            // Default types - these should come from getCancelamentoTypes query
+            types = ['Tipo A', 'Tipo B', 'Tipo C', 'Tipo D'];
+        }
         
         types.forEach(type => {
             const inputGroup = document.createElement('div');
             inputGroup.className = 'value-input';
+            
+            const currentValue = currentCase && currentCase.values && currentCase.values[type] ? currentCase.values[type] : 0;
+            
             inputGroup.innerHTML = `
                 <label class="form-label">${type}</label>
-                <input type="number" class="form-control" data-type="${type}" value="0" min="0">
+                <input type="number" class="form-control" data-type="${type}" value="${currentValue}" min="0">
             `;
             
             inputGroup.querySelector('input').addEventListener('input', handleInputChange);
@@ -1083,12 +926,45 @@ class SimuladorEncerramento {
         })
         .then(response => response.json())
         .then(data => {
-            if (data.success) {
-                // Load case data into current case
-                showNotification('Caso carregado', 'success');
+            if (data.success && data.data) {
+                const caseData = data.data;
+                
+                // Check if we can add a new case
+                if (activeCases.length >= 3) {
+                    showNotification('Máximo de 3 casos simultâneos. Remova um caso antes de carregar outro.', 'warning');
+                    return;
+                }
+                
+                // Create new case with loaded data
+                const loadedCase = {
+                    id: caseData.id || Date.now(),
+                    name: caseData.name || 'Caso Carregado',
+                    values: caseData.values || {},
+                    realValue: caseData.realValue || 0,
+                    inauguracao: caseData.inauguracao || 0,
+                    cancelamento: caseData.cancelamento || 0,
+                    total: caseData.total || 0
+                };
+                
+                // Add to active cases
+                activeCases.push(loadedCase);
+                currentCaseIndex = activeCases.length - 1;
+                
+                // Update UI - generateInputFields will populate with loaded values
+                renderCaseTabs();
+                generateInputFields();
+                updateCaseDisplay();
+                updateSimulationChart();
+                
+                showNotification('Caso carregado: ' + loadedCase.name, 'success');
+            } else {
+                showNotification('Erro ao carregar caso', 'error');
             }
         })
-        .catch(error => console.error('Error:', error));
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification('Erro ao carregar caso', 'error');
+        });
     };
 
     window.deleteCase = function(caseId) {
@@ -1172,8 +1048,32 @@ class SimuladorEncerramento {
     }
 
     function showNotification(message, type) {
-        console.log(`[${type}] ${message}`);
-        // Implement notification UI
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = `alert alert-${type === 'success' ? 'success' : type === 'error' ? 'danger' : 'warning'} alert-dismissible fade show`;
+        notification.style.position = 'fixed';
+        notification.style.top = '20px';
+        notification.style.right = '20px';
+        notification.style.zIndex = '9999';
+        notification.style.minWidth = '300px';
+        notification.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            notification.classList.remove('show');
+            setTimeout(() => notification.remove(), 150);
+        }, 5000);
+        
+        // Manual close
+        notification.querySelector('.btn-close').addEventListener('click', () => {
+            notification.classList.remove('show');
+            setTimeout(() => notification.remove(), 150);
+        });
     }
 
 })();
