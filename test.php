@@ -312,6 +312,8 @@
         currentCaseIndex = activeCases.length - 1;
         renderCaseTabs();
         generateInputFields();
+        
+        showSimulationLoading();
         updateSimulationChart();
     }
 
@@ -560,6 +562,8 @@
     }
 
     window.loadCase = function(caseId) {
+        showSimulationLoading();
+        
         const formData = new FormData();
         formData.append('acao', 'load_case');
         formData.append('case_id', caseId);
@@ -575,6 +579,7 @@
                 
                 // Check if we can add a new case
                 if (activeCases.length >= 3) {
+                    hideSimulationLoading();
                     showNotification('Máximo de 3 casos simultâneos. Remova um caso antes de carregar outro.', 'warning');
                     return;
                 }
@@ -606,19 +611,28 @@
                 activeCases.push(loadedCase);
                 currentCaseIndex = activeCases.length - 1;
                 
+                // Show loading before rendering
+                showSimulationLoading();
+                
                 // Update UI - generateInputFields will populate with loaded values
                 renderCaseTabs();
                 generateInputFields();
                 updateCaseDisplay();
-                updateSimulationChart();
+                
+                showSimulationLoading();
+                setTimeout(() => {
+                    updateSimulationChart();
+                }, 100);
                 
                 showNotification('Caso carregado: ' + loadedCase.name, 'success');
             } else {
+                hideSimulationLoading();
                 showNotification('Erro ao carregar caso', 'error');
             }
         })
         .catch(error => {
             console.error('Error:', error);
+            hideSimulationLoading();
             showNotification('Erro ao carregar caso', 'error');
         });
     };
@@ -781,296 +795,3 @@
     }
 
 })();
-
-
----------
-
-<?php
-session_start();
-?>
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        :root {
-            --chart-bg: #ffffff;
-            --text-color: #262626;
-            --border-color: #e6e6e6;
-        }
-
-        [data-theme="dark"] {
-            --chart-bg: #1a1a1a;
-            --text-color: #ffffff;
-            --border-color: #333333;
-        }
-
-        .chart-container {
-            min-height: 400px;
-            padding: 1rem;
-            background: var(--chart-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            margin-bottom: 1rem;
-        }
-
-        .value-input {
-            margin-bottom: 0.5rem;
-        }
-
-        .case-tab {
-            cursor: pointer;
-            padding: 0.5rem 1rem;
-            border: 1px solid var(--border-color);
-            margin-right: 0.5rem;
-            border-radius: 4px 4px 0 0;
-        }
-
-        .case-tab.active {
-            background: var(--chart-bg);
-            border-bottom: 1px solid var(--chart-bg);
-        }
-
-        .saved-cases {
-            max-height: 300px;
-            overflow-y: auto;
-        }
-
-        .chart-values {
-            padding: 0.5rem;
-            background: var(--chart-bg);
-            border: 1px solid var(--border-color);
-            border-top: none;
-            border-radius: 0 0 4px 4px;
-        }
-
-        .chart-values small {
-            line-height: 1.5;
-        }
-
-        /* Loading Spinner */
-        .chart-loading {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 10;
-        }
-
-        .chart-loading .spinner-border {
-            width: 3rem;
-            height: 3rem;
-        }
-
-        .chart-container-wrapper {
-            position: relative;
-            min-height: 250px;
-        }
-
-        /* Collapsible Sidebar */
-        .saved-cases-sidebar {
-            position: fixed;
-            right: 0;
-            top: 0;
-            height: 100vh;
-            width: 350px;
-            background: var(--tblr-bg-surface);
-            border-left: 1px solid var(--border-color);
-            box-shadow: -2px 0 10px rgba(0,0,0,0.1);
-            transform: translateX(0);
-            transition: transform 0.3s ease;
-            z-index: 1000;
-            overflow-y: auto;
-            padding: 1rem;
-        }
-
-        .saved-cases-sidebar.collapsed {
-            transform: translateX(100%);
-        }
-
-        .sidebar-toggle {
-            position: fixed;
-            right: 350px;
-            top: 50%;
-            transform: translateY(-50%);
-            z-index: 1001;
-            background: var(--tblr-primary);
-            color: white;
-            border: none;
-            border-radius: 4px 0 0 4px;
-            padding: 1rem 0.5rem;
-            cursor: pointer;
-            transition: right 0.3s ease;
-            box-shadow: -2px 0 5px rgba(0,0,0,0.2);
-        }
-
-        .sidebar-toggle.collapsed {
-            right: 0;
-        }
-
-        .sidebar-toggle svg {
-            transition: transform 0.3s ease;
-        }
-
-        .sidebar-toggle.collapsed svg {
-            transform: rotate(180deg);
-        }
-
-        .main-content {
-            transition: margin-right 0.3s ease;
-            margin-right: 350px;
-        }
-
-        .main-content.expanded {
-            margin-right: 0;
-        }
-    </style>
-</head>
-<body>
-    <!-- Sidebar Toggle Button -->
-    <button class="sidebar-toggle" id="sidebarToggle" title="Toggle Saved Cases">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="3" y1="12" x2="21" y2="12"/>
-            <line x1="3" y1="6" x2="21" y2="6"/>
-            <line x1="3" y1="18" x2="21" y2="18"/>
-        </svg>
-    </button>
-
-    <!-- Saved Cases Sidebar -->
-    <div class="saved-cases-sidebar" id="savedCasesSidebar">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h3 class="mb-0">Casos Salvos</h3>
-        </div>
-        <div class="saved-cases" id="savedCasesList">
-            <!-- Saved cases will appear here -->
-        </div>
-    </div>
-
-    <!-- Main Content -->
-    <div class="container-xl main-content" id="mainContent">
-        <!-- Header with Month Selector and Actions -->
-        <div class="card mb-3">
-            <div class="card-header">
-                <div class="row align-items-center">
-                    <div class="col-auto">
-                        <h3 class="card-title">Simulador de Encerramento</h3>
-                    </div>
-                    <div class="col-auto ms-auto">
-                        <select class="form-select" id="monthSelector">
-                            <option value="">Selecione o Mês</option>
-                        </select>
-                    </div>
-                    <div class="col-auto">
-                        <button class="btn btn-primary" id="btnExport">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon me-1">
-                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                                <polyline points="7 10 12 15 17 10"/>
-                                <line x1="12" y1="15" x2="12" y2="3"/>
-                            </svg>
-                            Exportar
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="row">
-            <!-- Left Side - Historical Charts -->
-            <div class="col-lg-7">
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title">Histórico de Encerramentos</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="chart-container-wrapper">
-                            <div class="chart-loading" id="historicalLoading">
-                                <div class="spinner-border text-primary" role="status">
-                                    <span class="visually-hidden">Carregando...</span>
-                                </div>
-                            </div>
-                            <div id="historicalCharts" style="opacity: 0;">
-                                <!-- Single chart + table will be generated dynamically -->
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Right Side - Simulation Cases -->
-            <div class="col-lg-5">
-                <div class="card">
-                    <div class="card-header">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <h3 class="card-title">Simulação</h3>
-                            <button class="btn btn-sm btn-primary" id="btnAddCase">+ Novo Caso</button>
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <!-- Case Tabs -->
-                        <div class="d-flex mb-3" id="caseTabs"></div>
-
-                        <!-- Case Content -->
-                        <div id="caseContent">
-                            <div class="chart-container-wrapper">
-                                <div class="chart-loading" id="simulationLoading">
-                                    <div class="spinner-border text-primary" role="status">
-                                        <span class="visually-hidden">Carregando...</span>
-                                    </div>
-                                </div>
-                                <div class="chart-container mb-3" id="simulationChart" style="opacity: 0;"></div>
-                            </div>
-                            
-                            <!-- Values Display -->
-                            <div class="card mb-3">
-                                <div class="card-body">
-                                    <div class="row text-center">
-                                        <div class="col-6 mb-2">
-                                            <small class="text-muted d-block">REAL_VALUE</small>
-                                            <strong class="fs-3" id="realValue">0</strong>
-                                        </div>
-                                        <div class="col-6 mb-2">
-                                            <small class="text-muted d-block">Inauguração</small>
-                                            <strong class="fs-3 text-success" id="inauguracaoValue">0</strong>
-                                        </div>
-                                        <div class="col-6">
-                                            <small class="text-muted d-block">Cancelamento</small>
-                                            <strong class="fs-3 text-danger" id="cancelamentoValue">0</strong>
-                                        </div>
-                                        <div class="col-6">
-                                            <small class="text-muted d-block">TOTAL</small>
-                                            <strong class="fs-3 text-primary" id="totalValue">0</strong>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- User Input Values -->
-                            <div class="card">
-                                <div class="card-header">
-                                    <h4 class="card-title">Valores de Cancelamento</h4>
-                                </div>
-                                <div class="card-body" id="userInputs">
-                                    <!-- Dynamic inputs will be generated -->
-                                </div>
-                            </div>
-
-                            <!-- Save Case -->
-                            <div class="mt-3">
-                                <div class="input-group">
-                                    <input type="text" class="form-control" id="caseName" placeholder="Nome do caso">
-                                    <button class="btn btn-success" id="btnSaveCase">Salvar Caso</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <!-- End Main Content -->
-
-    <script src="https://code.highcharts.com/highcharts.js"></script>
-    <script src="https://code.highcharts.com/modules/exporting.js"></script>
-    <script src="https://code.highcharts.com/modules/export-data.js"></script>
-    <script src="./js/encerramento/encerramento_simul/simulador_encerramento.js"></script>
-</body>
-</html>
