@@ -1,274 +1,549 @@
-Manual do Usuário
-Sistema de Gestão de Encerramento
-Versão 1.0
-novembro de 2025
-
-Índice
-
-
-
-Introdução
-Bem-vindo ao Manual do Usuário do Sistema de Gestão de Encerramento. Este manual foi desenvolvido para auxiliar os usuários na utilização das funcionalidades disponíveis no sistema.
-O sistema é composto por três módulos principais que trabalham de forma integrada para facilitar o gerenciamento e análise de encerramentos de correspondentes bancários:
-Estatística de Encerramento
-Análise de Encerramento
-Simulador de Encerramento
-Este manual fornece instruções detalhadas sobre como utilizar cada funcionalidade, incluindo capturas de tela e exemplos práticos.
-
 1. Estatística de Encerramento
-[PLACEHOLDER - Adicione aqui a descrição e instruções para o módulo de Estatística de Encerramento]
-[ESPAÇO RESERVADO PARA IMAGENS]
 
-2. Análise de Encerramento
-[PLACEHOLDER - Adicione aqui a descrição e instruções para o módulo de Análise de Encerramento]
-[ESPAÇO RESERVADO PARA IMAGENS]
+1.1. Visão Geral
 
-3. Simulador de Encerramento
-3.1. Visão Geral
-O Simulador de Encerramento é uma ferramenta poderosa que permite aos usuários analisar dados históricos e simular diferentes cenários de encerramento de correspondentes bancários. O simulador oferece visualizações gráficas interativas e a capacidade de comparar múltiplos casos simultaneamente.
-Principais funcionalidades:
-Análise de dados históricos com visualizações gráficas
-Simulação de até 3 cenários simultâneos
-Cálculo automático baseado na fórmula: TOTAL = REAL_VALUE - CANCELAMENTO + INAUGURAÇÃO
-Salvamento e carregamento de casos para análise futura
-Exportação de relatórios em formato PDF
-Visualização de indicadores AIGL e Agência
-[INSERIR IMAGEM: Tela principal do Simulador de Encerramento]
-3.2. Interface do Sistema
-A interface do Simulador de Encerramento é dividida em três áreas principais:
-3.2.1. Barra Superior
-A barra superior contém os controles principais do sistema:
-Seletor de Mês: Permite selecionar o mês de referência para análise e simulação
-Botão Exportar: Gera um relatório em PDF com todos os dados e gráficos
-[INSERIR IMAGEM: Barra superior com seletor de mês e botão exportar]
-3.2.2. Painel Esquerdo - Histórico
-O painel esquerdo exibe dados históricos de encerramentos, incluindo:
-Gráfico de barras com totais mensais e trimestrais
-Tabela detalhada com valores de Real, Inauguração, Cancelamento e Total
-Comparação com o mesmo período do ano anterior
-[INSERIR IMAGEM: Painel de histórico com gráfico e tabela]
-3.2.3. Painel Direito - Simulação
-O painel direito permite criar e gerenciar cenários de simulação:
-Abas para até 3 casos simultâneos
-Gráfico de visualização do cenário atual
-Campos de entrada para valores de cancelamento
-Indicadores de REAL_VALUE, Inauguração, Cancelamento e Total
-Indicadores AIGL e Agência
-[INSERIR IMAGEM: Painel de simulação com casos e valores]
-3.2.4. Barra Lateral - Casos Salvos
-A barra lateral direita pode ser expandida ou recolhida e contém a lista de casos salvos anteriormente. Cada caso salvo mostra:
-Nome do caso
-Mês de referência
-Botões para carregar ou excluir o caso
-[INSERIR IMAGEM: Barra lateral com casos salvos]
+O módulo de Estatística de Encerramento oferece uma análise abrangente e detalhada dos dados relacionados aos correspondentes Bradesco Expresso. A ferramenta permite visualizar diferentes perspectivas sobre bloqueios, encerramentos, tempo de operação e volume de transações através de uma interface intuitiva e dashboards interativos.
 
-3.3. Utilizando o Simulador
-3.3.1. Selecionando o Mês de Referência
-Para iniciar uma análise ou simulação, é necessário primeiro selecionar o mês de referência:
-Clique no campo 'Selecione o Mês' na barra superior
-Escolha o mês desejado da lista (últimos 12 meses disponíveis)
-O sistema carregará automaticamente os dados históricos e atualizará a simulação
-Observação: Ao mudar o mês de referência, todos os casos ativos serão atualizados com os novos valores base (REAL_VALUE e Inauguração).
-[INSERIR IMAGEM: Seletor de mês em destaque]
-3.3.2. Analisando Dados Históricos
-Após selecionar o mês, o painel de histórico exibirá automaticamente:
-Mês anterior: Dados do mês imediatamente anterior ao selecionado
-Últimos 4 trimestres: Dados consolidados trimestrais
-Mesmo mês do ano anterior: Permite comparação ano a ano
-A tabela abaixo do gráfico apresenta os valores detalhados para cada período, incluindo:
-Real: Valor total de correspondentes ativos no período
-Inauguração: Número de correspondentes inaugurados
-Cancelamento: Número de correspondentes encerrados
-Total: Resultado final (Real - Cancelamento + Inauguração)
-[INSERIR IMAGEM: Gráfico e tabela de histórico com dados]
-3.3.3. Criando um Novo Caso de Simulação
-Para criar um novo cenário de simulação:
-Clique no botão '+ Novo Caso' no painel de simulação
-Uma nova aba será criada (máximo de 3 casos simultâneos)
-O caso será inicializado com os valores base do mês selecionado
-Importante: Se já houver 3 casos ativos, você precisará remover um caso existente antes de criar um novo.
-[INSERIR IMAGEM: Botão + Novo Caso e abas de casos]
-3.3.4. Inserindo Valores de Cancelamento
-Cada caso de simulação permite a entrada de valores de cancelamento por categoria:
-Localize a seção 'Valores de Cancelamento' no painel direito
-Insira valores numéricos em cada campo de categoria
-Os valores são atualizados automaticamente conforme você digita
-O total de cancelamento é calculado automaticamente (soma de todas as categorias)
-O sistema recalcula instantaneamente o valor total usando a fórmula:
-TOTAL = REAL_VALUE - CANCELAMENTO + INAUGURAÇÃO
-[INSERIR IMAGEM: Campos de entrada de valores de cancelamento]
-3.3.5. Visualizando Indicadores
-Os indicadores principais são exibidos em destaque no painel de simulação:
-REAL_VALUE: Valor base de correspondentes ativos no mês
-Inauguração: Número de correspondentes inaugurados (em verde)
-Cancelamento: Total de cancelamentos inseridos (em vermelho)
-TOTAL: Resultado final da simulação (em azul)
-Abaixo dos indicadores principais, são exibidos dois valores adicionais específicos do mês:
-AIGL: Indicador específico calculado para o mês selecionado
-Agência: Indicador de agências calculado para o mês selecionado
-[INSERIR IMAGEM: Painel de indicadores com valores]
-3.3.6. Alternando Entre Casos
-Quando há múltiplos casos ativos:
-Clique na aba do caso desejado para visualizá-lo
-A aba ativa será destacada com uma borda diferente
-O gráfico e os valores serão atualizados automaticamente
-Cada caso mantém seus valores independentemente
-[INSERIR IMAGEM: Abas de casos com uma ativa]
-3.3.7. Removendo um Caso
-Para remover um caso de simulação:
-Clique no 'X' ao lado do nome do caso na aba
-O caso será removido imediatamente (não há confirmação)
-Se era o caso ativo, o sistema mudará automaticamente para outro caso
-Atenção: Não é possível remover o último caso. Sempre deve haver pelo menos um caso ativo.
-[INSERIR IMAGEM: Botão X para remover caso]
+**Principais funcionalidades:**
 
-3.4. Salvando e Carregando Casos
-3.4.1. Salvando um Caso
-Para salvar um caso de simulação para uso futuro:
-Configure o caso com os valores desejados
-Digite um nome descritivo no campo 'Nome do caso'
-Clique no botão 'Salvar Caso' (verde)
-Uma mensagem de confirmação aparecerá
-O caso aparecerá na lista de casos salvos na barra lateral
-O caso salvo incluirá:
-Mês de referência
-Valores de REAL_VALUE e Inauguração
-Todos os valores de cancelamento inseridos
-Total calculado
-[INSERIR IMAGEM: Campo de nome e botão Salvar Caso]
-3.4.2. Carregando um Caso Salvo
-Para carregar um caso previamente salvo:
-Abra a barra lateral de casos salvos (se estiver recolhida)
-Localize o caso desejado na lista
-Clique no botão 'Carregar' (azul) ao lado do caso
-O caso será adicionado como uma nova aba no painel de simulação
-O mês de referência será automaticamente ajustado
-Nota: Se já houver 3 casos ativos, você precisará remover um antes de carregar um novo caso.
-[INSERIR IMAGEM: Lista de casos salvos com botões Carregar e Excluir]
-3.4.3. Excluindo um Caso Salvo
-Para remover permanentemente um caso salvo:
-Localize o caso na lista de casos salvos
-Clique no botão 'Excluir' (vermelho) ao lado do caso
-Confirme a exclusão na mensagem que aparecer
-O caso será removido permanentemente da lista
-Atenção: Esta ação não pode ser desfeita. O caso será excluído permanentemente do banco de dados.
-[INSERIR IMAGEM: Confirmação de exclusão de caso]
+- Análise de motivos de bloqueio com distribuição percentual
+- Análise de motivos de encerramento com informações detalhadas
+- Avaliação do tempo de atuação dos correspondentes
+- Monitoramento de volume de transações por faixas
+- Filtros flexíveis por período (data inicial e final)
+- Visualizações gráficas em pizza, barras e tabelas detalhadas
+- Exportação de dados em formato CSV compatível com Excel
+- Navegação por abas para diferentes análises
 
-3.5. Exportando Relatórios
-3.5.1. Gerando um Relatório PDF
-O sistema permite exportar todas as informações visualizadas em um relatório PDF completo:
-Certifique-se de que o mês correto está selecionado
-Configure todos os casos que deseja incluir no relatório
-Clique no botão 'Exportar' na barra superior
-Aguarde enquanto o sistema gera o PDF (pode levar alguns segundos)
-O arquivo será baixado automaticamente para seu computador
-O relatório PDF incluirá:
-Capa com título e mês de referência
-Gráfico de histórico de encerramentos
-Tabela detalhada de dados históricos
-Gráfico de simulação para cada caso ativo
-Resumo de valores para cada caso
-Detalhamento de cancelamento por categoria
-[INSERIR IMAGEM: Botão Exportar em destaque]
-3.5.2. Nome do Arquivo Exportado
-O arquivo PDF gerado seguirá o padrão de nomenclatura:
-simulador_encerramento_YYYY-MM.pdf
-Onde YYYY-MM representa o ano e mês de referência selecionado. Por exemplo:
-simulador_encerramento_2025-10.pdf (para outubro de 2025)
-simulador_encerramento_2025-03.pdf (para março de 2025)
-[INSERIR IMAGEM: Exemplo de arquivo PDF gerado]
+***[INSERIR IMAGEM: Tela principal do módulo Estatística de Encerramento]***
 
-3.6. Dicas e Boas Práticas
-3.6.1. Nomenclatura de Casos
-Ao salvar casos, utilize nomes descritivos que facilitem a identificação futura:
-Bom: 'Cenário Conservador - Q4 2025'
-Bom: 'Alta Taxa Cancelamento - Tipo A'
-Ruim: 'Teste 1'
-Ruim: 'Caso Novo'
-3.6.2. Comparando Cenários
-Para comparar diferentes cenários efetivamente:
-Crie múltiplos casos com variações específicas
-Mantenha o mesmo mês de referência para todos os casos
-Alterne entre as abas para comparar visualmente os resultados
-Exporte o relatório PDF para documentar as comparações
-3.6.3. Análise de Tendências
-Utilize os dados históricos para identificar padrões:
-Compare trimestres para identificar sazonalidade
-Analise o mesmo período do ano anterior para identificar crescimento
-Observe as variações entre Real, Inauguração e Cancelamento
-Use essas informações para projeções mais precisas
-3.6.4. Organização de Casos Salvos
-Mantenha sua biblioteca de casos organizada:
-Exclua casos antigos ou não mais relevantes
-Use prefixos nos nomes para agrupar casos relacionados
-Documente casos importantes exportando-os em PDF
-Revise periodicamente os casos salvos para manter apenas os úteis
-3.6.5. Interpretação dos Indicadores AIGL e Agência
-Os indicadores AIGL e Agência fornecem informações complementares específicas do mês:
-Estes valores são calculados automaticamente baseados no mês selecionado
-Utilize-os como referência adicional ao analisar cenários
-Valores diferentes entre meses podem indicar variações sazonais
-Consulte a documentação técnica para detalhes sobre os cálculos
+1.2. Interface do Sistema
 
-3.7. Resolução de Problemas
-3.7.1. Dados Não Carregam
-Problema: Ao selecionar o mês, os dados históricos ou de simulação não são carregados.
-Soluções:
-Verifique sua conexão com a internet
-Tente recarregar a página (F5)
-Selecione um mês diferente e depois retorne ao mês desejado
-Limpe o cache do navegador
-Entre em contato com o suporte técnico se o problema persistir
-3.7.2. Não Consigo Criar Novo Caso
-Problema: O botão '+ Novo Caso' não funciona ou exibe uma mensagem de aviso.
-Solução:
-Verifique se já há 3 casos ativos (limite máximo)
-Remova um caso existente clicando no 'X' em uma das abas
-Certifique-se de que um mês foi selecionado
-3.7.3. Caso Salvo Não Carrega Corretamente
-Problema: Ao carregar um caso salvo, os valores não aparecem ou estão incorretos.
-Soluções:
-Verifique se há espaço para um novo caso (máximo 3)
-Remova um caso ativo antes de carregar o caso salvo
-Aguarde alguns segundos para o carregamento completo
-Se o problema persistir, exclua e crie um novo caso com os mesmos valores
-3.7.4. Exportação PDF Falha
-Problema: O botão Exportar não gera o arquivo PDF ou ocorre um erro.
-Soluções:
-Aguarde completamente o carregamento dos gráficos antes de exportar
-Verifique se o bloqueador de pop-ups está desabilitado
-Certifique-se de que há casos ativos para exportar
-Tente usar um navegador diferente
-Entre em contato com o suporte se o erro persistir
-3.7.5. Valores Não Atualizam
-Problema: Ao inserir valores de cancelamento, o total não é recalculado automaticamente.
-Soluções:
-Pressione Enter após inserir o valor
-Clique fora do campo de entrada
-Recarregue a página e tente novamente
-Limpe o cache do navegador
+A interface do módulo de Estatística de Encerramento é organizada de forma intuitiva para facilitar a navegação entre diferentes análises.
 
-Glossário
-AIGL: Indicador específico calculado mensalmente para análise de correspondentes.
-Agência: Indicador de agências calculado mensalmente para contextualização dos dados.
-Cancelamento: Número de correspondentes bancários que foram encerrados em um determinado período. Representa a quantidade de pontos de atendimento que deixaram de operar.
-Caso: Um cenário de simulação específico com valores configurados pelo usuário. Cada caso representa uma projeção diferente de cancelamentos.
-Correspondente Bancário: Estabelecimento credenciado por instituição financeira para prestar serviços bancários de forma terceirizada.
-Inauguração: Número de novos correspondentes bancários que iniciaram operações em um determinado período. Representa expansão da rede de atendimento.
-REAL_VALUE: Valor base que representa o número total de correspondentes ativos no início do período de referência.
-Simulação: Processo de projeção de cenários futuros através da manipulação de variáveis de cancelamento.
-Total: Resultado final calculado pela fórmula: TOTAL = REAL_VALUE - CANCELAMENTO + INAUGURAÇÃO. Representa a projeção final de correspondentes ativos.
+1.2.1. Barra Superior - Controles Principais
 
-Informações de Suporte
-Para assistência técnica, dúvidas ou sugestões sobre o Sistema de Gestão de Encerramento, entre em contato com a equipe de suporte:
-Equipe de Desenvolvimento
-Email: [INSERIR EMAIL DE SUPORTE]
-Ramal: [INSERIR RAMAL]
-Horário de Atendimento: Segunda a Sexta, 8h às 18h
-Observações Importantes:
-Mantenha o navegador atualizado para melhor experiência
-Navegadores recomendados: Chrome, Firefox, Edge (versões recentes)
-Certifique-se de ter permissões adequadas para acessar o sistema
-Reporte bugs ou comportamentos inesperados imediatamente
-Versão do Manual: 1.0
-Última Atualização: 14/11/2025
+A barra superior contém os controles essenciais para filtrar e exportar dados:
+
+- **Data Inicial:** Campo para selecionar a data de início do período de análise
+- **Data Final:** Campo para selecionar a data de término do período de análise
+- **Botão Filtrar:** Aplica os filtros selecionados e atualiza todas as visualizações
+- **Botão Exportar CSV:** Exporta os dados da aba ativa em formato CSV
+
+***Observação:** Os filtros de data afetam todas as abas simultaneamente. Ao alterar o período e filtrar, todas as análises serão atualizadas automaticamente.*
+
+***[INSERIR IMAGEM: Barra superior com filtros de data e botões]***
+
+1.2.2. Navegação por Abas
+
+O módulo é dividido em quatro abas principais, cada uma oferecendo uma análise específica:
+
+- **Motivos Bloqueio:** Análise dos motivos pelos quais correspondentes foram bloqueados
+- **Motivos Encerramento:** Análise dos motivos de encerramento de correspondentes
+- **Tempo de Atuação:** Distribuição dos correspondentes por tempo de operação
+- **Volume de Transações:** Análise dos correspondentes por faixas de volume transacional
+
+Cada aba mantém sua própria visualização e pode ser exportada individualmente.
+
+***[INSERIR IMAGEM: Abas de navegação do módulo]***
+
+1.3. Motivos Bloqueio
+
+1.3.1. Visão Geral da Aba
+
+A aba Motivos Bloqueio apresenta uma análise detalhada dos bloqueios de correspondentes, permitindo identificar as principais causas e sua distribuição ao longo do período selecionado.
+
+**Informações disponíveis:**
+
+- Total de correspondentes bloqueados no período
+- Distribuição percentual por motivo de bloqueio
+- Quantidade absoluta de bloqueios por categoria
+- Visualização gráfica em formato de pizza
+- Tabela detalhada com todos os motivos
+
+***[INSERIR IMAGEM: Dashboard de Motivos Bloqueio completo]***
+
+1.3.2. Gráfico de Pizza
+
+O gráfico de pizza exibe visualmente a proporção de cada motivo de bloqueio:
+
+- Cada fatia representa um motivo diferente
+- O tamanho da fatia é proporcional à quantidade de bloqueios
+- Cores distintas para fácil diferenciação
+- Percentual exibido em cada fatia
+- Legenda interativa ao lado do gráfico
+
+***Dica:** Passe o mouse sobre as fatias do gráfico para ver informações detalhadas de cada motivo.*
+
+***[INSERIR IMAGEM: Gráfico de pizza de motivos de bloqueio]***
+
+1.3.3. Tabela de Detalhamento
+
+Abaixo do gráfico, a tabela apresenta informações completas:
+
+**Colunas disponíveis:**
+
+- **Motivo:** Descrição do motivo de bloqueio
+- **Quantidade:** Número absoluto de correspondentes bloqueados por este motivo
+- **Percentual:** Representatividade em relação ao total de bloqueios
+
+A tabela é ordenada por quantidade (maior para menor) por padrão, facilitando a identificação dos principais motivos.
+
+***[INSERIR IMAGEM: Tabela de motivos de bloqueio]***
+
+1.3.4. Interpretação dos Dados
+
+Os motivos de bloqueio mais comuns podem incluir:
+
+- Irregularidades operacionais
+- Problemas de conformidade
+- Questões documentais
+- Inadimplência
+- Solicitação do correspondente
+- Outros motivos específicos
+
+***Importante:** A análise destes dados permite identificar pontos de atenção na gestão dos correspondentes e direcionar ações corretivas.*
+
+1.4. Motivos Encerramento
+
+1.4.1. Visão Geral da Aba
+
+A aba Motivos Encerramento oferece uma visão completa sobre os encerramentos definitivos de correspondentes, diferenciando-se dos bloqueios temporários.
+
+**Informações disponíveis:**
+
+- Total de correspondentes encerrados no período
+- Distribuição percentual por motivo de encerramento
+- Quantidade absoluta de encerramentos por categoria
+- Análise comparativa entre diferentes motivos
+- Visualização em gráfico de barras e tabela
+
+***[INSERIR IMAGEM: Dashboard de Motivos Encerramento completo]***
+
+1.4.2. Gráfico de Barras
+
+O gráfico de barras horizontais apresenta:
+
+- Cada barra representa um motivo de encerramento
+- O comprimento da barra indica a quantidade de encerramentos
+- Valores numéricos exibidos ao final de cada barra
+- Cores diferenciadas para melhor visualização
+- Ordenação por quantidade (maior para menor)
+
+***Dica:** O gráfico de barras facilita a comparação direta entre os diferentes motivos de encerramento.*
+
+***[INSERIR IMAGEM: Gráfico de barras de motivos de encerramento]***
+
+1.4.3. Tabela Detalhada
+
+A tabela complementa a visualização gráfica com informações precisas:
+
+**Colunas disponíveis:**
+
+- **Motivo:** Descrição completa do motivo de encerramento
+- **Quantidade:** Número total de encerramentos por este motivo
+- **Percentual:** Participação percentual em relação ao total
+
+***Observação:** A diferença entre bloqueio e encerramento é fundamental: bloqueios podem ser temporários e reversíveis, enquanto encerramentos são definitivos.*
+
+***[INSERIR IMAGEM: Tabela de motivos de encerramento]***
+
+1.4.4. Categorias de Encerramento
+
+Os motivos de encerramento típicos incluem:
+
+- Decisão empresarial do correspondente
+- Descumprimento de normas contratuais
+- Inviabilidade econômica
+- Mudança de estratégia de negócio
+- Problemas legais ou regulatórios
+- Encerramento de atividades do estabelecimento
+
+***Importante:** A análise de encerramentos ajuda a identificar tendências de mercado e necessidades de suporte aos correspondentes.*
+
+1.5. Tempo de Atuação
+
+1.5.1. Visão Geral da Aba
+
+A aba Tempo de Atuação analisa a longevidade operacional dos correspondentes bloqueados ou encerrados, fornecendo insights sobre a sustentabilidade do modelo de negócio.
+
+**Informações disponíveis:**
+
+- Distribuição de correspondentes por faixas de tempo de operação
+- Tempo médio de atuação antes do bloqueio/encerramento
+- Identificação de períodos críticos
+- Visualização em gráfico de barras
+- Análise de concentração por faixa temporal
+
+***[INSERIR IMAGEM: Dashboard de Tempo de Atuação completo]***
+
+1.5.2. Faixas de Tempo
+
+Os correspondentes são agrupados nas seguintes faixas:
+
+- **0 a 6 meses:** Operações muito recentes
+- **6 a 12 meses:** Primeiro ano de operação
+- **1 a 2 anos:** Fase de consolidação inicial
+- **2 a 3 anos:** Operação estabelecida
+- **3 a 5 anos:** Operação madura
+- **Acima de 5 anos:** Operação consolidada
+
+***Observação:** A distribuição por faixas permite identificar se os encerramentos ocorrem predominantemente em operações novas ou estabelecidas.*
+
+***[INSERIR IMAGEM: Gráfico de barras de tempo de atuação]***
+
+1.5.3. Interpretação dos Dados
+
+A análise do tempo de atuação revela padrões importantes:
+
+- **Alta concentração em 0-6 meses:** Pode indicar problemas na seleção ou suporte inicial aos correspondentes
+- **Alta concentração em 1-3 anos:** Pode sugerir dificuldades na fase de consolidação
+- **Distribuição uniforme:** Indica que os encerramentos ocorrem em todas as fases
+- **Baixa incidência em operações maduras:** Sugere que correspondentes estabelecidos têm maior estabilidade
+
+1.5.4. Tabela de Detalhamento
+
+A tabela apresenta as seguintes informações:
+
+**Colunas disponíveis:**
+
+- **Faixa de Tempo:** Intervalo de duração da operação
+- **Quantidade:** Número de correspondentes nesta faixa
+- **Percentual:** Representatividade em relação ao total
+
+***Importante:** Esta análise é crucial para planejamento de ações de retenção e identificação de momentos críticos no ciclo de vida dos correspondentes.*
+
+***[INSERIR IMAGEM: Tabela de tempo de atuação]***
+
+1.6. Volume de Transações
+
+1.6.1. Visão Geral da Aba
+
+A aba Volume de Transações analisa o desempenho transacional dos correspondentes nos três meses anteriores ao bloqueio ou encerramento, permitindo identificar correlações entre performance e descontinuidade operacional.
+
+**Informações disponíveis:**
+
+- Distribuição por faixas de volume transacional
+- Análise do comportamento transacional pré-bloqueio/encerramento
+- Identificação de correspondentes de baixo, médio e alto volume
+- Correlação entre performance e continuidade operacional
+- Visualização em gráfico de barras e tabela
+
+***Observação:** O volume é calculado baseado na média dos três meses anteriores à data de bloqueio/encerramento de cada correspondente, garantindo uma análise contextualizada.*
+
+***[INSERIR IMAGEM: Dashboard de Volume de Transações completo]***
+
+1.6.2. Faixas de Volume
+
+Os correspondentes são classificados nas seguintes categorias:
+
+- **0 transações:** Sem atividade transacional registrada
+- **1 a 50 transações:** Volume muito baixo
+- **51 a 200 transações:** Volume baixo
+- **201 a 500 transações:** Volume médio-baixo
+- **501 a 1.000 transações:** Volume médio
+- **1.001 a 2.000 transações:** Volume médio-alto
+- **Acima de 2.000 transações:** Volume alto
+
+***Importante:** As faixas são configuradas para refletir os padrões de operação típicos da rede Bradesco Expresso.*
+
+***[INSERIR IMAGEM: Gráfico de barras de volume de transações]***
+
+1.6.3. Análise de Performance
+
+A distribuição por volume transacional permite insights estratégicos:
+
+- **Alta concentração em baixo volume:** Pode indicar que correspondentes com baixa performance têm maior probabilidade de encerramento
+- **Presença significativa em alto volume:** Pode sinalizar encerramentos por motivos não relacionados à performance (ex: decisões empresariais)
+- **Zero transações:** Identifica correspondentes que foram encerrados/bloqueados sem atividade recente
+
+1.6.4. Tabela de Detalhamento
+
+A tabela complementa a análise com dados precisos:
+
+**Colunas disponíveis:**
+
+- **Faixa de Volume:** Intervalo de quantidade de transações
+- **Quantidade:** Número de correspondentes nesta faixa
+- **Percentual:** Representatividade em relação ao total
+- **Interpretação:** Classificação do nível de atividade
+
+***Dica:** Compare os dados de volume com os motivos de encerramento para identificar correlações entre performance e continuidade operacional.*
+
+***[INSERIR IMAGEM: Tabela de volume de transações]***
+
+1.6.5. Considerações Técnicas
+
+**Cálculo do Volume:**
+
+O sistema utiliza os seguintes critérios para calcular o volume transacional:
+
+- Período de análise: 3 meses anteriores à data de bloqueio/encerramento
+- Contagem individual por correspondente
+- Consolidação em faixas pré-definidas
+- Dados obtidos de tabelas pré-agregadas para performance otimizada
+
+***Observação:** O cálculo individualizado por data de bloqueio garante que cada correspondente seja avaliado em seu contexto temporal específico.*
+
+1.7. Utilizando os Filtros
+
+1.7.1. Selecionando o Período de Análise
+
+Para realizar uma análise estatística, siga os passos:
+
+1. **Defina a Data Inicial:**
+   - Clique no campo "Data Inicial"
+   - Selecione a data de início do período desejado
+   - O sistema aceita datas dentro do intervalo de dados disponíveis
+
+2. **Defina a Data Final:**
+   - Clique no campo "Data Final"
+   - Selecione a data de término do período
+   - A data final deve ser posterior ou igual à data inicial
+
+3. **Aplique os Filtros:**
+   - Clique no botão "Filtrar"
+   - Aguarde o carregamento dos dados
+   - Todas as abas serão atualizadas automaticamente
+
+***Importante:** O sistema valida as datas inseridas. Se a data final for anterior à data inicial, uma mensagem de erro será exibida.*
+
+***[INSERIR IMAGEM: Campos de filtro de data]***
+
+1.7.2. Períodos Recomendados
+
+Para diferentes tipos de análise, considere os seguintes períodos:
+
+- **Análise Mensal:** Selecione o primeiro e último dia do mês
+- **Análise Trimestral:** Selecione intervalo de 3 meses completos
+- **Análise Semestral:** Selecione intervalo de 6 meses
+- **Análise Anual:** Selecione intervalo de 12 meses ou ano civil completo
+- **Análise Comparativa:** Selecione períodos equivalentes de anos diferentes
+
+***Dica:** Para comparações ano a ano, exporte os dados de cada período e compare-os externamente em planilhas.*
+
+1.8. Exportando Dados
+
+1.8.1. Gerando Arquivo CSV
+
+O sistema permite exportar os dados de qualquer aba em formato CSV compatível com Excel:
+
+1. **Navegue até a aba desejada:**
+   - Clique na aba que contém os dados a exportar
+   - Verifique se os filtros estão corretamente aplicados
+
+2. **Clique no botão "Exportar CSV":**
+   - Localizado na barra superior
+   - O sistema gerará o arquivo automaticamente
+
+3. **Faça o download:**
+   - O arquivo será baixado para seu computador
+   - Verifique a pasta de downloads do navegador
+
+***Observação:** Apenas os dados da aba ativa são exportados. Para exportar todas as análises, é necessário exportar cada aba individualmente.*
+
+***[INSERIR IMAGEM: Botão Exportar CSV em destaque]***
+
+1.8.2. Formato do Arquivo CSV
+
+Os arquivos CSV exportados seguem o padrão de formatação europeu para compatibilidade com Excel:
+
+**Características do arquivo:**
+
+- **Delimitador:** Ponto e vírgula (;)
+- **Codificação:** UTF-8 com BOM
+- **Números:** Formato europeu (vírgula como separador decimal)
+- **Cabeçalhos:** Primeira linha contém nomes das colunas
+- **Dados:** Linhas subsequentes contêm os registros
+
+***Importante:** A formatação europeia garante que o Excel abra o arquivo corretamente sem necessidade de configurações adicionais.*
+
+1.8.3. Estrutura dos Arquivos por Aba
+
+**Motivos Bloqueio:**
+- Coluna 1: Motivo do Bloqueio
+- Coluna 2: Quantidade
+- Coluna 3: Percentual
+
+**Motivos Encerramento:**
+- Coluna 1: Motivo do Encerramento
+- Coluna 2: Quantidade
+- Coluna 3: Percentual
+
+**Tempo de Atuação:**
+- Coluna 1: Faixa de Tempo
+- Coluna 2: Quantidade
+- Coluna 3: Percentual
+
+**Volume de Transações:**
+- Coluna 1: Faixa de Volume
+- Coluna 2: Quantidade
+- Coluna 3: Percentual
+
+***[INSERIR IMAGEM: Exemplo de arquivo CSV aberto no Excel]***
+
+1.8.4. Nomenclatura dos Arquivos
+
+Os arquivos exportados seguem o padrão:
+
+- **estatistica_motivos_bloqueio_YYYYMMDD_YYYYMMDD.csv**
+- **estatistica_motivos_encerramento_YYYYMMDD_YYYYMMDD.csv**
+- **estatistica_tempo_atuacao_YYYYMMDD_YYYYMMDD.csv**
+- **estatistica_volume_transacoes_YYYYMMDD_YYYYMMDD.csv**
+
+Onde os dois conjuntos de YYYYMMDD representam respectivamente a data inicial e final do período filtrado.
+
+Exemplo: `estatistica_motivos_bloqueio_20251001_20251031.csv` (outubro de 2025)
+
+1.9. Dicas e Boas Práticas
+
+1.9.1. Análise Periódica
+
+Para acompanhamento efetivo da rede de correspondentes:
+
+- **Realize análises mensais regulares** para identificar tendências precocemente
+- **Compare sempre com períodos anteriores** para contexto histórico
+- **Documente insights importantes** em relatórios gerenciais
+- **Compartilhe análises relevantes** com as áreas responsáveis
+- **Estabeleça indicadores de alerta** baseados em padrões identificados
+
+1.9.2. Correlacionando Análises
+
+Utilize as diferentes abas de forma complementar:
+
+- Compare **Motivos de Bloqueio** com **Tempo de Atuação** para identificar se problemas ocorrem em fases específicas
+- Analise **Volume de Transações** junto com **Motivos de Encerramento** para entender se baixa performance leva a encerramentos
+- Cruze **Tempo de Atuação** com **Volume de Transações** para identificar correspondentes promissores vs. problemáticos
+- Use **Motivos de Bloqueio** e **Motivos de Encerramento** conjuntamente para distinguir problemas temporários de definitivos
+
+1.9.3. Exportação Estratégica
+
+Otimize o uso das exportações CSV:
+
+- **Exporte regularmente** para construir série histórica
+- **Organize arquivos em pastas** por ano e mês
+- **Crie dashboards externos** em ferramentas de BI quando necessário
+- **Mantenha backup** dos dados exportados importantes
+- **Padronize nomenclatura** ao salvar arquivos localmente
+
+1.9.4. Interpretação de Percentuais
+
+Ao analisar os dados percentuais:
+
+- **Percentuais altos em categorias específicas** indicam concentração de problemas
+- **Mudanças bruscas mês a mês** podem sinalizar eventos extraordinários
+- **Percentuais consistentes** sugerem padrões estruturais
+- **Múltiplas categorias com valores similares** indicam causas diversificadas
+- **Sempre analise números absolutos e percentuais** conjuntamente
+
+1.9.5. Períodos de Análise
+
+Escolha períodos adequados ao objetivo:
+
+- **Mensal:** Para acompanhamento operacional e tático
+- **Trimestral:** Para análise de tendências e sazonalidade
+- **Semestral:** Para avaliação de estratégias de médio prazo
+- **Anual:** Para planejamento estratégico e comparações anuais
+- **Períodos customizados:** Para análise de eventos específicos
+
+***Dica:** Evite períodos muito curtos (menos de 1 semana) que podem não ter dados estatisticamente significativos.*
+
+1.9.6. Ações Baseadas em Dados
+
+Utilize as estatísticas para direcionar ações concretas:
+
+- **Motivo de bloqueio recorrente:** Desenvolva treinamentos ou materiais de suporte específicos
+- **Alta incidência de encerramentos precoces:** Revise processos de seleção e onboarding
+- **Baixo volume transacional:** Implemente programas de incentivo ou suporte comercial
+- **Concentração em faixas de tempo específicas:** Crie programas de retenção direcionados
+
+1.10. Resolução de Problemas
+
+1.10.1. Dados Não Carregam Após Filtrar
+
+**Problema:** Ao clicar em "Filtrar", os gráficos e tabelas não são atualizados.
+
+**Soluções:**
+
+- Verifique se as datas inicial e final foram preenchidas corretamente
+- Certifique-se de que a data final é posterior à data inicial
+- Verifique sua conexão com a internet
+- Aguarde alguns segundos - períodos longos podem demorar para processar
+- Tente recarregar a página (F5) e filtrar novamente
+- Limpe o cache do navegador
+- Entre em contato com o suporte técnico se o problema persistir
+
+1.10.2. Mensagem de Erro ao Filtrar
+
+**Problema:** Aparece uma mensagem de erro ao tentar aplicar os filtros.
+
+**Possíveis causas e soluções:**
+
+- **"Data final deve ser posterior à data inicial":** Corrija a ordem das datas
+- **"Período inválido":** Verifique se as datas estão dentro do intervalo de dados disponíveis
+- **"Erro ao buscar dados":** Problema de conexão ou servidor - tente novamente em alguns minutos
+- **Erro de timeout:** Reduza o período de análise para diminuir o volume de dados processados
+
+1.10.3. Gráficos Não Aparecem
+
+**Problema:** Os gráficos não são exibidos, apenas as tabelas.
+
+**Soluções:**
+
+- Aguarde o carregamento completo da página
+- Verifique se o JavaScript está habilitado no navegador
+- Desabilite extensões de bloqueio de conteúdo temporariamente
+- Tente usar outro navegador (Chrome, Firefox, Edge)
+- Limpe o cache e cookies do navegador
+- Verifique se há mensagens de erro no console do navegador (F12)
+
+1.10.4. Exportação CSV Não Funciona
+
+**Problema:** Ao clicar em "Exportar CSV", nada acontece ou ocorre um erro.
+
+**Soluções:**
+
+- Certifique-se de que aplicou os filtros antes de exportar
+- Verifique se há dados na aba ativa para exportar
+- Desabilite bloqueadores de pop-ups para este site
+- Verifique se tem permissão de escrita na pasta de downloads
+- Tente usar o navegador em modo anônimo/privado
+- Limpe a pasta de downloads se estiver cheia
+- Entre em contato com o suporte se o problema persistir
+
+1.10.5. CSV Abre com Caracteres Estranhos
+
+**Problema:** Ao abrir o CSV no Excel, aparecem caracteres especiais ou acentos incorretos.
+
+**Soluções:**
+
+- **No Excel:** Use "Dados" > "Obter Dados Externos" > "De Texto/CSV" e selecione UTF-8 como codificação
+- **Alternativa:** Abra o arquivo no Bloco de Notas e salve como ANSI
+- **Alternativa 2:** Use "Salvar Como" no Excel e escolha "CSV UTF-8"
+- Certifique-se de que está usando uma versão recente do Excel
+
+1.10.6. Valores Percentuais Não Somam 100%
+
+**Problema:** A soma dos percentuais na tabela não resulta em exatamente 100%.
+
+**Explicação:**
+
+- Isso é normal e esperado devido a arredondamentos decimais
+- Cada percentual é calculado individualmente e arredondado
+- A diferença geralmente é de 0,1% a 0,5% no máximo
+- Os valores absolutos (quantidade) sempre estão corretos
+
+***Observação:** Este comportamento não indica erro no sistema, apenas a natureza dos arredondamentos matemáticos.*
+
+1.10.7. Performance Lenta
+
+**Problema:** O sistema está muito lento ao filtrar ou navegar entre abas.
+
+**Soluções:**
+
+- **Reduza o período de análise** - períodos muito longos (mais de 1 ano) podem ser lentos
+- **Feche outras abas do navegador** para liberar memória
+- **Limpe o cache do navegador** regularmente
+- **Verifique sua conexão com a internet** - conexões lentas afetam o carregamento
+- **Use navegadores modernos** - versões antigas podem ter performance inferior
+- **Entre em contato com o suporte** se a lentidão for consistente e generalizada
