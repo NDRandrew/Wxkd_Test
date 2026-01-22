@@ -1,18 +1,73 @@
+# ============================================
+# REGISTRAR FONTE CUSTOMIZADA
+# ============================================
+
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
+# PASSO 1: Upload da fonte
+# Faça upload do arquivo .ttf ou .otf para o DBFS
+# Você pode fazer isso via UI do Databricks ou usando o código abaixo
+
+# PASSO 2: Registrar a fonte
+# Substitua o caminho pelo local onde você fez upload da fonte
+
+# Exemplo: Se você fez upload para /FileStore/fonts/
+try:
+    # Fonte Regular
+    pdfmetrics.registerFont(TTFont('MinhaFonte', '/dbfs/FileStore/fonts/SuaFonte-Regular.ttf'))
+    
+    # Fonte Bold (se tiver)
+    pdfmetrics.registerFont(TTFont('MinhaFonte-Bold', '/dbfs/FileStore/fonts/SuaFonte-Bold.ttf'))
+    
+    # Fonte Italic (se tiver)
+    pdfmetrics.registerFont(TTFont('MinhaFonte-Italic', '/dbfs/FileStore/fonts/SuaFonte-Italic.ttf'))
+    
+    # Fonte Bold Italic (se tiver)
+    pdfmetrics.registerFont(TTFont('MinhaFonte-BoldItalic', '/dbfs/FileStore/fonts/SuaFonte-BoldItalic.ttf'))
+    
+    print("✅ Fontes customizadas registradas com sucesso!")
+    print("   - MinhaFonte (Regular)")
+    print("   - MinhaFonte-Bold")
+    print("   - MinhaFonte-Italic")
+    print("   - MinhaFonte-BoldItalic")
+    
+except Exception as e:
+    print(f"❌ Erro ao registrar fonte: {e}")
+    print("\n⚠️  Usando Helvetica como fallback")
+
+
+--------------------
+
 class BoletimBradescoGenerator:
     """
     Gera PDF no estilo Boletim Bradesco
     Layout similar às imagens fornecidas
     """
     
-    def __init__(self, filename):
+    def __init__(self, filename, fonte_principal='MinhaFonte', fonte_bold='MinhaFonte-Bold'):
         self.filename = filename
         self.pagesize = landscape(A4)
         self.width, self.height = self.pagesize
         self.slides = []
         
+        # Definir fontes (com fallback para Helvetica)
+        self.fonte_regular = fonte_principal
+        self.fonte_bold = fonte_bold
+        
+        # Verificar se as fontes estão disponíveis
+        try:
+            from reportlab.pdfbase import pdfmetrics
+            pdfmetrics.getFont(self.fonte_regular)
+            pdfmetrics.getFont(self.fonte_bold)
+        except:
+            print("⚠️  Fonte customizada não encontrada, usando Helvetica")
+            self.fonte_regular = 'Helvetica'
+            self.fonte_bold = 'Helvetica-Bold'
+        
         # Cores fixas do gradiente
-        self.cor_centro = colors.HexColor('#1a5f6f')  # Verde azulado no centro
-        self.cor_lateral = colors.HexColor('#040720')  # Azul escuro nas laterais
+        self.cor_centro = colors.HexColor('#1a5f6f')
+        self.cor_lateral = colors.HexColor('#040720')
         
         # Outras cores
         self.cor_titulo_secao = colors.HexColor('#999999')
@@ -22,10 +77,7 @@ class BoletimBradescoGenerator:
         self.cor_borda_card = colors.HexColor('#cccccc')
     
     def _interpolar_cor(self, cor1, cor2, fator):
-        """
-        Interpola entre duas cores
-        fator: 0.0 = cor1, 1.0 = cor2
-        """
+        """Interpola entre duas cores"""
         r1, g1, b1 = cor1.red, cor1.green, cor1.blue
         r2, g2, b2 = cor2.red, cor2.green, cor2.blue
         
@@ -36,22 +88,15 @@ class BoletimBradescoGenerator:
         return colors.Color(r, g, b)
     
     def _desenhar_gradiente_horizontal(self, c, x, y, width, height, cor_centro, cor_lateral):
-        """
-        Desenha um gradiente horizontal do centro para as laterais
-        """
-        num_faixas = 100  # Quanto mais faixas, mais suave o gradiente
+        """Desenha um gradiente horizontal do centro para as laterais"""
+        num_faixas = 100
         largura_faixa = width / num_faixas
         meio = num_faixas / 2
         
         for i in range(num_faixas):
-            # Calcular a distância do centro (0.0 no centro, 1.0 nas extremidades)
             distancia_centro = abs(i - meio) / meio
-            
-            # Interpolar cor
             cor = self._interpolar_cor(cor_centro, cor_lateral, distancia_centro)
             c.setFillColor(cor)
-            
-            # Desenhar faixa vertical
             c.rect(x + (i * largura_faixa), y, largura_faixa, height, fill=1, stroke=0)
     
     def processar_bullets(self, texto):
@@ -84,71 +129,62 @@ class BoletimBradescoGenerator:
         
         # Desenhar gradiente no fundo do header
         self._desenhar_gradiente_horizontal(
-            c, 
-            0, 
-            header_y, 
-            self.width, 
-            header_height, 
-            self.cor_centro, 
-            self.cor_lateral
+            c, 0, header_y, self.width, header_height, 
+            self.cor_centro, self.cor_lateral
         )
         
-        # Área para logo esquerda (50x50 pixels aproximadamente)
+        # Área para logo esquerda
         logo_x = 30
         logo_y = self.height - 65
         logo_size = 50
         
-        # Desenhar placeholder para logo
         c.setStrokeColor(colors.white)
         c.setLineWidth(1)
         c.setDash(3, 3)
         c.rect(logo_x, logo_y, logo_size, logo_size, fill=0, stroke=1)
         
-        # Título do boletim
+        # Título do boletim - USANDO FONTE CUSTOMIZADA
         c.setFillColor(colors.white)
-        c.setFont("Helvetica-Bold", 28)
+        c.setFont(self.fonte_bold, 28)  # ← FONTE CUSTOMIZADA BOLD
         titulo_x = logo_x + logo_size + 20
         c.drawString(titulo_x, self.height - 40, titulo_boletim)
         
-        # Período
-        c.setFont("Helvetica", 18)
+        # Período - USANDO FONTE CUSTOMIZADA
+        c.setFont(self.fonte_regular, 18)  # ← FONTE CUSTOMIZADA REGULAR
         c.drawString(titulo_x, self.height - 65, f"— {periodo}")
         
         # Área para logo direita
         logo_direita_x = self.width - 120
         c.rect(logo_direita_x, logo_y, 80, logo_size, fill=0, stroke=1)
         
-        c.setDash(1, 0)  # Reset dash
+        c.setDash(1, 0)
     
     def _desenhar_titulo_secao(self, c, titulo, y_pos):
-        """Desenha o título da seção (ex: PRINCIPAIS RESULTADOS)"""
-        # Fundo cinza arredondado
+        """Desenha o título da seção"""
         c.setFillColor(self.cor_titulo_secao)
         c.roundRect(60, y_pos - 5, 320, 35, 5, fill=1, stroke=0)
         
-        # Texto
+        # USANDO FONTE CUSTOMIZADA BOLD
         c.setFillColor(colors.white)
-        c.setFont("Helvetica-Bold", 14)
+        c.setFont(self.fonte_bold, 14)  # ← FONTE CUSTOMIZADA BOLD
         c.drawString(75, y_pos + 5, titulo.upper())
         
-        return y_pos - 50  # Retorna nova posição Y
+        return y_pos - 50
     
     def _desenhar_card(self, c, texto, x, y, width, height):
         """Desenha um card com borda pontilhada e texto"""
-        # Fundo branco
         c.setFillColor(self.cor_fundo)
         c.roundRect(x, y, width, height, 8, fill=1, stroke=0)
         
-        # Borda pontilhada
         c.setStrokeColor(self.cor_borda_card)
         c.setLineWidth(1.5)
         c.setDash(4, 4)
         c.roundRect(x, y, width, height, 8, fill=0, stroke=1)
-        c.setDash(1, 0)  # Reset
+        c.setDash(1, 0)
         
-        # Texto dentro do card
+        # Texto dentro do card - USANDO FONTE CUSTOMIZADA
         c.setFillColor(self.cor_texto)
-        c.setFont("Helvetica", 11)
+        c.setFont(self.fonte_regular, 11)  # ← FONTE CUSTOMIZADA REGULAR
         
         # Quebrar texto em múltiplas linhas
         palavras = texto.split()
@@ -161,16 +197,14 @@ class BoletimBradescoGenerator:
         for palavra in palavras:
             teste = (linha_atual + " " + palavra) if linha_atual else palavra
             
-            if c.stringWidth(teste, "Helvetica", 11) < max_width:
+            if c.stringWidth(teste, self.fonte_regular, 11) < max_width:
                 linha_atual = teste
             else:
-                # Desenhar linha atual
                 if linha_atual:
                     c.drawString(x + margem_interna, y_texto, linha_atual)
                     y_texto -= line_height
                 linha_atual = palavra
         
-        # Última linha
         if linha_atual:
             c.drawString(x + margem_interna, y_texto, linha_atual)
     
@@ -185,7 +219,7 @@ class BoletimBradescoGenerator:
         for palavra in palavras:
             teste = (linha_atual + " " + palavra) if linha_atual else palavra
             
-            if c.stringWidth(teste, "Helvetica", 11) < max_width:
+            if c.stringWidth(teste, self.fonte_regular, 11) < max_width:
                 linha_atual = teste
             else:
                 num_linhas += 1
@@ -194,23 +228,18 @@ class BoletimBradescoGenerator:
         if linha_atual:
             num_linhas += 1
         
-        # Altura = margem superior + (linhas * altura_linha) + margem inferior
         return 20 + (num_linhas * 14) + 15
     
     def _desenhar_slide(self, c, slide, titulo_boletim, periodo):
         """Desenha um slide completo"""
-        # Header com gradiente
         self._desenhar_header(c, titulo_boletim, periodo)
         
-        # Título da seção
         y_pos = self.height - 120
         y_pos = self._desenhar_titulo_secao(c, slide['titulo_slide'], y_pos)
         
-        # Calcular grid de cards
         bullets = slide['bullets']
         num_bullets = len(bullets)
         
-        # Layout: determinar quantas colunas e linhas
         if num_bullets <= 2:
             cols = 1
             rows = num_bullets
@@ -224,7 +253,6 @@ class BoletimBradescoGenerator:
             cols = 2
             rows = (num_bullets + 1) // 2
         
-        # Dimensões dos cards
         margem_lateral = 60
         espacamento = 20
         area_largura = self.width - (2 * margem_lateral)
@@ -233,29 +261,24 @@ class BoletimBradescoGenerator:
             card_width = area_largura
         elif cols == 2:
             card_width = (area_largura - espacamento) / 2
-        else:  # 3 colunas
+        else:
             card_width = (area_largura - (2 * espacamento)) / 3
         
-        # Desenhar cards
         x_start = margem_lateral
         y_current = y_pos
         
         for i, bullet in enumerate(bullets):
-            # Calcular posição
             col = i % cols
             
             if col == 0 and i > 0:
-                # Nova linha
-                y_current -= 150  # Espaçamento entre linhas
+                y_current -= 150
             
             x = x_start + (col * (card_width + espacamento))
             
-            # Calcular altura do card
             card_height = self._calcular_altura_card(c, bullet, card_width)
-            card_height = max(card_height, 80)  # Altura mínima
-            card_height = min(card_height, 200)  # Altura máxima
+            card_height = max(card_height, 80)
+            card_height = min(card_height, 200)
             
-            # Desenhar card
             self._desenhar_card(c, bullet, x, y_current - card_height, 
                                card_width, card_height)
     
@@ -270,132 +293,4 @@ class BoletimBradescoGenerator:
         c.save()
         print(f"✅ Boletim PDF gerado: {self.filename}")
 
-print("✅ Classe BoletimBradescoGenerator criada com gradiente!")
-
-
-
-------------------------
-
-
-# ============================================
-# GERAR BOLETIM EM PDF
-# ============================================
-
-import io
-import base64
-
-try:
-    print("🎨 Criando boletim em PDF...")
-    
-    # Criar buffer
-    buffer = io.BytesIO()
-    
-    # Criar gerador
-    gerador = BoletimBradescoGenerator(buffer)
-    
-    # Adicionar slides (SEM passar cor, já está fixa no código)
-    print("📄 Adicionando slide 1...")
-    gerador.adicionar_slide(
-        slide_1_data['titulo_slide'],
-        slide_1_data['conteudo']
-    )
-    
-    print("📄 Adicionando slide 2...")
-    gerador.adicionar_slide(
-        slide_2_data['titulo_slide'],
-        slide_2_data['conteudo']
-    )
-    
-    print("📄 Adicionando slide 3...")
-    gerador.adicionar_slide(
-        slide_3_data['titulo_slide'],
-        slide_3_data['conteudo']
-    )
-    
-    # Gerar PDF
-    print("\n🔄 Gerando arquivo PDF...")
-    gerador.gerar_pdf(
-        metadata['titulo_boletim'],
-        metadata['periodo']
-    )
-    
-    # Obter bytes
-    buffer.seek(0)
-    pdf_data = buffer.getvalue()
-    
-    print("\n" + "="*60)
-    print("✅ BOLETIM PDF GERADO COM SUCESSO!")
-    print("="*60)
-    print(f"📦 Tamanho: {len(pdf_data) / 1024:.2f} KB")
-    print(f"📊 Total de páginas: {len(gerador.slides)}")
-    print(f"📏 Formato: A4 Paisagem")
-    print(f"🎨 Header: Gradiente #1a5f6f → #040720")
-    print("="*60)
-    
-except Exception as e:
-    print(f"\n❌ ERRO: {e}")
-    import traceback
-    traceback.print_exc()
-
-
---------
-
-
-# ============================================
-# DADOS MOCKADOS - Formato Boletim
-# ============================================
-
-# Slide 1
-slide_1_data = {
-    "titulo_slide": "PRINCIPAIS RESULTADOS",
-    "conteudo": """
-> Implementação de qualidade de dados em 100% dos produtos de dados lançados em 2025, totalizando 57 produtos dados e 46 novas releases entregues.
-
-> 84% dos produtos de dados com mais de duas dimensões aplicadas, garantindo mais segurança e confiabilidade na informação.
-
-> Fechamos 2025 com um score médio de qualidade de 97%, com 46 produtos de dados acima de 95% e 6 Produtos com pontuação máxima.
-
-> 6 workshops sobre conceitos de qualidade de dados, disseminando a cultura Data Driven e a importância de garantir a qualidade de dados nas tomadas decisões.
-"""
-}
-
-# Slide 2
-slide_2_data = {
-    "titulo_slide": "INICIATIVAS ESTRATÉGICAS",
-    "conteudo": """
-> Estruturação do modelo dimensional do Produto de Dados Qualidade, com inclusão de nova dimensão, carga dos dados de origem e validação para garantir integridade.
-
-> Definição e validação das regras de qualidade no Produto de Dados, assegurando confiabilidade das informações para tomada de decisão baseada em dados.
-
-> Aprovado no Chapter o produto de Qualidade de Dados, voltado a garantir a confiabilidade das informações por meio de práticas de definição, correção, monitoramento e melhoria contínua.
-
-> Realização da POC IA4DQ (Framework e agent) para otimizar a monitoração e avaliação das métricas de qualidade de dados, buscando garantir dados confiáveis para análises e tomadas de decisão, promovendo eficiência e confiabilidade nos processos de negócios.
-"""
-}
-
-# Slide 3
-slide_3_data = {
-    "titulo_slide": "EFICIÊNCIA OPERACIONAL",
-    "conteudo": """
-> Descomissionamento do ambiente on-premises, mapeando 100% dos JOBs, automações para desativação e eliminação de 20% dos JOBs sem impacto operacional.
-
-> Iniciamos o piloto com o GenQuality (IA) que visa otimizar o processo de avaliação de métricas de qualidade de dados em bases produtivas no ambiente Cloud.
-
-> Experimento de encerramento de chamados na Bridge, com 98% dos chamados encerrados com acurácia.
-
-> Documentação do passo a passo para resolução de Incidentes no ambiente Informática, buscando encontrar melhorias no processo de encerramento de incidentes e possíveis automações.
-
-> Formalização dos processos e esteiras da Qualidade, com fluxo para implementação, alteração e desativação de JOBs no Control-M, garantindo padronização e governança.
-"""
-}
-
-# Metadados (SEM cor_header)
-metadata = {
-    "titulo_boletim": "BOLETIM Qualidade de Dados",
-    "periodo": "Dez 2024"
-}
-
-print("✅ Dados mockados carregados!")
-print(f"📊 Slide 1: {slide_1_data['titulo_slide']}")
-print(f"📊 Slide 2: {slide_2_data['titulo_slide']}")
-print(f"📊 Slide 3: {slide_3_data['titulo_slide']}")
+print("✅ Classe BoletimBradescoGenerator criada com suporte a fonte customizada!")
