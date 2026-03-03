@@ -1,5 +1,5 @@
 # ==============================================================================
-# CELL 0 — Databricks Widgets (user-facing parameters)
+# CELL 0 - Databricks Widgets (user-facing parameters)
 # Run this cell first. Values are read by all subsequent cells.
 # ==============================================================================
 
@@ -10,14 +10,47 @@ dbutils.widgets.text("nome_produto_param",  "", "Nome do Produto")
 dbutils.widgets.text("autor_param",         "", "Autor")
 dbutils.widgets.text("ana_esp",             "Analista", "Perfil (Analista / Especialista)")
 
-# Disponibilidade: optional section
-# Set disponibilidade_flag to "sim" to include the section in the document.
-dbutils.widgets.dropdown("disponibilidade_flag", "nao", ["sim", "nao"], "Incluir Disponibilidade?")
-dbutils.widgets.text("disponibilidade_texto", "", "Texto de Disponibilidade (se flag = sim)")
+# Disponibilidade is written directly in Cell 0.5 below - no widget needed.
 
 
 # ==============================================================================
-# CELL 1 — Setup & Helpers  (unchanged — kept here for reference)
+# CELL 0.5 - Disponibilidade (optional section - edit freely here)
+#
+# INSTRUCTIONS:
+#   - To INCLUDE the section: set disponibilidade_ativo = True and write your
+#     content in disponibilidade_texto using the conventions below.
+#   - To EXCLUDE the section: set disponibilidade_ativo = False.
+#     The content is ignored and the section will not appear in the PDF.
+#
+# TEXT CONVENTIONS (plain Python string, no special tools needed):
+#   ## Texto        -> renders as a sub-header inside the section in the PDF
+#   * Texto         -> renders as a bullet point
+#   Any other line  -> renders as normal body text
+#
+# EXAMPLE:
+#   disponibilidade_texto = """
+#   Os dados encontram-se atualizados ate 15/07/2025.
+#
+#   ## Sistemas impactados
+#   Ha indicio de atraso no carregamento da camada trusted do sistema XYZ,
+#   impactando a tomada de decisao dos indicadores de risco.
+#
+#   * Pipeline batch com falha desde 10/07/2025;
+#   * Equipe de engenharia notificada, correcao prevista para 20/07/2025.
+#   """
+# ==============================================================================
+
+disponibilidade_ativo = False   # Change to True to include this section in the PDF
+
+disponibilidade_texto = """
+
+"""
+# Write your content above.
+# The header "3.3 Disponibilidade" is added automatically - do not repeat it.
+
+
+# ==============================================================================
+# CELL 1 - Setup & Helpers
 # NOTE: pip installs are assumed to be done separately.
 # ==============================================================================
 
@@ -45,6 +78,11 @@ styles.add(ParagraphStyle(
     name="SectionTitle", parent=styles["Heading2"], fontName=FONT_NAME,
     fontSize=13, leading=16, textColor=colors.HexColor("#111827"),
     spaceBefore=10, spaceAfter=6,
+))
+styles.add(ParagraphStyle(
+    name="SubSectionTitle", parent=styles["Heading3"], fontName=FONT_NAME,
+    fontSize=11, leading=14, textColor=colors.HexColor("#1F2937"),
+    spaceBefore=6, spaceAfter=4,
 ))
 styles.add(ParagraphStyle(
     name="Body", parent=styles["BodyText"], fontName=FONT_NAME,
@@ -120,6 +158,32 @@ def render_template_dotted(text: str, ctx_ns: dict) -> str:
         return str(val) if val is not None else m.group(0)
     return _dotted_pat.sub(_repl, text)
 
+# ---------- Disponibilidade text parser ----------
+# Converts the free-form string from Cell 0.5 into ReportLab story elements.
+# ## line  -> SubSectionTitle style
+# * line   -> bulleted Body
+# other    -> Body
+
+def parse_disponibilidade(raw: str) -> list:
+    """
+    Parses disponibilidade_texto into a list of ReportLab Paragraph objects.
+    Returns an empty list if the input is blank.
+    """
+    elements = []
+    for line in raw.splitlines():
+        line = line.rstrip()
+        if not line:
+            elements.append(Spacer(1, 6))
+        elif line.startswith("##"):
+            elements.append(Paragraph(line[2:].strip(), styles["SubSectionTitle"]))
+        elif line.startswith("*"):
+            elements.append(Paragraph(
+                f"&nbsp;&nbsp;&bull;&nbsp;{line[1:].strip()}", styles["Body"]
+            ))
+        else:
+            elements.append(Paragraph(line, styles["Body"]))
+    return elements
+
 # ---------- PDF builder ----------
 
 class PageCounter:
@@ -133,10 +197,21 @@ class PageCounter:
         canvas.drawRightString(A4[0] - 30, 20, f"Pagina {self.count}")
         canvas.restoreState()
 
-def make_pdf_bytes(rendered_text: str, title: str, autor: str, assunto: str = None) -> bytes:
+def make_pdf_bytes(
+    rendered_text: str,
+    title: str,
+    autor: str,
+    assunto: str = None,
+    disponibilidade_elements: list = None,
+) -> bytes:
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=54, bottomMargin=36)
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        rightMargin=36, leftMargin=36, topMargin=54, bottomMargin=36,
+    )
     story = []
+
+    # Header block
     story.append(Paragraph(title, styles["DocTitle"]))
     if assunto:
         story.append(Paragraph(f"<b>Assunto:</b> {assunto}", styles["Meta"]))
@@ -144,20 +219,30 @@ def make_pdf_bytes(rendered_text: str, title: str, autor: str, assunto: str = No
     story.append(Spacer(1, 6))
     story.append(Paragraph("________________________________________", styles["Separator"]))
     story.append(Spacer(1, 8))
+
+    # Body blocks - split on blank lines; inject Disponibilidade when sentinel found
     blocks = [b.strip() for b in re.split(r"\n\s*\n", rendered_text) if b.strip()]
     for block in blocks:
-        if re.match(r"^\d+(\.\d+)*\s", block):
+        if block == "__DISPONIBILIDADE_BLOCK__":
+            # Inject the pre-parsed rich elements for Disponibilidade
+            if disponibilidade_elements:
+                story.append(Paragraph("3.3 Disponibilidade", styles["SectionTitle"]))
+                story.extend(disponibilidade_elements)
+                story.append(Spacer(1, 8))
+        elif re.match(r"^\d+(\.\d+)*\s", block):
             story.append(Paragraph(block, styles["SectionTitle"]))
+            story.append(Spacer(1, 8))
         else:
             lines = block.splitlines()
             frags = []
             for ln in lines:
-                if ln.startswith("•"):
+                if ln.startswith("*"):
                     frags.append(f"&nbsp;&nbsp;&bull;&nbsp;{ln[1:].strip()}")
                 else:
                     frags.append(ln)
             story.append(Paragraph("<br/>".join(frags), styles["Body"]))
-        story.append(Spacer(1, 8))
+            story.append(Spacer(1, 8))
+
     header = PageCounter()
     doc.build(story, onFirstPage=header, onLaterPages=header)
     out = buf.getvalue()
@@ -166,14 +251,13 @@ def make_pdf_bytes(rendered_text: str, title: str, autor: str, assunto: str = No
 
 
 # ==============================================================================
-# CELL 2 — Template text (ONLY cell the user should edit for content/design)
+# CELL 2 - Template text (ONLY cell the user should edit for content/design)
 #
 # To add or remove a variable: add/remove a ${namespace.key} placeholder.
 # To add or remove a section: add/remove the section block here.
-# The sections Completude, Consistencia, Unicidade and Variacao are
-# automatically included or excluded based on whether the corresponding query
-# returns rows (handled in Cell 3).
-# Disponibilidade is included only when the widget flag is set to "sim".
+# Completude, Consistencia, Unicidade and Variacao appear automatically when
+# their queries return rows (handled in Cell 3).
+# Disponibilidade appears when disponibilidade_ativo = True in Cell 0.5.
 # ==============================================================================
 
 template_text = """
@@ -189,10 +273,10 @@ A presente analise tem como objetivo avaliar a qualidade dos dados referentes a 
 ________________________________________
 2. Metodologia
 A avaliacao foi conduzida por meio de:
-• Validacao das regras de negocio documentadas;
-• Realizacao de analise de dados quantitativa (ex.: contagens, frequencia de nulos, cruzamentos);
-• Comparacao com fontes referencia, quando aplicavel;
-• Entrevistas e alinhamentos com responsaveis pelo processo e donos do dado.
+* Validacao das regras de negocio documentadas;
+* Realizacao de analise de dados quantitativa (ex.: contagens, frequencia de nulos, cruzamentos);
+* Comparacao com fontes referencia, quando aplicavel;
+* Entrevistas e alinhamentos com responsaveis pelo processo e donos do dado.
 
 ________________________________________
 3. Resultados da Analise - Dimensoes, regras sugeridas e regras solicitadas
@@ -208,20 +292,18 @@ ${sections.unicidade}
 ${sections.variacao}
 
 ________________________________________
-> Impacto no Negocio
+4. Impacto no Negocio
 As falhas de qualidade observadas podem impactar:
-• Confiabilidade dos indicadores utilizados na tomada de decisao;
-• Performance de relatorios analiticos;
-• Processos regulatorios ou obrigatorios (se aplicavel).
+* Confiabilidade dos indicadores utilizados na tomada de decisao;
+* Performance de relatorios analiticos;
+* Processos regulatorios ou obrigatorios (se aplicavel).
 
 ________________________________________
 5. Recomendacoes
 Sugere-se as seguintes acoes para mitigacao dos problemas identificados:
 1. Correcao dos registros inconsistentes e incompletos, priorizando campos criticos.
 2. Revisao das regras de negocio na origem, garantindo que sistemas capturem e validem dados adequadamente.
-3. Implementacao de controles automatizados, como:
-   - validacoes de formato;
-   - preenchimento obrigatorio;
+3. Implementacao de controles automatizados, como validacoes de formato e preenchimento obrigatorio.
 4. Revisao dos fluxos de ingestao e atualizacao, para minimizar atrasos.
 5. Ajustes no Glossario de Dados, quando aplicavel, garantindo clareza e padronizacao.
 
@@ -233,18 +315,18 @@ O consumidor ou gerador do dado solicitou a inclusao/exclusao de novas regras de
 
 
 # ==============================================================================
-# CELL 3 — Data Model (queries + context assembly)
+# CELL 3 - Data Model (queries + context assembly)
 #
-# To add a new metric: add a method following the pattern of the existing ones,
-# then register it in to_context_raw().
-# To remove a metric: delete its method and remove it from to_context_raw().
+# To add a new metric: add a query method following the existing pattern,
+# then register it in _build_sections() and to_context_ns().
+# To remove a metric: delete its method and remove it from both places.
 # ==============================================================================
 
 from typing import Any, Dict
 
 # ---- Section text templates ----
-# To change what is written for each dimension, edit the strings below.
-# To add a new dimension, add a new entry here and handle it in _build_sections().
+# To change what is written for a dimension, edit its string here.
+# To add a new dimension, add a new entry and handle it in _build_sections().
 
 SECTION_TEMPLATES: Dict[str, str] = {
     "completude": (
@@ -288,14 +370,12 @@ class model:
         return row.asDict() if row else {}
 
     # ====================================================
-    # Queries — one method per dimension
-    # Add new dimensions here following the same pattern.
+    # Queries - one method per dimension
     # ====================================================
 
     def _query_completude(self) -> Dict[str, Any]:
         nome_produto = self.params["nome_produto_param"]
         tipo_produto = self.params["tipo_produto_param"]
-
         df = self.spark.sql(f"""
             WITH base AS (
                 SELECT a.pscore_calcd, c.icpo_tbela
@@ -339,7 +419,6 @@ class model:
     def _query_consistencia(self) -> Dict[str, Any]:
         nome_produto = self.params["nome_produto_param"]
         tipo_produto = self.params["tipo_produto_param"]
-
         df = self.spark.sql(f"""
             SELECT COUNT(*) AS count_consistencia
             FROM pr_platfun.aaqd_estrt_dados_qld_ucs.tfato_anlse_quald_dados AS a
@@ -358,7 +437,6 @@ class model:
     def _query_unicidade(self) -> Dict[str, Any]:
         nome_produto = self.params["nome_produto_param"]
         tipo_produto = self.params["tipo_produto_param"]
-
         df = self.spark.sql(f"""
             SELECT COUNT(*) AS count_unicidade
             FROM pr_platfun.aaqd_estrt_dados_qld_ucs.tfato_anlse_quald_dados AS a
@@ -377,7 +455,6 @@ class model:
     def _query_variacao(self) -> Dict[str, Any]:
         nome_produto = self.params["nome_produto_param"]
         tipo_produto = self.params["tipo_produto_param"]
-
         df = self.spark.sql(f"""
             SELECT COUNT(*) AS count_variacao
             FROM pr_platfun.aaqd_estrt_dados_qld_ucs.tfato_anlse_quald_dados AS a
@@ -394,21 +471,18 @@ class model:
 
     # ====================================================
     # Section builder
-    # Returns a dict with one key per dimension.
-    # Value is the formatted text block if data exists, else empty string.
-    # To add a dimension: add a SECTION_TEMPLATES entry + query method + entry below.
     # ====================================================
 
-    def _build_sections(self, disponibilidade_flag: str, disponibilidade_texto: str) -> Dict[str, str]:
+    def _build_sections(self, disponibilidade_ativo: bool) -> Dict[str, str]:
         sections: Dict[str, str] = {}
 
         # --- Completude ---
         raw_c = self._query_completude()
         if raw_c.get("count_pscore", 0) > 0:
             sections["completude"] = SECTION_TEMPLATES["completude"].format(
-                completude_qnt    = fmt_int(raw_c.get("count_pscore")),
+                completude_qnt      = fmt_int(raw_c.get("count_pscore")),
                 completude_lowest_3 = raw_c.get("lowest_3", "N/A"),
-                completude_pct    = pct(raw_c.get("pct_pscore_calcd")),
+                completude_pct      = pct(raw_c.get("pct_pscore_calcd")),
             )
         else:
             sections["completude"] = ""
@@ -440,13 +514,10 @@ class model:
         else:
             sections["variacao"] = ""
 
-        # --- Disponibilidade (user-controlled flag) ---
-        if disponibilidade_flag.strip().lower() == "sim" and disponibilidade_texto.strip():
-            sections["disponibilidade"] = (
-                "3.3 Disponibilidade\n" + disponibilidade_texto.strip()
-            )
-        else:
-            sections["disponibilidade"] = ""
+        # --- Disponibilidade ---
+        # Sentinel string: the PDF builder replaces this with the parsed rich elements.
+        # If inactive, empty string causes the block to be skipped entirely.
+        sections["disponibilidade"] = "__DISPONIBILIDADE_BLOCK__" if disponibilidade_ativo else ""
 
         return sections
 
@@ -454,18 +525,13 @@ class model:
     # Public: assemble full context namespace
     # ====================================================
 
-    def to_context_ns(
-        self,
-        disponibilidade_flag: str = "nao",
-        disponibilidade_texto: str = "",
-    ) -> Dict[str, Any]:
+    def to_context_ns(self, disponibilidade_ativo: bool = False) -> Dict[str, Any]:
         """
         Returns the full context_ns dict ready for render_template_dotted().
-        Sections that have no data are rendered as empty strings (they vanish
-        from the final document because the PDF builder skips blank blocks).
+        Sections with no data render as empty strings and are skipped by the
+        PDF builder.
         """
         ana_esp_raw = self.params.get("ana_esp", "Analista").strip()
-        # Normalize to title case for document display
         ana_esp = ana_esp_raw.title() if ana_esp_raw else "Analista"
 
         prod_ns = {
@@ -476,7 +542,7 @@ class model:
             "data_relatorio" : datetime.now().strftime("%d/%m/%Y"),
         }
 
-        sections_ns = self._build_sections(disponibilidade_flag, disponibilidade_texto)
+        sections_ns = self._build_sections(disponibilidade_ativo)
 
         return {
             "prod"     : prod_ns,
@@ -485,7 +551,8 @@ class model:
 
 
 # ==============================================================================
-# CELL 3.5 — Context assembly (reads widgets, instantiates model, builds context)
+# CELL 3.5 - Context assembly
+# Reads widgets + Cell 0.5 variables, instantiates model, builds context_ns.
 # ==============================================================================
 
 # Read widget values
@@ -496,14 +563,17 @@ params = {
     "ana_esp"            : dbutils.widgets.get("ana_esp"),
 }
 
-disponibilidade_flag  = dbutils.widgets.get("disponibilidade_flag")
-disponibilidade_texto = dbutils.widgets.get("disponibilidade_texto")
+# disponibilidade_ativo and disponibilidade_texto come from Cell 0.5 (already in scope)
 
 # Build context namespace
 m = model(params=params, spark=spark)
-context_ns = m.to_context_ns(
-    disponibilidade_flag  = disponibilidade_flag,
-    disponibilidade_texto = disponibilidade_texto,
+context_ns = m.to_context_ns(disponibilidade_ativo=disponibilidade_ativo)
+
+# Parse the rich Disponibilidade content once here so Cell 4 can use it
+disponibilidade_elements = (
+    parse_disponibilidade(disponibilidade_texto)
+    if disponibilidade_ativo and disponibilidade_texto.strip()
+    else []
 )
 
 print("context_ns assembled:")
@@ -514,9 +584,12 @@ for ns, val in context_ns.items():
             snippet = str(v)[:80].replace("\n", " ")
             print(f"    {k}: {snippet}")
 
+print(f"\n  [disponibilidade_ativo] {disponibilidade_ativo}")
+print(f"  [disponibilidade_elements] {len(disponibilidade_elements)} element(s) parsed")
+
 
 # ==============================================================================
-# CELL 4 — Render template + generate PDF + display download button
+# CELL 4 - Render template + generate PDF + display download button
 # ==============================================================================
 
 rendered = render_template_dotted(template_text, context_ns)
@@ -528,9 +601,15 @@ autor   = (
     f"{context_ns['prod'].get('autor', '')}"
 )
 
-pdf_bytes = make_pdf_bytes(rendered_text=rendered, title=title, autor=autor, assunto=assunto)
-b64       = base64.b64encode(pdf_bytes).decode("utf-8")
-filename  = (
+pdf_bytes = make_pdf_bytes(
+    rendered_text            = rendered,
+    title                    = title,
+    autor                    = autor,
+    assunto                  = assunto,
+    disponibilidade_elements = disponibilidade_elements,
+)
+b64      = base64.b64encode(pdf_bytes).decode("utf-8")
+filename = (
     f"Parecer_Qualidade_{sanitize_filename(context_ns['prod'].get('nome_produto'))}"
     f"_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
 )
