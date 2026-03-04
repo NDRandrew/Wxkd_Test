@@ -1,14 +1,45 @@
 # ==============================================================================
 # CELL 0 - Databricks Widgets (user-facing parameters)
 # Run this cell first. Values are read by all subsequent cells.
+#
+# WIDGET GUIDE:
+#   nome_produto_param  - Type a partial name to search (spaces or underscores
+#                         as separators). Cell 3.5 will show matching products.
+#   nome_display_param  - After confirming matches, type the exact name that
+#                         will appear in the document text.
+#   tipo_produto_param  - Select from the dropdown (values loaded from query).
+#   autor_param         - Full name of the author.
+#   ana_esp             - Role: Analista or Especialista.
 # ==============================================================================
 
 dbutils.widgets.removeAll()
 
-dbutils.widgets.text("tipo_produto_param",  "", "Tipo de Produto")
-dbutils.widgets.text("nome_produto_param",  "", "Nome do Produto")
-dbutils.widgets.text("autor_param",         "", "Autor")
-dbutils.widgets.text("ana_esp",             "Analista", "Perfil (Analista / Especialista)")
+# ---- Product search (used only in queries and LIKE search) ----
+dbutils.widgets.text("nome_produto_param", "", "Busca do Produto (parcial)")
+
+# ---- Display name (used in the document text) ----
+dbutils.widgets.text("nome_display_param", "", "Nome do Produto no Documento")
+
+# ---- Tipo de produto (dropdown populated from query below) ----
+# ==========================================================================
+# PLACEHOLDER: replace the list below with values from your query.
+# Example to load dynamically:
+#
+#   _tipo_rows = spark.sql("""
+#       SELECT DISTINCT itpo_prodt
+#       FROM pr_platfun.aaqd_estrt_dados_qld_ucs.tdmsao_tpo_prodt_dados
+#       ORDER BY 1
+#   """).collect()
+#   _tipo_values = [r["itpo_prodt"] for r in _tipo_rows if r["itpo_prodt"]]
+#   dbutils.widgets.dropdown("tipo_produto_param", _tipo_values[0], _tipo_values, "Tipo de Produto")
+#
+# For now, a static placeholder is used:
+# ==========================================================================
+dbutils.widgets.dropdown("tipo_produto_param", "PLACEHOLDER", ["PLACEHOLDER"], "Tipo de Produto")
+
+# ---- Author and role ----
+dbutils.widgets.text("autor_param", "", "Autor")
+dbutils.widgets.dropdown("ana_esp", "Analista", ["Analista", "Especialista"], "Perfil")
 
 # Disponibilidade is written directly in Cell 0.5 below - no widget needed.
 
@@ -158,17 +189,48 @@ def render_template_dotted(text: str, ctx_ns: dict) -> str:
         return str(val) if val is not None else m.group(0)
     return _dotted_pat.sub(_repl, text)
 
+# ---------- Nome produto LIKE search ----------
+# Splits the user input on spaces and underscores, then builds one LIKE
+# condition per token (AND logic - all tokens must match).
+# Returns a list of dicts with the candidate product names found.
+
+def search_nome_produto(spark, raw_input: str) -> list:
+    """
+    Splits raw_input on spaces and underscores, builds LIKE conditions,
+    and queries the product table. Returns a list of row dicts.
+    Returns an empty list if raw_input is blank.
+    """
+    tokens = [t for t in re.split(r"[\s_]+", raw_input.strip()) if t]
+    if not tokens:
+        return []
+
+    like_conditions = " AND ".join(
+        f"itpo_prodt_funcl LIKE '%{t}%'" for t in tokens
+    )
+
+    # ==========================================================================
+    # PLACEHOLDER: adjust the SELECT columns and table to match your schema.
+    # The query must return at least the column used as nome_produto in queries
+    # (itpo_prodt_funcl). Add any other columns that help the user identify
+    # the right product (e.g. description, owner, last update date).
+    # ==========================================================================
+    df = spark.sql(f"""
+        SELECT DISTINCT
+            itpo_prodt_funcl AS nome_produto,
+            itpo_prodt       AS tipo_produto
+        FROM pr_platfun.aaqd_estrt_dados_qld_ucs.tdmsao_tpo_prodt_dados
+        WHERE {like_conditions}
+        ORDER BY nome_produto
+        LIMIT 20
+    """)
+    return [r.asDict() for r in df.collect()]
+
 # ---------- Disponibilidade text parser ----------
-# Converts the free-form string from Cell 0.5 into ReportLab story elements.
 # ## line  -> SubSectionTitle style
 # * line   -> bulleted Body
 # other    -> Body
 
 def parse_disponibilidade(raw: str) -> list:
-    """
-    Parses disponibilidade_texto into a list of ReportLab Paragraph objects.
-    Returns an empty list if the input is blank.
-    """
     elements = []
     for line in raw.splitlines():
         line = line.rstrip()
@@ -211,7 +273,6 @@ def make_pdf_bytes(
     )
     story = []
 
-    # Header block
     story.append(Paragraph(title, styles["DocTitle"]))
     if assunto:
         story.append(Paragraph(f"<b>Assunto:</b> {assunto}", styles["Meta"]))
@@ -220,11 +281,9 @@ def make_pdf_bytes(
     story.append(Paragraph("________________________________________", styles["Separator"]))
     story.append(Spacer(1, 8))
 
-    # Body blocks - split on blank lines; inject Disponibilidade when sentinel found
     blocks = [b.strip() for b in re.split(r"\n\s*\n", rendered_text) if b.strip()]
     for block in blocks:
         if block == "__DISPONIBILIDADE_BLOCK__":
-            # Inject the pre-parsed rich elements for Disponibilidade
             if disponibilidade_elements:
                 story.append(Paragraph("3.3 Disponibilidade", styles["SectionTitle"]))
                 story.extend(disponibilidade_elements)
@@ -253,11 +312,8 @@ def make_pdf_bytes(
 # ==============================================================================
 # CELL 2 - Template text (ONLY cell the user should edit for content/design)
 #
-# To add or remove a variable: add/remove a ${namespace.key} placeholder.
-# To add or remove a section: add/remove the section block here.
-# Completude, Consistencia, Unicidade and Variacao appear automatically when
-# their queries return rows (handled in Cell 3).
-# Disponibilidade appears when disponibilidade_ativo = True in Cell 0.5.
+# ${prod.nome_produto} uses nome_display_param (the clean document name).
+# Queries in Cell 3 use nome_produto_param (the search/exact key).
 # ==============================================================================
 
 template_text = """
@@ -317,16 +373,18 @@ O consumidor ou gerador do dado solicitou a inclusao/exclusao de novas regras de
 # ==============================================================================
 # CELL 3 - Data Model (queries + context assembly)
 #
-# To add a new metric: add a query method following the existing pattern,
-# then register it in _build_sections() and to_context_ns().
-# To remove a metric: delete its method and remove it from both places.
+# Each query method has a primary execution path. If the primary returns an
+# empty result (count = 0 or no rows), a fallback method is called silently.
+#
+# To add a fallback for a dimension: define a method named _fallback_<dimension>
+# following the same return signature as its primary, then register it in
+# _build_sections() using _run_with_fallback().
+#
+# To add a new dimension: add a SECTION_TEMPLATES entry + primary query method
+# + optional fallback + registration in _build_sections().
 # ==============================================================================
 
-from typing import Any, Dict
-
-# ---- Section text templates ----
-# To change what is written for a dimension, edit its string here.
-# To add a new dimension, add a new entry and handle it in _build_sections().
+from typing import Any, Callable, Dict, Optional
 
 SECTION_TEMPLATES: Dict[str, str] = {
     "completude": (
@@ -359,7 +417,6 @@ class model:
     def __init__(self, params: Dict[str, Any], spark):
         self.spark = spark
         self.params = dict(params or {})
-        self._cache: Dict[str, Any] = {}
 
     # ====================================================
     # Internal helpers
@@ -369,13 +426,32 @@ class model:
         row = df.first()
         return row.asDict() if row else {}
 
+    def _is_empty(self, raw: Dict[str, Any], count_key: str) -> bool:
+        """Returns True if the query result has no usable rows."""
+        return not raw or raw.get(count_key, 0) == 0
+
+    def _run_with_fallback(
+        self,
+        primary: Callable,
+        fallback: Optional[Callable],
+        count_key: str,
+    ) -> Dict[str, Any]:
+        """
+        Runs primary(). If the result is empty and a fallback is provided,
+        runs fallback() and returns its result instead. Silent - no logging.
+        """
+        result = primary()
+        if self._is_empty(result, count_key) and fallback is not None:
+            result = fallback()
+        return result
+
     # ====================================================
-    # Queries - one method per dimension
+    # Primary queries
     # ====================================================
 
     def _query_completude(self) -> Dict[str, Any]:
-        nome_produto = self.params["nome_produto_param"]
-        tipo_produto = self.params["tipo_produto_param"]
+        nome = self.params["nome_produto_param"]
+        tipo = self.params["tipo_produto_param"]
         df = self.spark.sql(f"""
             WITH base AS (
                 SELECT a.pscore_calcd, c.icpo_tbela
@@ -386,9 +462,9 @@ class model:
                     ON a.ncatlg_base_cpo_tbela = c.ncatlg_base_cpo_tbela
                 WHERE
                     a.ndmsao_quald_dados = 2
-                    AND b.itpo_prodt_funcl = '{nome_produto}'
+                    AND b.itpo_prodt_funcl = '{nome}'
                     AND a.nsttus_mntrc = 1
-                    AND b.itpo_prodt = '{tipo_produto}'
+                    AND b.itpo_prodt = '{tipo}'
                     AND a.dini_excuc_quald >= current_date() - 0
             )
             SELECT
@@ -415,10 +491,9 @@ class model:
         """)
         return self._raw_query(df)
 
-    # ---- Consistencia ----
     def _query_consistencia(self) -> Dict[str, Any]:
-        nome_produto = self.params["nome_produto_param"]
-        tipo_produto = self.params["tipo_produto_param"]
+        nome = self.params["nome_produto_param"]
+        tipo = self.params["tipo_produto_param"]
         df = self.spark.sql(f"""
             SELECT COUNT(*) AS count_consistencia
             FROM pr_platfun.aaqd_estrt_dados_qld_ucs.tfato_anlse_quald_dados AS a
@@ -426,17 +501,16 @@ class model:
                 ON a.ntpo_prodt_dados = b.ntpo_prodt_dados
             WHERE
                 a.ndmsao_quald_dados = 3
-                AND b.itpo_prodt_funcl = '{nome_produto}'
+                AND b.itpo_prodt_funcl = '{nome}'
                 AND a.nsttus_mntrc = 1
-                AND b.itpo_prodt = '{tipo_produto}'
+                AND b.itpo_prodt = '{tipo}'
                 AND a.dini_excuc_quald >= current_date() - 0
         """)
         return self._raw_query(df)
 
-    # ---- Unicidade ----
     def _query_unicidade(self) -> Dict[str, Any]:
-        nome_produto = self.params["nome_produto_param"]
-        tipo_produto = self.params["tipo_produto_param"]
+        nome = self.params["nome_produto_param"]
+        tipo = self.params["tipo_produto_param"]
         df = self.spark.sql(f"""
             SELECT COUNT(*) AS count_unicidade
             FROM pr_platfun.aaqd_estrt_dados_qld_ucs.tfato_anlse_quald_dados AS a
@@ -444,17 +518,16 @@ class model:
                 ON a.ntpo_prodt_dados = b.ntpo_prodt_dados
             WHERE
                 a.ndmsao_quald_dados = 4
-                AND b.itpo_prodt_funcl = '{nome_produto}'
+                AND b.itpo_prodt_funcl = '{nome}'
                 AND a.nsttus_mntrc = 1
-                AND b.itpo_prodt = '{tipo_produto}'
+                AND b.itpo_prodt = '{tipo}'
                 AND a.dini_excuc_quald >= current_date() - 0
         """)
         return self._raw_query(df)
 
-    # ---- Variacao ----
     def _query_variacao(self) -> Dict[str, Any]:
-        nome_produto = self.params["nome_produto_param"]
-        tipo_produto = self.params["tipo_produto_param"]
+        nome = self.params["nome_produto_param"]
+        tipo = self.params["tipo_produto_param"]
         df = self.spark.sql(f"""
             SELECT COUNT(*) AS count_variacao
             FROM pr_platfun.aaqd_estrt_dados_qld_ucs.tfato_anlse_quald_dados AS a
@@ -462,12 +535,31 @@ class model:
                 ON a.ntpo_prodt_dados = b.ntpo_prodt_dados
             WHERE
                 a.ndmsao_quald_dados = 5
-                AND b.itpo_prodt_funcl = '{nome_produto}'
+                AND b.itpo_prodt_funcl = '{nome}'
                 AND a.nsttus_mntrc = 1
-                AND b.itpo_prodt = '{tipo_produto}'
+                AND b.itpo_prodt = '{tipo}'
                 AND a.dini_excuc_quald >= current_date() - 0
         """)
         return self._raw_query(df)
+
+    # ====================================================
+    # Fallback queries
+    # Add a _fallback_<dimension> method here when needed.
+    # Must return the same dict structure as the primary.
+    # ====================================================
+
+    # def _fallback_completude(self) -> Dict[str, Any]:
+    #     # PLACEHOLDER: add your fallback SQL here, same return structure.
+    #     return {}
+
+    # def _fallback_consistencia(self) -> Dict[str, Any]:
+    #     return {}
+
+    # def _fallback_unicidade(self) -> Dict[str, Any]:
+    #     return {}
+
+    # def _fallback_variacao(self) -> Dict[str, Any]:
+    #     return {}
 
     # ====================================================
     # Section builder
@@ -477,8 +569,9 @@ class model:
         sections: Dict[str, str] = {}
 
         # --- Completude ---
-        raw_c = self._query_completude()
-        if raw_c.get("count_pscore", 0) > 0:
+        # To activate fallback: replace None with self._fallback_completude
+        raw_c = self._run_with_fallback(self._query_completude, None, "count_pscore")
+        if not self._is_empty(raw_c, "count_pscore"):
             sections["completude"] = SECTION_TEMPLATES["completude"].format(
                 completude_qnt      = fmt_int(raw_c.get("count_pscore")),
                 completude_lowest_3 = raw_c.get("lowest_3", "N/A"),
@@ -488,8 +581,8 @@ class model:
             sections["completude"] = ""
 
         # --- Consistencia ---
-        raw_cs = self._query_consistencia()
-        if raw_cs.get("count_consistencia", 0) > 0:
+        raw_cs = self._run_with_fallback(self._query_consistencia, None, "count_consistencia")
+        if not self._is_empty(raw_cs, "count_consistencia"):
             sections["consistencia"] = SECTION_TEMPLATES["consistencia"].format(
                 consistencia_qnt = fmt_int(raw_cs.get("count_consistencia")),
             )
@@ -497,8 +590,8 @@ class model:
             sections["consistencia"] = ""
 
         # --- Unicidade ---
-        raw_u = self._query_unicidade()
-        if raw_u.get("count_unicidade", 0) > 0:
+        raw_u = self._run_with_fallback(self._query_unicidade, None, "count_unicidade")
+        if not self._is_empty(raw_u, "count_unicidade"):
             sections["unicidade"] = SECTION_TEMPLATES["unicidade"].format(
                 unicidade_qnt = fmt_int(raw_u.get("count_unicidade")),
             )
@@ -506,8 +599,8 @@ class model:
             sections["unicidade"] = ""
 
         # --- Variacao ---
-        raw_v = self._query_variacao()
-        if raw_v.get("count_variacao", 0) > 0:
+        raw_v = self._run_with_fallback(self._query_variacao, None, "count_variacao")
+        if not self._is_empty(raw_v, "count_variacao"):
             sections["variacao"] = SECTION_TEMPLATES["variacao"].format(
                 variacao_qnt = fmt_int(raw_v.get("count_variacao")),
             )
@@ -515,8 +608,6 @@ class model:
             sections["variacao"] = ""
 
         # --- Disponibilidade ---
-        # Sentinel string: the PDF builder replaces this with the parsed rich elements.
-        # If inactive, empty string causes the block to be skipped entirely.
         sections["disponibilidade"] = "__DISPONIBILIDADE_BLOCK__" if disponibilidade_ativo else ""
 
         return sections
@@ -528,14 +619,20 @@ class model:
     def to_context_ns(self, disponibilidade_ativo: bool = False) -> Dict[str, Any]:
         """
         Returns the full context_ns dict ready for render_template_dotted().
-        Sections with no data render as empty strings and are skipped by the
-        PDF builder.
+        nome_produto in prod_ns uses nome_display_param (document-facing name).
+        Queries internally use nome_produto_param (search/exact key).
         """
         ana_esp_raw = self.params.get("ana_esp", "Analista").strip()
         ana_esp = ana_esp_raw.title() if ana_esp_raw else "Analista"
 
+        # nome_display_param drives the document text; fall back to nome_produto_param
+        # with underscores replaced by spaces if the display field was left blank.
+        nome_display = self.params.get("nome_display_param", "").strip()
+        if not nome_display:
+            nome_display = self.params.get("nome_produto_param", "").replace("_", " ").strip()
+
         prod_ns = {
-            "nome_produto"   : self.params.get("nome_produto_param", ""),
+            "nome_produto"   : nome_display,
             "tipo_produto"   : self.params.get("tipo_produto_param", ""),
             "autor"          : self.params.get("autor_param", ""),
             "ana_esp"        : ana_esp,
@@ -551,41 +648,85 @@ class model:
 
 
 # ==============================================================================
-# CELL 3.5 - Context assembly
-# Reads widgets + Cell 0.5 variables, instantiates model, builds context_ns.
+# CELL 3.5 - Validation + Context assembly
+#
+# Step 1: Runs the LIKE search for nome_produto_param and prints matches.
+#         Review the output and confirm the right product before proceeding.
+#         If no matches are found, a warning is printed but execution continues.
+#
+# Step 2: Builds context_ns from widgets and Cell 0.5 variables.
 # ==============================================================================
 
-# Read widget values
+# ---- Read widget values ----
+nome_produto_param  = dbutils.widgets.get("nome_produto_param")
+nome_display_param  = dbutils.widgets.get("nome_display_param")
+tipo_produto_param  = dbutils.widgets.get("tipo_produto_param")
+autor_param         = dbutils.widgets.get("autor_param")
+ana_esp             = dbutils.widgets.get("ana_esp")
+
 params = {
-    "tipo_produto_param" : dbutils.widgets.get("tipo_produto_param"),
-    "nome_produto_param" : dbutils.widgets.get("nome_produto_param"),
-    "autor_param"        : dbutils.widgets.get("autor_param"),
-    "ana_esp"            : dbutils.widgets.get("ana_esp"),
+    "nome_produto_param" : nome_produto_param,
+    "nome_display_param" : nome_display_param,
+    "tipo_produto_param" : tipo_produto_param,
+    "autor_param"        : autor_param,
+    "ana_esp"            : ana_esp,
 }
 
-# disponibilidade_ativo and disponibilidade_texto come from Cell 0.5 (already in scope)
+# ---- Step 1: LIKE search ----
+print("=" * 60)
+print("BUSCA DE PRODUTO")
+print("=" * 60)
+print(f"Termo buscado : '{nome_produto_param}'")
 
-# Build context namespace
+_matches = search_nome_produto(spark, nome_produto_param)
+
+if not _matches:
+    print("\n  [AVISO] Nenhum produto encontrado para o termo informado.")
+    print("  Verifique o campo 'Busca do Produto' e reexecute esta celula.")
+else:
+    print(f"\n  {len(_matches)} resultado(s) encontrado(s):\n")
+    # Print as a simple aligned table
+    _col_w = 50
+    print(f"  {'nome_produto':<{_col_w}} tipo_produto")
+    print(f"  {'-'*_col_w} {'----------'}")
+    for r in _matches:
+        nome_col = str(r.get("nome_produto", "")).replace("_", " ")
+        tipo_col = str(r.get("tipo_produto", ""))
+        print(f"  {nome_col:<{_col_w}} {tipo_col}")
+    print()
+    print("  -> Copy the exact nome_produto value into 'nome_display_param'")
+    print("     and set 'tipo_produto_param' in the widget dropdown above.")
+
+print()
+print(f"  nome_display_param  : '{nome_display_param}'")
+print(f"  tipo_produto_param  : '{tipo_produto_param}'")
+print("=" * 60)
+
+# ---- Step 2: Build context namespace ----
 m = model(params=params, spark=spark)
 context_ns = m.to_context_ns(disponibilidade_ativo=disponibilidade_ativo)
 
-# Parse the rich Disponibilidade content once here so Cell 4 can use it
+# Parse Disponibilidade content from Cell 0.5
 disponibilidade_elements = (
     parse_disponibilidade(disponibilidade_texto)
     if disponibilidade_ativo and disponibilidade_texto.strip()
     else []
 )
 
-print("context_ns assembled:")
+print("\nCONTEXT NAMESPACE")
+print("=" * 60)
 for ns, val in context_ns.items():
-    print(f"  [{ns}]", val if not isinstance(val, dict) else "")
     if isinstance(val, dict):
+        print(f"  [{ns}]")
         for k, v in val.items():
             snippet = str(v)[:80].replace("\n", " ")
             print(f"    {k}: {snippet}")
+    else:
+        print(f"  [{ns}]: {str(val)[:80]}")
 
-print(f"\n  [disponibilidade_ativo] {disponibilidade_ativo}")
+print(f"\n  [disponibilidade_ativo]    {disponibilidade_ativo}")
 print(f"  [disponibilidade_elements] {len(disponibilidade_elements)} element(s) parsed")
+print("=" * 60)
 
 
 # ==============================================================================
