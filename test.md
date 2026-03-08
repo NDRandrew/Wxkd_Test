@@ -41,17 +41,18 @@ dbutils.widgets.dropdown("tipo_produto_param", "PLACEHOLDER", ["PLACEHOLDER"], "
 dbutils.widgets.text("autor_param", "", "Autor")
 dbutils.widgets.dropdown("ana_esp", "Analista", ["Analista", "Especialista"], "Perfil")
 
-# Disponibilidade is written directly in Cell 0.5 below - no widget needed.
+# Disponibilidade: flag controlled via widget; text written in Cell 0.5.
+dbutils.widgets.dropdown("disponibilidade_ativo", "nao", ["sim", "nao"], "Incluir Disponibilidade?")
 
 
 # ==============================================================================
 # CELL 0.5 - Disponibilidade (optional section - edit freely here)
 #
 # INSTRUCTIONS:
-#   - To INCLUDE the section: set disponibilidade_ativo = True and write your
-#     content in disponibilidade_texto using the conventions below.
-#   - To EXCLUDE the section: set disponibilidade_ativo = False.
-#     The content is ignored and the section will not appear in the PDF.
+#   - To INCLUDE the section: set the widget 'Incluir Disponibilidade?' to 'sim'
+#     and write your content in disponibilidade_texto below.
+#   - To EXCLUDE the section: set the widget to 'nao'.
+#     The content here is ignored and the section will not appear in the PDF.
 #
 # TEXT CONVENTIONS (plain Python string, no special tools needed):
 #   ## Texto        -> renders as a sub-header inside the section in the PDF
@@ -70,8 +71,6 @@ dbutils.widgets.dropdown("ana_esp", "Analista", ["Analista", "Especialista"], "P
 #   * Equipe de engenharia notificada, correcao prevista para 20/07/2025.
 #   """
 # ==============================================================================
-
-disponibilidade_ativo = False   # Change to True to include this section in the PDF
 
 disponibilidade_texto = """
 
@@ -225,26 +224,6 @@ def search_nome_produto(spark, raw_input: str) -> list:
     """)
     return [r.asDict() for r in df.collect()]
 
-# ---------- Disponibilidade text parser ----------
-# ## line  -> SubSectionTitle style
-# * line   -> bulleted Body
-# other    -> Body
-
-def parse_disponibilidade(raw: str) -> list:
-    elements = []
-    for line in raw.splitlines():
-        line = line.rstrip()
-        if not line:
-            elements.append(Spacer(1, 6))
-        elif line.startswith("##"):
-            elements.append(Paragraph(line[2:].strip(), styles["SubSectionTitle"]))
-        elif line.startswith("*"):
-            elements.append(Paragraph(
-                f"&nbsp;&nbsp;&bull;&nbsp;{line[1:].strip()}", styles["Body"]
-            ))
-        else:
-            elements.append(Paragraph(line, styles["Body"]))
-    return elements
 
 # ---------- PDF builder ----------
 
@@ -264,7 +243,6 @@ def make_pdf_bytes(
     title: str,
     autor: str,
     assunto: str = None,
-    disponibilidade_elements: list = None,
 ) -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -283,11 +261,26 @@ def make_pdf_bytes(
 
     blocks = [b.strip() for b in re.split(r"\n\s*\n", rendered_text) if b.strip()]
     for block in blocks:
-        if block == "__DISPONIBILIDADE_BLOCK__":
-            if disponibilidade_elements:
-                story.append(Paragraph("3.3 Disponibilidade", styles["SectionTitle"]))
-                story.extend(disponibilidade_elements)
-                story.append(Spacer(1, 8))
+        if block.startswith("__DISPONIBILIDADE_BLOCK__"):
+            # The sentinel carries the user text after a newline separator.
+            # It is processed by the same block parser as all other content,
+            # ensuring identical font, size and style throughout the document.
+            disp_text = block[len("__DISPONIBILIDADE_BLOCK__"):].strip()
+            if disp_text:
+                disp_blocks = [b.strip() for b in re.split(r"\n\s*\n", disp_text) if b.strip()]
+                for db in disp_blocks:
+                    if re.match(r"^\d+(\\.\d+)*\s", db):
+                        story.append(Paragraph(db, styles["SectionTitle"]))
+                    else:
+                        db_lines = db.splitlines()
+                        db_frags = []
+                        for ln in db_lines:
+                            if ln.startswith("*"):
+                                db_frags.append(f"&nbsp;&nbsp;&bull;&nbsp;{ln[1:].strip()}")
+                            else:
+                                db_frags.append(ln)
+                        story.append(Paragraph("<br/>".join(db_frags), styles["Body"]))
+                    story.append(Spacer(1, 8))
         elif re.match(r"^\d+(\.\d+)*\s", block):
             story.append(Paragraph(block, styles["SectionTitle"]))
             story.append(Spacer(1, 8))
@@ -565,7 +558,7 @@ class model:
     # Section builder
     # ====================================================
 
-    def _build_sections(self, disponibilidade_ativo: bool) -> Dict[str, str]:
+    def _build_sections(self, disponibilidade_ativo: bool, disponibilidade_texto: str = "") -> Dict[str, str]:
         sections: Dict[str, str] = {}
 
         # --- Completude ---
@@ -608,7 +601,18 @@ class model:
             sections["variacao"] = ""
 
         # --- Disponibilidade ---
-        sections["disponibilidade"] = "__DISPONIBILIDADE_BLOCK__" if disponibilidade_ativo else ""
+        # When active, the sentinel carries the raw user text after a newline.
+        # make_pdf_bytes() extracts it and runs it through the standard block
+        # parser, so formatting is identical to the rest of the document.
+        if disponibilidade_ativo and disponibilidade_texto.strip():
+            header_line = "3.3 Disponibilidade"
+            sections["disponibilidade"] = (
+                "__DISPONIBILIDADE_BLOCK__\n"
+                + header_line + "\n\n"
+                + disponibilidade_texto.strip()
+            )
+        else:
+            sections["disponibilidade"] = ""
 
         return sections
 
@@ -616,7 +620,7 @@ class model:
     # Public: assemble full context namespace
     # ====================================================
 
-    def to_context_ns(self, disponibilidade_ativo: bool = False) -> Dict[str, Any]:
+    def to_context_ns(self, disponibilidade_ativo: bool = False, disponibilidade_texto: str = "") -> Dict[str, Any]:
         """
         Returns the full context_ns dict ready for render_template_dotted().
         nome_produto in prod_ns uses nome_display_param (document-facing name).
@@ -639,7 +643,7 @@ class model:
             "data_relatorio" : datetime.now().strftime("%d/%m/%Y"),
         }
 
-        sections_ns = self._build_sections(disponibilidade_ativo)
+        sections_ns = self._build_sections(disponibilidade_ativo, disponibilidade_texto)
 
         return {
             "prod"     : prod_ns,
@@ -658,7 +662,8 @@ class model:
 # ==============================================================================
 
 # ---- Read widget values ----
-nome_produto_param  = dbutils.widgets.get("nome_produto_param")
+disponibilidade_ativo  = dbutils.widgets.get("disponibilidade_ativo") == "sim"
+nome_produto_param     = dbutils.widgets.get("nome_produto_param")
 nome_display_param  = dbutils.widgets.get("nome_display_param")
 tipo_produto_param  = dbutils.widgets.get("tipo_produto_param")
 autor_param         = dbutils.widgets.get("autor_param")
@@ -704,14 +709,11 @@ print("=" * 60)
 
 # ---- Step 2: Build context namespace ----
 m = model(params=params, spark=spark)
-context_ns = m.to_context_ns(disponibilidade_ativo=disponibilidade_ativo)
-
-# Parse Disponibilidade content from Cell 0.5
-disponibilidade_elements = (
-    parse_disponibilidade(disponibilidade_texto)
-    if disponibilidade_ativo and disponibilidade_texto.strip()
-    else []
+context_ns = m.to_context_ns(
+    disponibilidade_ativo  = disponibilidade_ativo,
+    disponibilidade_texto  = disponibilidade_texto,
 )
+
 
 print("\nCONTEXT NAMESPACE")
 print("=" * 60)
@@ -724,8 +726,7 @@ for ns, val in context_ns.items():
     else:
         print(f"  [{ns}]: {str(val)[:80]}")
 
-print(f"\n  [disponibilidade_ativo]    {disponibilidade_ativo}")
-print(f"  [disponibilidade_elements] {len(disponibilidade_elements)} element(s) parsed")
+print(f"\n  [disponibilidade_ativo] {disponibilidade_ativo}")
 print("=" * 60)
 
 
@@ -747,7 +748,6 @@ pdf_bytes = make_pdf_bytes(
     title                    = title,
     autor                    = autor,
     assunto                  = assunto,
-    disponibilidade_elements = disponibilidade_elements,
 )
 b64      = base64.b64encode(pdf_bytes).decode("utf-8")
 filename = (
