@@ -105,16 +105,6 @@ styles.add(ParagraphStyle(
     alignment=TA_LEFT, spaceAfter=10,
 ))
 styles.add(ParagraphStyle(
-    name="SectionTitle", parent=styles["Heading2"], fontName=FONT_NAME,
-    fontSize=13, leading=16, textColor=colors.HexColor("#111827"),
-    spaceBefore=10, spaceAfter=6,
-))
-styles.add(ParagraphStyle(
-    name="SubSectionTitle", parent=styles["Heading3"], fontName=FONT_NAME,
-    fontSize=11, leading=14, textColor=colors.HexColor("#1F2937"),
-    spaceBefore=6, spaceAfter=4,
-))
-styles.add(ParagraphStyle(
     name="Body", parent=styles["BodyText"], fontName=FONT_NAME,
     fontSize=10.5, leading=14, textColor=colors.HexColor("#111827"),
 ))
@@ -259,41 +249,27 @@ def make_pdf_bytes(
     story.append(Paragraph("________________________________________", styles["Separator"]))
     story.append(Spacer(1, 8))
 
-    blocks = [b.strip() for b in re.split(r"\n\s*\n", rendered_text) if b.strip()]
-    for block in blocks:
-        if block.startswith("__DISPONIBILIDADE_BLOCK__"):
-            # The sentinel carries the user text after a newline separator.
-            # It is processed by the same block parser as all other content,
-            # ensuring identical font, size and style throughout the document.
-            disp_text = block[len("__DISPONIBILIDADE_BLOCK__"):].strip()
-            if disp_text:
-                disp_blocks = [b.strip() for b in re.split(r"\n\s*\n", disp_text) if b.strip()]
-                for db in disp_blocks:
-                    if re.match(r"^\d+(\\.\d+)*\s", db):
-                        story.append(Paragraph(db, styles["SectionTitle"]))
-                    else:
-                        db_lines = db.splitlines()
-                        db_frags = []
-                        for ln in db_lines:
-                            if ln.startswith("*"):
-                                db_frags.append(f"&nbsp;&nbsp;&bull;&nbsp;{ln[1:].strip()}")
-                            else:
-                                db_frags.append(ln)
-                        story.append(Paragraph("<br/>".join(db_frags), styles["Body"]))
-                    story.append(Spacer(1, 8))
-        elif re.match(r"^\d+(\.\d+)*\s", block):
-            story.append(Paragraph(block, styles["SectionTitle"]))
-            story.append(Spacer(1, 8))
-        else:
-            lines = block.splitlines()
+    # Single unified block renderer - all content (including Disponibilidade and
+    # auto-generated sections) goes through the same path, guaranteeing uniform
+    # font, size and spacing throughout the document.
+    def _render_raw(raw: str):
+        for blk in [b.strip() for b in re.split(r"\n\s*\n", raw) if b.strip()]:
             frags = []
-            for ln in lines:
+            for ln in blk.splitlines():
                 if ln.startswith("*"):
                     frags.append(f"&nbsp;&nbsp;&bull;&nbsp;{ln[1:].strip()}")
                 else:
                     frags.append(ln)
             story.append(Paragraph("<br/>".join(frags), styles["Body"]))
             story.append(Spacer(1, 8))
+
+    for block in [b.strip() for b in re.split(r"\n\s*\n", rendered_text) if b.strip()]:
+        if block.startswith("__DISPONIBILIDADE_BLOCK__"):
+            disp_text = block[len("__DISPONIBILIDADE_BLOCK__"):].strip()
+            if disp_text:
+                _render_raw(disp_text)
+        else:
+            _render_raw(block)
 
     header = PageCounter()
     doc.build(story, onFirstPage=header, onLaterPages=header)
