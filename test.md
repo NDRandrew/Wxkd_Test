@@ -594,1088 +594,1306 @@ class ModelDados:
 # ==============================================================================
 # CELULA 4 - Painel de controle HTML
 #
-# Exibe o painel interativo para o usuario preencher todos os parametros.
-# O usuario clica em "Gerar PDF" e o payload e gravado no widget json_payload.
-# Em seguida, executa a Celula 5 para processar e renderizar o PDF.
+# FLUXO DE USO:
+#   1. Execute esta celula para renderizar o painel.
+#   2. Preencha os campos de busca e clique em "Buscar Produto".
+#      O painel gravara o pedido em search_payload e exibira instrucao
+#      para executar a Celula 4.5.
+#   3. Execute a Celula 4.5 — ela roda as queries Python reais e re-renderiza
+#      o painel ja populado com resultados e metricas.
+#   4. Selecione o produto desejado, ajuste dimensoes/valores/textos e clique
+#      em "Gerar PDF". O painel gravara o payload em json_payload e exibira
+#      instrucao para executar a Celula 5.
+#   5. Execute a Celula 5 para gerar e baixar o PDF.
 # ==============================================================================
 
 dbutils.widgets.removeAll()
-dbutils.widgets.text("json_payload", "{}", "Payload (nao editar manualmente)")
+dbutils.widgets.text("search_payload", "{}", "Search payload (nao editar manualmente)")
+dbutils.widgets.text("json_payload",   "{}", "PDF payload (nao editar manualmente)")
 
 _dt_fim_padrao = datetime.now().strftime("%Y-%m-%d")
 _dt_ini_padrao = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
 
 _templates_json = json.dumps(SECTION_TEMPLATES_DEFAULT, ensure_ascii=False)
 
-displayHTML(f"""
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Painel - Parecer Tecnico de Qualidade de Dados</title>
-<style>
-  *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+# Estado pre-populado: injetado pela Celula 4.5 apos retorno das queries.
+# Quando vazio, o painel inicia em estado limpo.
+_injected_state_json = "{}"
 
-  :root {{
-    --bradesco-red:    #CC0000;
-    --bradesco-dark:   #8B0000;
-    --bradesco-light:  #FF3333;
-    --neutral-900:     #1A1A1A;
-    --neutral-700:     #3D3D3D;
-    --neutral-500:     #6B6B6B;
-    --neutral-300:     #C4C4C4;
-    --neutral-100:     #F5F5F5;
-    --neutral-50:      #FAFAFA;
-    --white:           #FFFFFF;
-    --success:         #1A7A4A;
-    --success-light:   #E6F4ED;
-    --warning:         #B45309;
-    --warning-light:   #FEF3C7;
-    --border:          #E2E2E2;
-    --shadow-sm:       0 1px 3px rgba(0,0,0,0.08);
-    --shadow-md:       0 4px 12px rgba(0,0,0,0.10);
-    --shadow-lg:       0 8px 24px rgba(0,0,0,0.13);
-    --radius:          6px;
-    --radius-lg:       10px;
-    --font:            'Segoe UI', system-ui, -apple-system, sans-serif;
-  }}
 
-  body {{
-    font-family: var(--font);
-    background: var(--neutral-100);
-    color: var(--neutral-900);
-    font-size: 14px;
-    line-height: 1.5;
-    min-height: 100vh;
-  }}
-
-  /* ---- Cabecalho ---- */
-  .header {{
-    background: linear-gradient(135deg, var(--bradesco-dark) 0%, var(--bradesco-red) 100%);
-    color: var(--white);
-    padding: 20px 32px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    box-shadow: var(--shadow-md);
-  }}
-  .header-brand {{ display: flex; align-items: center; gap: 14px; }}
-  .header-logo {{
-    width: 42px; height: 42px;
-    background: var(--white);
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-weight: 900; font-size: 18px; color: var(--bradesco-red);
-    letter-spacing: -1px; flex-shrink: 0;
-  }}
-  .header-title {{ font-size: 18px; font-weight: 700; letter-spacing: 0.01em; }}
-  .header-sub   {{ font-size: 12px; opacity: 0.82; margin-top: 2px; }}
-  .header-badge {{
-    background: rgba(255,255,255,0.18);
-    border: 1px solid rgba(255,255,255,0.30);
-    padding: 5px 12px; border-radius: 20px;
-    font-size: 12px; font-weight: 600; letter-spacing: 0.03em;
-  }}
-
-  /* ---- Layout principal ---- */
-  .main {{ max-width: 1280px; margin: 0 auto; padding: 28px 24px; }}
-
-  /* ---- Secoes ---- */
-  .panel-section {{
-    background: var(--white);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    margin-bottom: 20px;
-    box-shadow: var(--shadow-sm);
-    overflow: hidden;
-  }}
-  .section-header {{
-    padding: 16px 24px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    background: var(--neutral-50);
-  }}
-  .section-number {{
-    width: 26px; height: 26px;
-    background: var(--bradesco-red);
-    color: var(--white);
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 12px; font-weight: 700; flex-shrink: 0;
-  }}
-  .section-title {{ font-size: 14px; font-weight: 700; color: var(--neutral-900); }}
-  .section-desc  {{ font-size: 12px; color: var(--neutral-500); margin-left: auto; }}
-  .section-body  {{ padding: 24px; }}
-
-  /* ---- Grid de campos ---- */
-  .form-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }}
-  .form-grid-3 {{ display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }}
-  .span-2 {{ grid-column: span 2; }}
-
-  .field {{ display: flex; flex-direction: column; gap: 5px; }}
-  .field label {{
-    font-size: 12px; font-weight: 600;
-    color: var(--neutral-700); letter-spacing: 0.02em; text-transform: uppercase;
-  }}
-  .field input, .field select, .field textarea {{
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 9px 12px;
-    font-size: 14px;
-    font-family: var(--font);
-    color: var(--neutral-900);
-    background: var(--white);
-    transition: border-color 0.15s, box-shadow 0.15s;
-    outline: none;
-    width: 100%;
-  }}
-  .field input:focus, .field select:focus, .field textarea:focus {{
-    border-color: var(--bradesco-red);
-    box-shadow: 0 0 0 3px rgba(204,0,0,0.10);
-  }}
-  .field textarea {{ resize: vertical; min-height: 80px; }}
-  .field-hint {{ font-size: 11px; color: var(--neutral-500); }}
-
-  /* ---- Barra de busca ---- */
-  .search-row {{ display: flex; gap: 8px; align-items: flex-end; }}
-  .search-row .field {{ flex: 1; }}
-  .btn-search {{
-    height: 38px; padding: 0 18px;
-    background: var(--bradesco-red); color: var(--white);
-    border: none; border-radius: var(--radius);
-    font-size: 13px; font-weight: 600;
-    cursor: pointer; white-space: nowrap;
-    transition: background 0.15s;
-    flex-shrink: 0;
-  }}
-  .btn-search:hover {{ background: var(--bradesco-dark); }}
-
-  /* ---- Tabela de resultados ---- */
-  .results-wrap {{
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    overflow: hidden;
-    margin-top: 16px;
-  }}
-  .results-header {{
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 16px;
-    background: var(--neutral-50);
-    border-bottom: 1px solid var(--border);
-    font-size: 12px; color: var(--neutral-500);
-  }}
-  .results-count {{ font-weight: 600; color: var(--neutral-700); }}
-  .source-tag {{
-    padding: 2px 8px; border-radius: 20px;
-    font-size: 11px; font-weight: 600;
-  }}
-  .source-genquery {{ background: #E8F4FD; color: #1565C0; }}
-  .source-bi       {{ background: #FFF3E0; color: #E65100; }}
-
-  table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
-  thead th {{
-    padding: 10px 14px; text-align: left;
-    background: var(--neutral-50);
-    font-size: 11px; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.04em;
-    color: var(--neutral-500);
-    border-bottom: 1px solid var(--border);
-  }}
-  tbody tr {{
-    border-bottom: 1px solid var(--border);
-    cursor: pointer;
-    transition: background 0.12s;
-  }}
-  tbody tr:last-child {{ border-bottom: none; }}
-  tbody tr:hover {{ background: #FFF5F5; }}
-  tbody tr.selected {{ background: #FFEBEB; }}
-  tbody tr.selected td {{ color: var(--bradesco-dark); font-weight: 600; }}
-  tbody td {{ padding: 10px 14px; color: var(--neutral-700); }}
-
-  /* ---- Resumo de metricas ---- */
-  .metrics-layout {{ display: flex; gap: 20px; margin-top: 16px; }}
-  .metrics-table-wrap {{ flex: 1; min-width: 0; }}
-  .metrics-sidebar {{
-    width: 220px; flex-shrink: 0;
-    display: flex; flex-direction: column; gap: 8px;
-  }}
-  .metric-card {{
-    background: var(--neutral-50);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 12px 14px;
-  }}
-  .metric-card-label {{ font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--neutral-500); }}
-  .metric-card-value {{ font-size: 22px; font-weight: 800; color: var(--bradesco-red); margin: 2px 0; }}
-  .metric-card-sub   {{ font-size: 11px; color: var(--neutral-500); }}
-  .metric-card-query {{
-    margin-top: 4px; display: inline-block;
-    font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 10px;
-  }}
-  .date-range-display {{
-    background: var(--neutral-50);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 12px 14px;
-  }}
-  .date-range-label {{ font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--neutral-500); margin-bottom: 6px; }}
-  .date-range-value {{ font-size: 13px; font-weight: 600; color: var(--neutral-700); }}
-
-  /* ---- Checkboxes de dimensoes ---- */
-  .dim-grid {{ display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }}
-  .dim-card {{
-    border: 2px solid var(--border);
-    border-radius: var(--radius);
-    padding: 14px 12px;
-    cursor: pointer;
-    transition: border-color 0.15s, background 0.15s;
-    display: flex; flex-direction: column; gap: 6px;
-    position: relative;
-  }}
-  .dim-card:hover {{ border-color: var(--bradesco-red); }}
-  .dim-card.active {{
-    border-color: var(--bradesco-red);
-    background: #FFF5F5;
-  }}
-  .dim-card input[type=checkbox] {{
-    position: absolute; top: 10px; right: 10px;
-    width: 16px; height: 16px;
-    accent-color: var(--bradesco-red);
-    cursor: pointer;
-  }}
-  .dim-card-name {{ font-size: 13px; font-weight: 700; color: var(--neutral-900); padding-right: 20px; }}
-  .dim-card-count {{ font-size: 20px; font-weight: 800; color: var(--bradesco-red); }}
-  .dim-card-zero .dim-card-count {{ color: var(--neutral-300); }}
-  .dim-card-badge {{
-    font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 10px;
-    display: inline-block; margin-top: 2px;
-  }}
-
-  /* ---- Edicao de valores ---- */
-  .values-grid {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }}
-  .value-field-wrap {{
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 14px;
-  }}
-  .value-field-wrap label {{
-    font-size: 12px; font-weight: 700;
-    color: var(--neutral-700); display: block; margin-bottom: 6px;
-  }}
-  .value-field-wrap input {{
-    width: 100%; border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 8px 10px;
-    font-size: 14px; font-weight: 600; color: var(--bradesco-red);
-  }}
-  .value-field-wrap input:focus {{
-    outline: none; border-color: var(--bradesco-red);
-    box-shadow: 0 0 0 3px rgba(204,0,0,0.10);
-  }}
-
-  /* ---- Editor de textos por abas ---- */
-  .tabs {{ display: flex; gap: 0; border-bottom: 2px solid var(--border); margin-bottom: 0; }}
-  .tab {{
-    padding: 10px 18px; font-size: 13px; font-weight: 600;
-    color: var(--neutral-500); cursor: pointer;
-    border-bottom: 2px solid transparent; margin-bottom: -2px;
-    transition: color 0.15s, border-color 0.15s;
-    white-space: nowrap;
-  }}
-  .tab:hover {{ color: var(--bradesco-red); }}
-  .tab.active {{ color: var(--bradesco-red); border-bottom-color: var(--bradesco-red); }}
-  .tab-panel {{ display: none; padding: 20px 0 0; }}
-  .tab-panel.active {{ display: block; }}
-  .tab-panel textarea {{
-    width: 100%; min-height: 120px;
-    border: 1px solid var(--border); border-radius: var(--radius);
-    padding: 12px; font-size: 13px; font-family: var(--font);
-    resize: vertical; outline: none;
-    transition: border-color 0.15s, box-shadow 0.15s;
-  }}
-  .tab-panel textarea:focus {{
-    border-color: var(--bradesco-red);
-    box-shadow: 0 0 0 3px rgba(204,0,0,0.10);
-  }}
-  .template-hint {{
-    margin-top: 8px; padding: 10px 12px;
-    background: var(--warning-light);
-    border-left: 3px solid var(--warning);
-    border-radius: 0 var(--radius) var(--radius) 0;
-    font-size: 12px; color: var(--warning);
-  }}
-  .template-vars {{
-    margin-top: 8px;
-    display: flex; flex-wrap: wrap; gap: 6px;
-  }}
-  .var-chip {{
-    padding: 3px 8px; border-radius: 4px;
-    background: var(--neutral-100); border: 1px solid var(--border);
-    font-size: 11px; font-family: monospace; color: var(--neutral-700);
-    cursor: default;
-  }}
-
-  /* ---- Acoes finais ---- */
-  .action-bar {{
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 12px; flex-wrap: wrap;
-  }}
-  .action-info {{ font-size: 12px; color: var(--neutral-500); }}
-
-  .btn {{
-    display: inline-flex; align-items: center; justify-content: center;
-    gap: 7px; padding: 11px 24px;
-    border-radius: var(--radius); font-size: 14px; font-weight: 700;
-    cursor: pointer; border: none; transition: all 0.15s;
-    letter-spacing: 0.01em;
-  }}
-  .btn-primary {{
-    background: var(--bradesco-red); color: var(--white);
-    box-shadow: 0 2px 8px rgba(204,0,0,0.25);
-  }}
-  .btn-primary:hover {{ background: var(--bradesco-dark); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(204,0,0,0.30); }}
-  .btn-primary:active {{ transform: translateY(0); }}
-  .btn-secondary {{
-    background: var(--white); color: var(--neutral-700);
-    border: 1px solid var(--border);
-  }}
-  .btn-secondary:hover {{ background: var(--neutral-50); border-color: var(--neutral-300); }}
-  .btn-success {{
-    background: var(--success); color: var(--white);
-    box-shadow: 0 2px 8px rgba(26,122,74,0.25);
-  }}
-  .btn-success:hover {{ background: #145c38; }}
-
-  /* ---- Estado vazio e alertas ---- */
-  .empty-state {{
-    padding: 32px; text-align: center;
-    color: var(--neutral-500); font-size: 13px;
-  }}
-  .alert {{
-    padding: 10px 14px; border-radius: var(--radius);
-    font-size: 13px; margin-top: 10px;
-  }}
-  .alert-info    {{ background: #E8F4FD; color: #1565C0; border-left: 3px solid #1565C0; }}
-  .alert-warning {{ background: var(--warning-light); color: var(--warning); border-left: 3px solid var(--warning); }}
-
-  /* ---- Loader ---- */
-  .loader-overlay {{
-    display: none; position: fixed; inset: 0;
-    background: rgba(0,0,0,0.45); z-index: 9999;
-    align-items: center; justify-content: center; flex-direction: column; gap: 16px;
-  }}
-  .loader-overlay.active {{ display: flex; }}
-  .loader-spinner {{
-    width: 44px; height: 44px;
-    border: 4px solid rgba(255,255,255,0.25);
-    border-top-color: var(--white);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }}
-  .loader-text {{ color: var(--white); font-size: 14px; font-weight: 600; }}
-  @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
-
-  /* ---- PDF preview area ---- */
-  #pdf-section {{ display: none; }}
-  .pdf-action-row {{
-    display: flex; align-items: center; justify-content: center; gap: 12px;
-    padding: 20px; flex-wrap: wrap;
-  }}
-
-  /* ---- Responsivo ---- */
-  @media (max-width: 900px) {{
-    .form-grid, .form-grid-3 {{ grid-template-columns: 1fr 1fr; }}
-    .dim-grid {{ grid-template-columns: repeat(3, 1fr); }}
-    .metrics-layout {{ flex-direction: column; }}
-    .metrics-sidebar {{ width: 100%; flex-direction: row; flex-wrap: wrap; }}
-    .metric-card {{ flex: 1; min-width: 140px; }}
-  }}
-  @media (max-width: 600px) {{
-    .form-grid, .form-grid-3, .values-grid {{ grid-template-columns: 1fr; }}
-    .dim-grid {{ grid-template-columns: 1fr 1fr; }}
-    .span-2 {{ grid-column: span 1; }}
-    .header {{ flex-direction: column; gap: 12px; }}
-  }}
-</style>
-</head>
-<body>
-
-<div class="loader-overlay" id="loader">
-  <div class="loader-spinner"></div>
-  <div class="loader-text" id="loader-text">Processando...</div>
-</div>
-
-<!-- Cabecalho -->
-<div class="header">
-  <div class="header-brand">
-    <div class="header-logo">B</div>
-    <div>
-      <div class="header-title">Parecer Tecnico de Qualidade de Dados</div>
-      <div class="header-sub">Data Governance - Bradesco</div>
+def _renderizar_painel(_injected_state_json="{}"):
+    displayHTML(f"""
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel - Parecer Tecnico de Qualidade de Dados</title>
+    <style>
+      *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    
+      :root {{
+        --bradesco-red:    #CC0000;
+        --bradesco-dark:   #8B0000;
+        --bradesco-light:  #FF3333;
+        --neutral-900:     #1A1A1A;
+        --neutral-700:     #3D3D3D;
+        --neutral-500:     #6B6B6B;
+        --neutral-300:     #C4C4C4;
+        --neutral-100:     #F5F5F5;
+        --neutral-50:      #FAFAFA;
+        --white:           #FFFFFF;
+        --success:         #1A7A4A;
+        --success-light:   #E6F4ED;
+        --warning:         #B45309;
+        --warning-light:   #FEF3C7;
+        --border:          #E2E2E2;
+        --shadow-sm:       0 1px 3px rgba(0,0,0,0.08);
+        --shadow-md:       0 4px 12px rgba(0,0,0,0.10);
+        --shadow-lg:       0 8px 24px rgba(0,0,0,0.13);
+        --radius:          6px;
+        --radius-lg:       10px;
+        --font:            'Segoe UI', system-ui, -apple-system, sans-serif;
+      }}
+    
+      body {{
+        font-family: var(--font);
+        background: var(--neutral-100);
+        color: var(--neutral-900);
+        font-size: 14px;
+        line-height: 1.5;
+        min-height: 100vh;
+      }}
+    
+      /* ---- Cabecalho ---- */
+      .header {{
+        background: linear-gradient(135deg, var(--bradesco-dark) 0%, var(--bradesco-red) 100%);
+        color: var(--white);
+        padding: 20px 32px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        box-shadow: var(--shadow-md);
+      }}
+      .header-brand {{ display: flex; align-items: center; gap: 14px; }}
+      .header-logo {{
+        width: 42px; height: 42px;
+        background: var(--white);
+        border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        font-weight: 900; font-size: 18px; color: var(--bradesco-red);
+        letter-spacing: -1px; flex-shrink: 0;
+      }}
+      .header-title {{ font-size: 18px; font-weight: 700; letter-spacing: 0.01em; }}
+      .header-sub   {{ font-size: 12px; opacity: 0.82; margin-top: 2px; }}
+      .header-badge {{
+        background: rgba(255,255,255,0.18);
+        border: 1px solid rgba(255,255,255,0.30);
+        padding: 5px 12px; border-radius: 20px;
+        font-size: 12px; font-weight: 600; letter-spacing: 0.03em;
+      }}
+    
+      /* ---- Layout principal ---- */
+      .main {{ max-width: 1280px; margin: 0 auto; padding: 28px 24px; }}
+    
+      /* ---- Secoes ---- */
+      .panel-section {{
+        background: var(--white);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        margin-bottom: 20px;
+        box-shadow: var(--shadow-sm);
+        overflow: hidden;
+      }}
+      .section-header {{
+        padding: 16px 24px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: var(--neutral-50);
+      }}
+      .section-number {{
+        width: 26px; height: 26px;
+        background: var(--bradesco-red);
+        color: var(--white);
+        border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 12px; font-weight: 700; flex-shrink: 0;
+      }}
+      .section-title {{ font-size: 14px; font-weight: 700; color: var(--neutral-900); }}
+      .section-desc  {{ font-size: 12px; color: var(--neutral-500); margin-left: auto; }}
+      .section-body  {{ padding: 24px; }}
+    
+      /* ---- Grid de campos ---- */
+      .form-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }}
+      .form-grid-3 {{ display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }}
+      .span-2 {{ grid-column: span 2; }}
+    
+      .field {{ display: flex; flex-direction: column; gap: 5px; }}
+      .field label {{
+        font-size: 12px; font-weight: 600;
+        color: var(--neutral-700); letter-spacing: 0.02em; text-transform: uppercase;
+      }}
+      .field input, .field select, .field textarea {{
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 9px 12px;
+        font-size: 14px;
+        font-family: var(--font);
+        color: var(--neutral-900);
+        background: var(--white);
+        transition: border-color 0.15s, box-shadow 0.15s;
+        outline: none;
+        width: 100%;
+      }}
+      .field input:focus, .field select:focus, .field textarea:focus {{
+        border-color: var(--bradesco-red);
+        box-shadow: 0 0 0 3px rgba(204,0,0,0.10);
+      }}
+      .field textarea {{ resize: vertical; min-height: 80px; }}
+      .field-hint {{ font-size: 11px; color: var(--neutral-500); }}
+    
+      /* ---- Barra de busca ---- */
+      .search-row {{ display: flex; gap: 8px; align-items: flex-end; }}
+      .search-row .field {{ flex: 1; }}
+      .btn-search {{
+        height: 38px; padding: 0 18px;
+        background: var(--bradesco-red); color: var(--white);
+        border: none; border-radius: var(--radius);
+        font-size: 13px; font-weight: 600;
+        cursor: pointer; white-space: nowrap;
+        transition: background 0.15s;
+        flex-shrink: 0;
+      }}
+      .btn-search:hover {{ background: var(--bradesco-dark); }}
+    
+      /* ---- Tabela de resultados ---- */
+      .results-wrap {{
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+        margin-top: 16px;
+      }}
+      .results-header {{
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 10px 16px;
+        background: var(--neutral-50);
+        border-bottom: 1px solid var(--border);
+        font-size: 12px; color: var(--neutral-500);
+      }}
+      .results-count {{ font-weight: 600; color: var(--neutral-700); }}
+      .source-tag {{
+        padding: 2px 8px; border-radius: 20px;
+        font-size: 11px; font-weight: 600;
+      }}
+      .source-genquery {{ background: #E8F4FD; color: #1565C0; }}
+      .source-bi       {{ background: #FFF3E0; color: #E65100; }}
+    
+      table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
+      thead th {{
+        padding: 10px 14px; text-align: left;
+        background: var(--neutral-50);
+        font-size: 11px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.04em;
+        color: var(--neutral-500);
+        border-bottom: 1px solid var(--border);
+      }}
+      tbody tr {{
+        border-bottom: 1px solid var(--border);
+        cursor: pointer;
+        transition: background 0.12s;
+      }}
+      tbody tr:last-child {{ border-bottom: none; }}
+      tbody tr:hover {{ background: #FFF5F5; }}
+      tbody tr.selected {{ background: #FFEBEB; }}
+      tbody tr.selected td {{ color: var(--bradesco-dark); font-weight: 600; }}
+      tbody td {{ padding: 10px 14px; color: var(--neutral-700); }}
+    
+      /* ---- Resumo de metricas ---- */
+      .metrics-layout {{ display: flex; gap: 20px; margin-top: 16px; }}
+      .metrics-table-wrap {{ flex: 1; min-width: 0; }}
+      .metrics-sidebar {{
+        width: 220px; flex-shrink: 0;
+        display: flex; flex-direction: column; gap: 8px;
+      }}
+      .metric-card {{
+        background: var(--neutral-50);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 12px 14px;
+      }}
+      .metric-card-label {{ font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--neutral-500); }}
+      .metric-card-value {{ font-size: 22px; font-weight: 800; color: var(--bradesco-red); margin: 2px 0; }}
+      .metric-card-sub   {{ font-size: 11px; color: var(--neutral-500); }}
+      .metric-card-query {{
+        margin-top: 4px; display: inline-block;
+        font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 10px;
+      }}
+      .date-range-display {{
+        background: var(--neutral-50);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 12px 14px;
+      }}
+      .date-range-label {{ font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--neutral-500); margin-bottom: 6px; }}
+      .date-range-value {{ font-size: 13px; font-weight: 600; color: var(--neutral-700); }}
+    
+      /* ---- Checkboxes de dimensoes ---- */
+      .dim-grid {{ display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }}
+      .dim-card {{
+        border: 2px solid var(--border);
+        border-radius: var(--radius);
+        padding: 14px 12px;
+        cursor: pointer;
+        transition: border-color 0.15s, background 0.15s;
+        display: flex; flex-direction: column; gap: 6px;
+        position: relative;
+      }}
+      .dim-card:hover {{ border-color: var(--bradesco-red); }}
+      .dim-card.active {{
+        border-color: var(--bradesco-red);
+        background: #FFF5F5;
+      }}
+      .dim-card input[type=checkbox] {{
+        position: absolute; top: 10px; right: 10px;
+        width: 16px; height: 16px;
+        accent-color: var(--bradesco-red);
+        cursor: pointer;
+      }}
+      .dim-card-name {{ font-size: 13px; font-weight: 700; color: var(--neutral-900); padding-right: 20px; }}
+      .dim-card-count {{ font-size: 20px; font-weight: 800; color: var(--bradesco-red); }}
+      .dim-card-zero .dim-card-count {{ color: var(--neutral-300); }}
+      .dim-card-badge {{
+        font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 10px;
+        display: inline-block; margin-top: 2px;
+      }}
+    
+      /* ---- Edicao de valores ---- */
+      .values-grid {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }}
+      .value-field-wrap {{
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 14px;
+      }}
+      .value-field-wrap label {{
+        font-size: 12px; font-weight: 700;
+        color: var(--neutral-700); display: block; margin-bottom: 6px;
+      }}
+      .value-field-wrap input {{
+        width: 100%; border: 1px solid var(--border);
+        border-radius: var(--radius); padding: 8px 10px;
+        font-size: 14px; font-weight: 600; color: var(--bradesco-red);
+      }}
+      .value-field-wrap input:focus {{
+        outline: none; border-color: var(--bradesco-red);
+        box-shadow: 0 0 0 3px rgba(204,0,0,0.10);
+      }}
+    
+      /* ---- Editor de textos por abas ---- */
+      .tabs {{ display: flex; gap: 0; border-bottom: 2px solid var(--border); margin-bottom: 0; }}
+      .tab {{
+        padding: 10px 18px; font-size: 13px; font-weight: 600;
+        color: var(--neutral-500); cursor: pointer;
+        border-bottom: 2px solid transparent; margin-bottom: -2px;
+        transition: color 0.15s, border-color 0.15s;
+        white-space: nowrap;
+      }}
+      .tab:hover {{ color: var(--bradesco-red); }}
+      .tab.active {{ color: var(--bradesco-red); border-bottom-color: var(--bradesco-red); }}
+      .tab-panel {{ display: none; padding: 20px 0 0; }}
+      .tab-panel.active {{ display: block; }}
+      .tab-panel textarea {{
+        width: 100%; min-height: 120px;
+        border: 1px solid var(--border); border-radius: var(--radius);
+        padding: 12px; font-size: 13px; font-family: var(--font);
+        resize: vertical; outline: none;
+        transition: border-color 0.15s, box-shadow 0.15s;
+      }}
+      .tab-panel textarea:focus {{
+        border-color: var(--bradesco-red);
+        box-shadow: 0 0 0 3px rgba(204,0,0,0.10);
+      }}
+      .template-hint {{
+        margin-top: 8px; padding: 10px 12px;
+        background: var(--warning-light);
+        border-left: 3px solid var(--warning);
+        border-radius: 0 var(--radius) var(--radius) 0;
+        font-size: 12px; color: var(--warning);
+      }}
+      .template-vars {{
+        margin-top: 8px;
+        display: flex; flex-wrap: wrap; gap: 6px;
+      }}
+      .var-chip {{
+        padding: 3px 8px; border-radius: 4px;
+        background: var(--neutral-100); border: 1px solid var(--border);
+        font-size: 11px; font-family: monospace; color: var(--neutral-700);
+        cursor: default;
+      }}
+    
+      /* ---- Acoes finais ---- */
+      .action-bar {{
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 12px; flex-wrap: wrap;
+      }}
+      .action-info {{ font-size: 12px; color: var(--neutral-500); }}
+    
+      .btn {{
+        display: inline-flex; align-items: center; justify-content: center;
+        gap: 7px; padding: 11px 24px;
+        border-radius: var(--radius); font-size: 14px; font-weight: 700;
+        cursor: pointer; border: none; transition: all 0.15s;
+        letter-spacing: 0.01em;
+      }}
+      .btn-primary {{
+        background: var(--bradesco-red); color: var(--white);
+        box-shadow: 0 2px 8px rgba(204,0,0,0.25);
+      }}
+      .btn-primary:hover {{ background: var(--bradesco-dark); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(204,0,0,0.30); }}
+      .btn-primary:active {{ transform: translateY(0); }}
+      .btn-secondary {{
+        background: var(--white); color: var(--neutral-700);
+        border: 1px solid var(--border);
+      }}
+      .btn-secondary:hover {{ background: var(--neutral-50); border-color: var(--neutral-300); }}
+      .btn-success {{
+        background: var(--success); color: var(--white);
+        box-shadow: 0 2px 8px rgba(26,122,74,0.25);
+      }}
+      .btn-success:hover {{ background: #145c38; }}
+    
+      /* ---- Estado vazio e alertas ---- */
+      .empty-state {{
+        padding: 32px; text-align: center;
+        color: var(--neutral-500); font-size: 13px;
+      }}
+      .alert {{
+        padding: 10px 14px; border-radius: var(--radius);
+        font-size: 13px; margin-top: 10px;
+      }}
+      .alert-info    {{ background: #E8F4FD; color: #1565C0; border-left: 3px solid #1565C0; }}
+      .alert-warning {{ background: var(--warning-light); color: var(--warning); border-left: 3px solid var(--warning); }}
+    
+      /* ---- Loader ---- */
+      .loader-overlay {{
+        display: none; position: fixed; inset: 0;
+        background: rgba(0,0,0,0.45); z-index: 9999;
+        align-items: center; justify-content: center; flex-direction: column; gap: 16px;
+      }}
+      .loader-overlay.active {{ display: flex; }}
+      .loader-spinner {{
+        width: 44px; height: 44px;
+        border: 4px solid rgba(255,255,255,0.25);
+        border-top-color: var(--white);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }}
+      .loader-text {{ color: var(--white); font-size: 14px; font-weight: 600; }}
+      @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+    
+      /* ---- PDF preview area ---- */
+      #pdf-section {{ display: none; }}
+      .pdf-action-row {{
+        display: flex; align-items: center; justify-content: center; gap: 12px;
+        padding: 20px; flex-wrap: wrap;
+      }}
+    
+      /* ---- Responsivo ---- */
+      @media (max-width: 900px) {{
+        .form-grid, .form-grid-3 {{ grid-template-columns: 1fr 1fr; }}
+        .dim-grid {{ grid-template-columns: repeat(3, 1fr); }}
+        .metrics-layout {{ flex-direction: column; }}
+        .metrics-sidebar {{ width: 100%; flex-direction: row; flex-wrap: wrap; }}
+        .metric-card {{ flex: 1; min-width: 140px; }}
+      }}
+      @media (max-width: 600px) {{
+        .form-grid, .form-grid-3, .values-grid {{ grid-template-columns: 1fr; }}
+        .dim-grid {{ grid-template-columns: 1fr 1fr; }}
+        .span-2 {{ grid-column: span 1; }}
+        .header {{ flex-direction: column; gap: 12px; }}
+      }}
+    </style>
+    </head>
+    <body>
+    
+    <div class="loader-overlay" id="loader">
+      <div class="loader-spinner"></div>
+      <div class="loader-text" id="loader-text">Processando...</div>
     </div>
-  </div>
-  <div class="header-badge">Painel de Controle</div>
-</div>
-
-<div class="main">
-
-  <!-- SECAO 1: Identificacao do documento -->
-  <div class="panel-section">
-    <div class="section-header">
-      <div class="section-number">1</div>
-      <div class="section-title">Identificacao do Documento</div>
-      <div class="section-desc">Dados do responsavel pela emissao</div>
-    </div>
-    <div class="section-body">
-      <div class="form-grid">
-        <div class="field">
-          <label>Nome do Autor</label>
-          <input type="text" id="autor" placeholder="Nome completo">
-        </div>
-        <div class="field">
-          <label>Perfil</label>
-          <select id="ana_esp">
-            <option value="Analista">Analista</option>
-            <option value="Especialista">Especialista</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Nome do Produto (exibicao no documento)</label>
-          <input type="text" id="nome_display" placeholder="Nome que aparecera no PDF">
-          <span class="field-hint">Preenchido automaticamente ao selecionar um produto. Pode ser editado.</span>
-        </div>
-        <div class="field">
-          <label>Tipo de Produto</label>
-          <input type="text" id="tipo_produto" placeholder="Sera preenchido ao selecionar">
-          <span class="field-hint">Preenchido automaticamente ao selecionar um produto.</span>
+    
+    <!-- Cabecalho -->
+    <div class="header">
+      <div class="header-brand">
+        <div class="header-logo">B</div>
+        <div>
+          <div class="header-title">Parecer Tecnico de Qualidade de Dados</div>
+          <div class="header-sub">Data Governance - Bradesco</div>
         </div>
       </div>
+      <div class="header-badge">Painel de Controle</div>
     </div>
-  </div>
-
-  <!-- SECAO 2: Busca de produto -->
-  <div class="panel-section">
-    <div class="section-header">
-      <div class="section-number">2</div>
-      <div class="section-title">Busca de Produto</div>
-      <div class="section-desc">Pesquise por nome parcial - separadores: espaco ou sublinhado</div>
-    </div>
-    <div class="section-body">
-      <div class="form-grid">
-        <div class="field">
-          <label>Busca por Nome</label>
-          <div class="search-row">
-            <div class="field" style="margin:0">
-              <input type="text" id="busca_nome" placeholder="Ex: UORG tresp und" autocomplete="off">
-            </div>
-            <button class="btn-search" onclick="executarBusca()">Buscar</button>
-          </div>
-          <span class="field-hint">Dispara ao clicar em Buscar ou ao sair do campo</span>
+    
+    <div class="main">
+    
+      <!-- SECAO 1: Identificacao do documento -->
+      <div class="panel-section">
+        <div class="section-header">
+          <div class="section-number">1</div>
+          <div class="section-title">Identificacao do Documento</div>
+          <div class="section-desc">Dados do responsavel pela emissao</div>
         </div>
-        <div class="field">
-          <label>Busca por E-mail do Responsavel</label>
-          <div class="search-row">
-            <div class="field" style="margin:0">
-              <input type="text" id="busca_email" placeholder="nome@bradesco.com.br" autocomplete="off">
+        <div class="section-body">
+          <div class="form-grid">
+            <div class="field">
+              <label>Nome do Autor</label>
+              <input type="text" id="autor" placeholder="Nome completo">
+            </div>
+            <div class="field">
+              <label>Perfil</label>
+              <select id="ana_esp">
+                <option value="Analista">Analista</option>
+                <option value="Especialista">Especialista</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Nome do Produto (exibicao no documento)</label>
+              <input type="text" id="nome_display" placeholder="Nome que aparecera no PDF">
+              <span class="field-hint">Preenchido automaticamente ao selecionar um produto. Pode ser editado.</span>
+            </div>
+            <div class="field">
+              <label>Tipo de Produto</label>
+              <input type="text" id="tipo_produto" placeholder="Sera preenchido ao selecionar">
+              <span class="field-hint">Preenchido automaticamente ao selecionar um produto.</span>
             </div>
           </div>
-          <span class="field-hint">Disponivel apenas na query GenQuery</span>
         </div>
       </div>
-
-      <div id="resultados-busca">
-        <div class="empty-state">Nenhuma busca realizada ainda.</div>
+    
+      <!-- SECAO 2: Busca de produto -->
+      <div class="panel-section">
+        <div class="section-header">
+          <div class="section-number">2</div>
+          <div class="section-title">Busca de Produto</div>
+          <div class="section-desc">Pesquise por nome parcial - separadores: espaco ou sublinhado</div>
+        </div>
+        <div class="section-body">
+          <div class="form-grid">
+            <div class="field">
+              <label>Busca por Nome</label>
+              <div class="search-row">
+                <div class="field" style="margin:0">
+                  <input type="text" id="busca_nome" placeholder="Ex: UORG tresp und" autocomplete="off">
+                </div>
+                <button class="btn-search" onclick="executarBusca()">Buscar</button>
+              </div>
+              <span class="field-hint">Dispara ao clicar em Buscar ou ao sair do campo</span>
+            </div>
+            <div class="field">
+              <label>Busca por E-mail do Responsavel</label>
+              <div class="search-row">
+                <div class="field" style="margin:0">
+                  <input type="text" id="busca_email" placeholder="nome@bradesco.com.br" autocomplete="off">
+                </div>
+              </div>
+              <span class="field-hint">Disponivel apenas na query GenQuery</span>
+            </div>
+          </div>
+    
+          <div id="resultados-busca">
+            <div class="empty-state">Nenhuma busca realizada ainda.</div>
+          </div>
+          <div id="instrucao-wrap"></div>
+        </div>
       </div>
-    </div>
-  </div>
-
-  <!-- SECAO 3: Periodo de analise -->
-  <div class="panel-section">
-    <div class="section-header">
-      <div class="section-number">3</div>
-      <div class="section-title">Periodo de Analise</div>
-      <div class="section-desc">Janela temporal para as queries de metricas</div>
-    </div>
-    <div class="section-body">
-      <div class="form-grid-3">
-        <div class="field">
-          <label>Data de Inicio</label>
-          <input type="date" id="dt_ini" value="{_dt_ini_padrao}">
+    
+      <!-- SECAO 3: Periodo de analise -->
+      <div class="panel-section">
+        <div class="section-header">
+          <div class="section-number">3</div>
+          <div class="section-title">Periodo de Analise</div>
+          <div class="section-desc">Janela temporal para as queries de metricas</div>
         </div>
-        <div class="field">
-          <label>Data de Fim</label>
-          <input type="date" id="dt_fim" value="{_dt_fim_padrao}">
-        </div>
-        <div class="field">
-          <label>Atalhos de periodo</label>
-          <select id="periodo_atalho" onchange="aplicarAtalho(this.value)">
-            <option value="">Selecionar atalho...</option>
-            <option value="7">Ultimos 7 dias</option>
-            <option value="30" selected>Ultimo mes</option>
-            <option value="90">Ultimos 3 meses</option>
-            <option value="180">Ultimos 6 meses</option>
-            <option value="365">Ultimo ano</option>
-          </select>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- SECAO 4: Resultados e metricas -->
-  <div class="panel-section" id="secao-metricas" style="display:none">
-    <div class="section-header">
-      <div class="section-number">4</div>
-      <div class="section-title">Metricas do Produto Selecionado</div>
-      <div class="section-desc" id="produto-selecionado-label">-</div>
-    </div>
-    <div class="section-body">
-      <div class="metrics-layout">
-        <div class="metrics-table-wrap" id="tabela-detalhe">
-          <div class="empty-state">Selecione um produto para carregar os detalhes.</div>
-        </div>
-        <div class="metrics-sidebar">
-          <div class="date-range-display">
-            <div class="date-range-label">Periodo analisado</div>
-            <div class="date-range-value" id="label-periodo">-</div>
-          </div>
-          <div class="metric-card">
-            <div class="metric-card-label">Completude</div>
-            <div class="metric-card-value" id="mc-completude">-</div>
-            <div class="metric-card-sub" id="ms-completude"></div>
-            <span class="metric-card-query source-genquery" id="mq-completude"></span>
-          </div>
-          <div class="metric-card">
-            <div class="metric-card-label">Consistencia</div>
-            <div class="metric-card-value" id="mc-consistencia">-</div>
-            <span class="metric-card-query source-genquery" id="mq-consistencia"></span>
-          </div>
-          <div class="metric-card">
-            <div class="metric-card-label">Unicidade</div>
-            <div class="metric-card-value" id="mc-unicidade">-</div>
-            <span class="metric-card-query source-genquery" id="mq-unicidade"></span>
-          </div>
-          <div class="metric-card">
-            <div class="metric-card-label">Variacao</div>
-            <div class="metric-card-value" id="mc-variacao">-</div>
-            <span class="metric-card-query source-genquery" id="mq-variacao"></span>
-          </div>
-          <div class="metric-card">
-            <div class="metric-card-label">Disponibilidade</div>
-            <div class="metric-card-value" style="font-size:13px;color:var(--neutral-500)">Texto manual</div>
+        <div class="section-body">
+          <div class="form-grid-3">
+            <div class="field">
+              <label>Data de Inicio</label>
+              <input type="date" id="dt_ini" value="{_dt_ini_padrao}">
+            </div>
+            <div class="field">
+              <label>Data de Fim</label>
+              <input type="date" id="dt_fim" value="{_dt_fim_padrao}">
+            </div>
+            <div class="field">
+              <label>Atalhos de periodo</label>
+              <select id="periodo_atalho" onchange="aplicarAtalho(this.value)">
+                <option value="">Selecionar atalho...</option>
+                <option value="7">Ultimos 7 dias</option>
+                <option value="30" selected>Ultimo mes</option>
+                <option value="90">Ultimos 3 meses</option>
+                <option value="180">Ultimos 6 meses</option>
+                <option value="365">Ultimo ano</option>
+              </select>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  </div>
-
-  <!-- SECAO 5: Selecao de dimensoes -->
-  <div class="panel-section" id="secao-dimensoes" style="display:none">
-    <div class="section-header">
-      <div class="section-number">5</div>
-      <div class="section-title">Dimensoes a incluir no Documento</div>
-      <div class="section-desc">Dimensoes com valores sao pre-selecionadas. Ajuste conforme necessario.</div>
-    </div>
-    <div class="section-body">
-      <div class="dim-grid">
-        <div class="dim-card" id="card-completude" onclick="toggleDim('completude')">
-          <input type="checkbox" id="chk-completude">
-          <div class="dim-card-name">Completude</div>
-          <div class="dim-card-count" id="dv-completude">0</div>
-          <span class="dim-card-badge" id="db-completude"></span>
+    
+      <!-- SECAO 4: Resultados e metricas -->
+      <div class="panel-section" id="secao-metricas" style="display:none">
+        <div class="section-header">
+          <div class="section-number">4</div>
+          <div class="section-title">Metricas do Produto Selecionado</div>
+          <div class="section-desc" id="produto-selecionado-label">-</div>
         </div>
-        <div class="dim-card" id="card-consistencia" onclick="toggleDim('consistencia')">
-          <input type="checkbox" id="chk-consistencia">
-          <div class="dim-card-name">Consistencia</div>
-          <div class="dim-card-count" id="dv-consistencia">0</div>
-          <span class="dim-card-badge" id="db-consistencia"></span>
-        </div>
-        <div class="dim-card" id="card-disponibilidade" onclick="toggleDim('disponibilidade')">
-          <input type="checkbox" id="chk-disponibilidade">
-          <div class="dim-card-name">Disponibilidade</div>
-          <div class="dim-card-count" style="font-size:13px; color:var(--neutral-400)">Texto livre</div>
-          <span class="dim-card-badge source-genquery">Manual</span>
-        </div>
-        <div class="dim-card" id="card-unicidade" onclick="toggleDim('unicidade')">
-          <input type="checkbox" id="chk-unicidade">
-          <div class="dim-card-name">Unicidade</div>
-          <div class="dim-card-count" id="dv-unicidade">0</div>
-          <span class="dim-card-badge" id="db-unicidade"></span>
-        </div>
-        <div class="dim-card" id="card-variacao" onclick="toggleDim('variacao')">
-          <input type="checkbox" id="chk-variacao">
-          <div class="dim-card-name">Variacao</div>
-          <div class="dim-card-count" id="dv-variacao">0</div>
-          <span class="dim-card-badge" id="db-variacao"></span>
-        </div>
-      </div>
-      <div class="alert alert-info" style="margin-top:16px">
-        A numeracao das secoes (3.1, 3.2...) sera calculada automaticamente com base nas dimensoes selecionadas.
-      </div>
-    </div>
-  </div>
-
-  <!-- SECAO 6: Edicao de valores -->
-  <div class="panel-section" id="secao-valores" style="display:none">
-    <div class="section-header">
-      <div class="section-number">6</div>
-      <div class="section-title">Revisao de Valores</div>
-      <div class="section-desc">Edite os valores das dimensoes selecionadas se necessario</div>
-    </div>
-    <div class="section-body">
-      <div class="values-grid" id="valores-grid"></div>
-      <div id="disponibilidade-texto-wrap" style="display:none; margin-top:16px">
-        <div class="field">
-          <label>Texto da Disponibilidade</label>
-          <textarea id="disponibilidade_texto" placeholder="Descreva a disponibilidade dos dados. Use * para bullets e ## para sub-titulos."></textarea>
+        <div class="section-body">
+          <div class="metrics-layout">
+            <div class="metrics-table-wrap" id="tabela-detalhe">
+              <div class="empty-state">Selecione um produto para carregar os detalhes.</div>
+            </div>
+            <div class="metrics-sidebar">
+              <div class="date-range-display">
+                <div class="date-range-label">Periodo analisado</div>
+                <div class="date-range-value" id="label-periodo">-</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-card-label">Completude</div>
+                <div class="metric-card-value" id="mc-completude">-</div>
+                <div class="metric-card-sub" id="ms-completude"></div>
+                <span class="metric-card-query source-genquery" id="mq-completude"></span>
+              </div>
+              <div class="metric-card">
+                <div class="metric-card-label">Consistencia</div>
+                <div class="metric-card-value" id="mc-consistencia">-</div>
+                <span class="metric-card-query source-genquery" id="mq-consistencia"></span>
+              </div>
+              <div class="metric-card">
+                <div class="metric-card-label">Unicidade</div>
+                <div class="metric-card-value" id="mc-unicidade">-</div>
+                <span class="metric-card-query source-genquery" id="mq-unicidade"></span>
+              </div>
+              <div class="metric-card">
+                <div class="metric-card-label">Variacao</div>
+                <div class="metric-card-value" id="mc-variacao">-</div>
+                <span class="metric-card-query source-genquery" id="mq-variacao"></span>
+              </div>
+              <div class="metric-card">
+                <div class="metric-card-label">Disponibilidade</div>
+                <div class="metric-card-value" style="font-size:13px;color:var(--neutral-500)">Texto manual</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
-  </div>
-
-  <!-- SECAO 7: Edicao de textos das secoes -->
-  <div class="panel-section" id="secao-textos" style="display:none">
-    <div class="section-header">
-      <div class="section-number">7</div>
-      <div class="section-title">Textos das Secoes</div>
-      <div class="section-desc">Alteracoes valem apenas para esta geracao</div>
-    </div>
-    <div class="section-body">
-      <div class="tabs" id="abas-textos"></div>
-      <div id="paineis-textos"></div>
-    </div>
-  </div>
-
-  <!-- SECAO 8: Gerar PDF -->
-  <div class="panel-section">
-    <div class="section-header">
-      <div class="section-number">8</div>
-      <div class="section-title">Gerar Documento</div>
-    </div>
-    <div class="section-body">
-      <div class="action-bar">
-        <div class="action-info">
-          Revise todas as secoes antes de gerar. Apos clicar em Gerar PDF, execute a proxima celula do notebook.
+    
+      <!-- SECAO 5: Selecao de dimensoes -->
+      <div class="panel-section" id="secao-dimensoes" style="display:none">
+        <div class="section-header">
+          <div class="section-number">5</div>
+          <div class="section-title">Dimensoes a incluir no Documento</div>
+          <div class="section-desc">Dimensoes com valores sao pre-selecionadas. Ajuste conforme necessario.</div>
         </div>
-        <div style="display:flex; gap:10px">
-          <button class="btn btn-secondary" onclick="resetarPainel()">Limpar tudo</button>
-          <button class="btn btn-primary" onclick="prepararPayload()">Gerar PDF</button>
+        <div class="section-body">
+          <div class="dim-grid">
+            <div class="dim-card" id="card-completude" onclick="toggleDim('completude')">
+              <input type="checkbox" id="chk-completude">
+              <div class="dim-card-name">Completude</div>
+              <div class="dim-card-count" id="dv-completude">0</div>
+              <span class="dim-card-badge" id="db-completude"></span>
+            </div>
+            <div class="dim-card" id="card-consistencia" onclick="toggleDim('consistencia')">
+              <input type="checkbox" id="chk-consistencia">
+              <div class="dim-card-name">Consistencia</div>
+              <div class="dim-card-count" id="dv-consistencia">0</div>
+              <span class="dim-card-badge" id="db-consistencia"></span>
+            </div>
+            <div class="dim-card" id="card-disponibilidade" onclick="toggleDim('disponibilidade')">
+              <input type="checkbox" id="chk-disponibilidade">
+              <div class="dim-card-name">Disponibilidade</div>
+              <div class="dim-card-count" style="font-size:13px; color:var(--neutral-400)">Texto livre</div>
+              <span class="dim-card-badge source-genquery">Manual</span>
+            </div>
+            <div class="dim-card" id="card-unicidade" onclick="toggleDim('unicidade')">
+              <input type="checkbox" id="chk-unicidade">
+              <div class="dim-card-name">Unicidade</div>
+              <div class="dim-card-count" id="dv-unicidade">0</div>
+              <span class="dim-card-badge" id="db-unicidade"></span>
+            </div>
+            <div class="dim-card" id="card-variacao" onclick="toggleDim('variacao')">
+              <input type="checkbox" id="chk-variacao">
+              <div class="dim-card-name">Variacao</div>
+              <div class="dim-card-count" id="dv-variacao">0</div>
+              <span class="dim-card-badge" id="db-variacao"></span>
+            </div>
+          </div>
+          <div class="alert alert-info" style="margin-top:16px">
+            A numeracao das secoes (3.1, 3.2...) sera calculada automaticamente com base nas dimensoes selecionadas.
+          </div>
         </div>
       </div>
-    </div>
-  </div>
-
-  <!-- SECAO 9: Acoes do PDF (aparece apos gerar) -->
-  <div class="panel-section" id="pdf-section">
-    <div class="section-header">
-      <div class="section-number">9</div>
-      <div class="section-title">Download</div>
-    </div>
-    <div class="pdf-action-row">
-      <a id="btn-download" href="#" download="parecer.pdf" class="btn btn-primary">Baixar PDF</a>
-      <button class="btn btn-success" onclick="abrirPDF()">Visualizar em Nova Aba</button>
-    </div>
-  </div>
-
-</div><!-- /main -->
-
-<script>
-// ================================================================
-// Estado global do painel
-// ================================================================
-const DIMS   = ['completude','consistencia','disponibilidade','unicidade','variacao'];
-const LABELS = {{
-  completude:'Completude', consistencia:'Consistencia',
-  disponibilidade:'Disponibilidade', unicidade:'Unicidade', variacao:'Variacao'
-}};
-const VARS_POR_DIM = {{
-  completude:    ['{{Valor_Completude}}','{{Pct_Completude}}','{{Lowest3_Completude}}'],
-  consistencia:  ['{{Valor_Consistencia}}'],
-  disponibilidade: ['{{Valor_Disponibilidade}}'],
-  unicidade:     ['{{Valor_Unicidade}}'],
-  variacao:      ['{{Valor_Variacao}}'],
-}};
-
-const TEMPLATES_DEFAULT = {_templates_json};
-
-let state = {{
-  produto:    null,
-  metricas:   {{}},
-  dimensoes:  {{}},
-  valores:    {{}},
-  textos:     {{}},
-  resultados: [],
-  pdfB64:     null,
-}};
-
-// ================================================================
-// Busca de produto
-// ================================================================
-
-document.getElementById('busca_nome').addEventListener('blur', executarBusca);
-
-function executarBusca() {{
-  const nome  = document.getElementById('busca_nome').value.trim();
-  const email = document.getElementById('busca_email').value.trim();
-  if (!nome) return;
-
-  const dtIni = document.getElementById('dt_ini').value;
-  const dtFim = document.getElementById('dt_fim').value;
-
-  setLoader(true, 'Buscando produtos...');
-
-  // Simula retorno do Python via payload enviado ao widget e re-execucao
-  // Em producao o Python retorna os dados via json_payload apos busca
-  const mockResultados = [
-    {{ nome_produto: nome.toUpperCase() + '_EXEMPLO_GENQUERY', tipo_produto: 'TIPO_A', email_responsavel: 'analista@bradesco.com.br', data_criacao: '2024-01-15', _query: 'GenQuery' }},
-    {{ nome_produto: nome.toUpperCase() + '_EXEMPLO_BI',       tipo_produto: 'TIPO_B', email_responsavel: null,                       data_criacao: '2024-02-20', _query: 'BI' }},
-  ];
-
-  setTimeout(() => {{
-    setLoader(false);
-    state.resultados = mockResultados;
-    renderizarResultados(mockResultados, dtIni, dtFim);
-  }}, 600);
-}}
-
-function renderizarResultados(rows, dtIni, dtFim) {{
-  const wrap = document.getElementById('resultados-busca');
-  if (!rows.length) {{
-    wrap.innerHTML = '<div class="empty-state">Nenhum produto encontrado para o termo informado.</div>';
-    return;
-  }}
-
-  const header = `
-    <div class="results-wrap">
-      <div class="results-header">
-        <span class="results-count">${{rows.length}} resultado(s) encontrado(s)</span>
+    
+      <!-- SECAO 6: Edicao de valores -->
+      <div class="panel-section" id="secao-valores" style="display:none">
+        <div class="section-header">
+          <div class="section-number">6</div>
+          <div class="section-title">Revisao de Valores</div>
+          <div class="section-desc">Edite os valores das dimensoes selecionadas se necessario</div>
+        </div>
+        <div class="section-body">
+          <div class="values-grid" id="valores-grid"></div>
+          <div id="disponibilidade-texto-wrap" style="display:none; margin-top:16px">
+            <div class="field">
+              <label>Texto da Disponibilidade</label>
+              <textarea id="disponibilidade_texto" placeholder="Descreva a disponibilidade dos dados. Use * para bullets e ## para sub-titulos."></textarea>
+            </div>
+          </div>
+        </div>
       </div>
-      <table>
-        <thead><tr>
-          <th>Nome do Produto</th>
-          <th>Tipo</th>
-          <th>E-mail Responsavel</th>
-          <th>Data de Criacao</th>
-          <th>Query</th>
-        </tr></thead>
-        <tbody id="tbody-resultados"></tbody>
-      </table>
-    </div>`;
-  wrap.innerHTML = header;
-
-  const tbody = document.getElementById('tbody-resultados');
-  rows.forEach((r, i) => {{
-    const tr = document.createElement('tr');
-    tr.setAttribute('data-idx', i);
-    const qClass = r._query === 'BI' ? 'source-bi' : 'source-genquery';
-    tr.innerHTML = `
-      <td>${{r.nome_produto.replace(/_/g,' ')}}</td>
-      <td>${{r.tipo_produto || '-'}}</td>
-      <td>${{r.email_responsavel || '<span style="color:var(--neutral-300)">N/D</span>'}}</td>
-      <td>${{r.data_criacao || '-'}}</td>
-      <td><span class="source-tag ${{qClass}}">${{r._query}}</span></td>`;
-    tr.addEventListener('click', () => selecionarProduto(i, dtIni, dtFim));
-    tbody.appendChild(tr);
-  }});
-}}
-
-// ================================================================
-// Selecao de produto
-// ================================================================
-
-function selecionarProduto(idx, dtIni, dtFim) {{
-  document.querySelectorAll('#tbody-resultados tr').forEach(tr => tr.classList.remove('selected'));
-  document.querySelector(`#tbody-resultados tr[data-idx="${{idx}}"]`).classList.add('selected');
-
-  const p = state.resultados[idx];
-  state.produto = p;
-
-  document.getElementById('nome_display').value   = p.nome_produto.replace(/_/g,' ');
-  document.getElementById('tipo_produto').value   = p.tipo_produto || '';
-
-  setLoader(true, 'Carregando metricas...');
-  carregarMetricas(p, dtIni, dtFim);
-}}
-
-function carregarMetricas(produto, dtIni, dtFim) {{
-  // Dados simulados - em producao este bloco e substituido pelo retorno do Python
-  const mockMetricas = {{
-    completude:   {{ count: 142, pct: 93.2, lowest_3: 'campo_a, campo_b, campo_c', query: produto._query }},
-    consistencia: {{ count: 87,  query: produto._query }},
-    unicidade:    {{ count: 0,   query: produto._query }},
-    variacao:     {{ count: 34,  query: produto._query }},
-    disponibilidade: {{ count: 0, query: 'manual' }},
-  }};
-
-  setTimeout(() => {{
-    setLoader(false);
-    state.metricas = mockMetricas;
-    atualizarMetricasSidebar(mockMetricas, dtIni, dtFim);
-    atualizarCardsDimensoes(mockMetricas);
-    document.getElementById('secao-metricas').style.display   = '';
-    document.getElementById('secao-dimensoes').style.display  = '';
-    document.getElementById('produto-selecionado-label').textContent = produto.nome_produto.replace(/_/g,' ');
-  }}, 800);
-}}
-
-// ================================================================
-// Sidebar de metricas
-// ================================================================
-
-function atualizarMetricasSidebar(metricas, dtIni, dtFim) {{
-  document.getElementById('label-periodo').textContent =
-    formatarData(dtIni) + '  a  ' + formatarData(dtFim);
-
-  ['completude','consistencia','unicidade','variacao'].forEach(dim => {{
-    const m = metricas[dim] || {{}};
-    document.getElementById('mc-' + dim).textContent = m.count ?? '-';
-    const qEl = document.getElementById('mq-' + dim);
-    if (qEl) {{
-      qEl.textContent = m.query || '';
-      qEl.className = 'metric-card-query ' + (m.query === 'BI' ? 'source-bi' : 'source-genquery');
+    
+      <!-- SECAO 7: Edicao de textos das secoes -->
+      <div class="panel-section" id="secao-textos" style="display:none">
+        <div class="section-header">
+          <div class="section-number">7</div>
+          <div class="section-title">Textos das Secoes</div>
+          <div class="section-desc">Alteracoes valem apenas para esta geracao</div>
+        </div>
+        <div class="section-body">
+          <div class="tabs" id="abas-textos"></div>
+          <div id="paineis-textos"></div>
+        </div>
+      </div>
+    
+      <!-- SECAO 8: Gerar PDF -->
+      <div class="panel-section">
+        <div class="section-header">
+          <div class="section-number">8</div>
+          <div class="section-title">Gerar Documento</div>
+        </div>
+        <div class="section-body">
+          <div class="action-bar">
+            <div class="action-info">
+              Revise todas as secoes antes de gerar. Apos clicar em Gerar PDF, execute a proxima celula do notebook.
+            </div>
+            <div style="display:flex; gap:10px">
+              <button class="btn btn-secondary" onclick="resetarPainel()">Limpar tudo</button>
+              <button class="btn btn-primary" onclick="prepararPayload()">Gerar PDF</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    
+      <!-- SECAO 9: Acoes do PDF (aparece apos gerar) -->
+      <div class="panel-section" id="pdf-section">
+        <div class="section-header">
+          <div class="section-number">9</div>
+          <div class="section-title">Download</div>
+        </div>
+        <div class="pdf-action-row">
+          <a id="btn-download" href="#" download="parecer.pdf" class="btn btn-primary">Baixar PDF</a>
+          <button class="btn btn-success" onclick="abrirPDF()">Visualizar em Nova Aba</button>
+        </div>
+      </div>
+    
+    </div><!-- /main -->
+    
+    <script>
+    // ================================================================
+    // Estado global do painel
+    // ================================================================
+    const DIMS   = ['completude','consistencia','disponibilidade','unicidade','variacao'];
+    const LABELS = {{
+      completude:'Completude', consistencia:'Consistencia',
+      disponibilidade:'Disponibilidade', unicidade:'Unicidade', variacao:'Variacao'
+    }};
+    const VARS_POR_DIM = {{
+      completude:    ['{{Valor_Completude}}','{{Pct_Completude}}','{{Lowest3_Completude}}'],
+      consistencia:  ['{{Valor_Consistencia}}'],
+      disponibilidade: ['{{Valor_Disponibilidade}}'],
+      unicidade:     ['{{Valor_Unicidade}}'],
+      variacao:      ['{{Valor_Variacao}}'],
+    }};
+    
+    const TEMPLATES_DEFAULT = {_templates_json};
+    
+    let state = {{
+      produto:    null,
+      metricas:   {{}},
+      dimensoes:  {{}},
+      valores:    {{}},
+      textos:     {{}},
+      resultados: [],
+      pdfB64:     null,
+    }};
+    
+    // ================================================================
+    // Busca de produto
+    // Grava o pedido no widget search_payload e orienta o usuario a executar
+    // a Celula 4.5, que roda as queries Python e re-renderiza o painel com
+    // os resultados reais injetados em _injected_state_json.
+    // ================================================================
+    
+    document.getElementById('busca_nome').addEventListener('blur', executarBusca);
+    
+    function executarBusca() {{
+      const nome  = document.getElementById('busca_nome').value.trim();
+      const email = document.getElementById('busca_email').value.trim();
+      if (!nome) return;
+    
+      const dtIni = document.getElementById('dt_ini').value;
+      const dtFim = document.getElementById('dt_fim').value;
+    
+      const pedido = JSON.stringify({{
+        acao:        'busca',
+        busca_nome:  nome,
+        busca_email: email,
+        dt_ini:      dtIni,
+        dt_fim:      dtFim,
+      }});
+    
+      try {{
+        // Grava o pedido para leitura pela Celula 4.5
+        dbutils.widgets.set('search_payload', pedido);
+      }} catch(e) {{ /* fora do contexto Databricks */ }}
+    
+      exibirInstrucao(
+        'Pedido de busca registrado.',
+        'Execute agora a <strong>Celula 4.5</strong> para carregar os resultados do Spark.'
+      );
     }}
-  }});
-  const ms = document.getElementById('ms-completude');
-  if (ms && metricas.completude) {{
-    ms.textContent = metricas.completude.pct != null ? metricas.completude.pct + '% score medio' : '';
-  }}
-}}
+    
+    function renderizarResultados(rows, dtIni, dtFim) {{
+      const wrap = document.getElementById('resultados-busca');
+      if (!rows.length) {{
+        wrap.innerHTML = '<div class="empty-state">Nenhum produto encontrado para o termo informado.</div>';
+        return;
+      }}
+    
+      const header = `
+        <div class="results-wrap">
+          <div class="results-header">
+            <span class="results-count">${{rows.length}} resultado(s) encontrado(s)</span>
+          </div>
+          <table>
+            <thead><tr>
+              <th>Nome do Produto</th>
+              <th>Tipo</th>
+              <th>E-mail Responsavel</th>
+              <th>Data de Criacao</th>
+              <th>Query</th>
+            </tr></thead>
+            <tbody id="tbody-resultados"></tbody>
+          </table>
+        </div>`;
+      wrap.innerHTML = header;
+    
+      const tbody = document.getElementById('tbody-resultados');
+      rows.forEach((r, i) => {{
+        const tr = document.createElement('tr');
+        tr.setAttribute('data-idx', i);
+        const qClass = r._query === 'BI' ? 'source-bi' : 'source-genquery';
+        tr.innerHTML = `
+          <td>${{r.nome_produto.replace(/_/g,' ')}}</td>
+          <td>${{r.tipo_produto || '-'}}</td>
+          <td>${{r.email_responsavel || '<span style="color:var(--neutral-300)">N/D</span>'}}</td>
+          <td>${{r.data_criacao || '-'}}</td>
+          <td><span class="source-tag ${{qClass}}">${{r._query}}</span></td>`;
+        tr.addEventListener('click', () => selecionarProduto(i, dtIni, dtFim));
+        tbody.appendChild(tr);
+      }});
+    }}
+    
+    // ================================================================
+    // Selecao de produto
+    // ================================================================
+    
+    function selecionarProduto(idx, dtIni, dtFim) {{
+      document.querySelectorAll('#tbody-resultados tr').forEach(tr => tr.classList.remove('selected'));
+      document.querySelector(`#tbody-resultados tr[data-idx="${{idx}}"]`).classList.add('selected');
+    
+      const p = state.resultados[idx];
+      state.produto = p;
+    
+      document.getElementById('nome_display').value   = p.nome_produto.replace(/_/g,' ');
+      document.getElementById('tipo_produto').value   = p.tipo_produto || '';
+    
+      setLoader(true, 'Carregando metricas...');
+      carregarMetricas(p, dtIni, dtFim);
+    }}
+    
+    function carregarMetricas(produto, dtIni, dtFim) {{
+      // O pedido de metricas e incluido no search_payload junto com o produto
+      // selecionado. A Celula 4.5 executa as queries e re-injeta os dados via
+      // _injected_state_json, que popula o painel automaticamente ao renderizar.
+      const pedido = JSON.stringify({{
+        acao:          'metricas',
+        nome_produto:  produto.nome_produto,
+        tipo_produto:  produto.tipo_produto,
+        query_origem:  produto._query,
+        dt_ini:        dtIni,
+        dt_fim:        dtFim,
+      }});
+    
+      try {{
+        dbutils.widgets.set('search_payload', pedido);
+      }} catch(e) {{ /* fora do contexto Databricks */ }}
+    
+      exibirInstrucao(
+        'Produto selecionado: ' + produto.nome_produto.replace(/_/g,' '),
+        'Execute agora a <strong>Celula 4.5</strong> para carregar as metricas do Spark.'
+      );
+    }}
+    
+    // ================================================================
+    // Sidebar de metricas
+    // ================================================================
+    
+    function atualizarMetricasSidebar(metricas, dtIni, dtFim) {{
+      document.getElementById('label-periodo').textContent =
+        formatarData(dtIni) + '  a  ' + formatarData(dtFim);
+    
+      ['completude','consistencia','unicidade','variacao'].forEach(dim => {{
+        const m = metricas[dim] || {{}};
+        document.getElementById('mc-' + dim).textContent = m.count ?? '-';
+        const qEl = document.getElementById('mq-' + dim);
+        if (qEl) {{
+          qEl.textContent = m.query || '';
+          qEl.className = 'metric-card-query ' + (m.query === 'BI' ? 'source-bi' : 'source-genquery');
+        }}
+      }});
+      const ms = document.getElementById('ms-completude');
+      if (ms && metricas.completude) {{
+        ms.textContent = metricas.completude.pct != null ? metricas.completude.pct + '% score medio' : '';
+      }}
+    }}
+    
+    // ================================================================
+    // Cards de dimensoes
+    // ================================================================
+    
+    function atualizarCardsDimensoes(metricas) {{
+      DIMS.forEach(dim => {{
+        if (dim === 'disponibilidade') return;
+        const m     = metricas[dim] || {{}};
+        const count = m.count || 0;
+        const qClass = m.query === 'BI' ? 'source-bi' : 'source-genquery';
+    
+        const dvEl = document.getElementById('dv-' + dim);
+        const dbEl = document.getElementById('db-' + dim);
+        const card = document.getElementById('card-' + dim);
+    
+        if (dvEl) dvEl.textContent = count;
+        if (dbEl) {{ dbEl.textContent = m.query || ''; dbEl.className = 'dim-card-badge ' + qClass; }}
+    
+        if (count === 0) card.classList.add('dim-card-zero');
+        else card.classList.remove('dim-card-zero');
+    
+        const checked = count > 0;
+        document.getElementById('chk-' + dim).checked = checked;
+        state.dimensoes[dim] = checked;
+        card.classList.toggle('active', checked);
+        state.valores[dim] = count;
+      }});
+    
+      atualizarValores();
+      atualizarTextosAbas();
+      document.getElementById('secao-valores').style.display = '';
+      document.getElementById('secao-textos').style.display  = '';
+    }}
+    
+    function toggleDim(dim) {{
+      const chk = document.getElementById('chk-' + dim);
+      chk.checked = !chk.checked;
+      state.dimensoes[dim] = chk.checked;
+      document.getElementById('card-' + dim).classList.toggle('active', chk.checked);
+      atualizarValores();
+      atualizarTextosAbas();
+    }}
+    
+    // ================================================================
+    // Valores editaveis
+    // ================================================================
+    
+    function atualizarValores() {{
+      const grid  = document.getElementById('valores-grid');
+      const dispW = document.getElementById('disponibilidade-texto-wrap');
+      grid.innerHTML = '';
+    
+      DIMS.filter(d => d !== 'disponibilidade' && state.dimensoes[d]).forEach(dim => {{
+        const wrap = document.createElement('div');
+        wrap.className = 'value-field-wrap';
+        const atual = state.valores[dim] ?? (state.metricas[dim] || {{}}).count ?? 0;
+        wrap.innerHTML = `
+          <label>${{LABELS[dim]}}</label>
+          <input type="number" id="val-${{dim}}" value="${{atual}}"
+                 onchange="state.valores['${{dim}}'] = this.value">`;
+        grid.appendChild(wrap);
+      }});
+    
+      const dispAtivo = state.dimensoes['disponibilidade'];
+      dispW.style.display = dispAtivo ? '' : 'none';
+    }}
+    
+    // ================================================================
+    // Abas de textos por secao
+    // ================================================================
+    
+    function atualizarTextosAbas() {{
+      const tabsEl   = document.getElementById('abas-textos');
+      const paineis  = document.getElementById('paineis-textos');
+      tabsEl.innerHTML   = '';
+      paineis.innerHTML  = '';
+    
+      const ativas = DIMS.filter(d => state.dimensoes[d]);
+      if (!ativas.length) {{
+        tabsEl.innerHTML = '<span style="padding:10px;color:var(--neutral-500);font-size:13px">Nenhuma dimensao selecionada.</span>';
+        return;
+      }}
+    
+      ativas.forEach((dim, i) => {{
+        const tab = document.createElement('div');
+        tab.className = 'tab' + (i === 0 ? ' active' : '');
+        tab.textContent = LABELS[dim];
+        tab.onclick = () => ativarAba(dim, ativas);
+        tab.id = 'tab-' + dim;
+        tabsEl.appendChild(tab);
+    
+        const painel = document.createElement('div');
+        painel.className = 'tab-panel' + (i === 0 ? ' active' : '');
+        painel.id = 'painel-' + dim;
+    
+        const tplAtual = state.textos[dim] || TEMPLATES_DEFAULT[dim] || '';
+        const vars     = VARS_POR_DIM[dim] || [];
+    
+        painel.innerHTML = `
+          <textarea id="tpl-${{dim}}" rows="6"
+            onchange="state.textos['${{dim}}'] = this.value"
+            oninput="state.textos['${{dim}}'] = this.value"
+          >${{escHtml(tplAtual)}}</textarea>
+          <div class="template-hint">
+            Esta alteracao e valida apenas para a geracao atual. A variavel <code>{{numero}}</code>
+            e preenchida automaticamente conforme as dimensoes selecionadas.
+          </div>
+          <div class="template-vars">
+            <span style="font-size:11px;color:var(--neutral-500);align-self:center">Variaveis disponíveis:</span>
+            ${{vars.map(v => `<span class="var-chip">${{v}}</span>`).join('')}}
+            <span class="var-chip">{{numero}}</span>
+          </div>`;
+        paineis.appendChild(painel);
+      }});
+    }}
+    
+    function ativarAba(dim, ativas) {{
+      ativas.forEach(d => {{
+        document.getElementById('tab-' + d)?.classList.toggle('active', d === dim);
+        document.getElementById('painel-' + d)?.classList.toggle('active', d === dim);
+      }});
+    }}
+    
+    // ================================================================
+    // Atalhos de periodo
+    // ================================================================
+    
+    function aplicarAtalho(dias) {{
+      if (!dias) return;
+      const hoje = new Date();
+      const ini  = new Date(hoje);
+      ini.setDate(ini.getDate() - parseInt(dias));
+      document.getElementById('dt_fim').value = toISODate(hoje);
+      document.getElementById('dt_ini').value = toISODate(ini);
+    }}
+    
+    // ================================================================
+    // Preparar payload para Python
+    // ================================================================
+    
+    function prepararPayload() {{
+      if (!state.produto) {{
+        alert('Selecione um produto antes de gerar o PDF.');
+        return;
+      }}
+    
+      // Coleta textos editados
+      DIMS.filter(d => state.dimensoes[d]).forEach(dim => {{
+        const el = document.getElementById('tpl-' + dim);
+        if (el) state.textos[dim] = el.value;
+      }});
+    
+      const dispEl = document.getElementById('disponibilidade_texto');
+      if (dispEl) state.valores['disponibilidade'] = dispEl.value;
+    
+      const payload = {{
+        autor:       document.getElementById('autor').value.trim(),
+        ana_esp:     document.getElementById('ana_esp').value,
+        nome_display:document.getElementById('nome_display').value.trim(),
+        nome_produto: state.produto.nome_produto,
+        tipo_produto: document.getElementById('tipo_produto').value.trim(),
+        dt_ini:      document.getElementById('dt_ini').value,
+        dt_fim:      document.getElementById('dt_fim').value,
+        dimensoes:   state.dimensoes,
+        valores:     state.valores,
+        textos:      state.textos,
+        metricas:    state.metricas,
+      }};
+    
+    
+      try {{
+        dbutils.widgets.set('json_payload', JSON.stringify(payload));
+      }} catch(e) {{
+        console.log('PAYLOAD:', JSON.stringify(payload, null, 2));
+      }}
+    
+      exibirInstrucao(
+        'Payload de geracao registrado.',
+        'Execute agora a <strong>Celula 5</strong> para gerar e baixar o PDF.'
+      );
+    }}
+    
+    // ================================================================
+    // Utilidades
+    // ================================================================
+    
+    function setLoader(ativo, texto) {{
+      document.getElementById('loader').classList.toggle('active', ativo);
+      if (texto) document.getElementById('loader-text').textContent = texto;
+    }}
+    
+    function resetarPainel() {{
+      if (!confirm('Limpar todos os campos?')) return;
+      state = {{ produto: null, metricas: {{}}, dimensoes: {{}}, valores: {{}}, textos: {{}}, resultados: [], pdfB64: null }};
+      document.getElementById('busca_nome').value   = '';
+      document.getElementById('busca_email').value  = '';
+      document.getElementById('autor').value        = '';
+      document.getElementById('nome_display').value = '';
+      document.getElementById('tipo_produto').value = '';
+      document.getElementById('resultados-busca').innerHTML = '<div class="empty-state">Nenhuma busca realizada ainda.</div>';
+      document.getElementById('secao-metricas').style.display  = 'none';
+      document.getElementById('secao-dimensoes').style.display = 'none';
+      document.getElementById('secao-valores').style.display   = 'none';
+      document.getElementById('secao-textos').style.display    = 'none';
+      document.getElementById('pdf-section').style.display     = 'none';
+    }}
+    
+    function abrirPDF() {{
+      if (!state.pdfB64) return;
+      const byteCharacters = atob(state.pdfB64);
+      const byteNumbers    = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) byteNumbers[i] = byteCharacters.charCodeAt(i);
+      const blob = new Blob([new Uint8Array(byteNumbers)], {{type: 'application/pdf'}});
+      const url  = URL.createObjectURL(blob);
+      const w    = window.open(url, '_blank');
+      if (!w) alert('Bloqueio de pop-up detectado. Use o botao Baixar PDF.');
+    }}
+    
+    function escHtml(s) {{
+      return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }}
+    
+    function toISODate(d) {{
+      return d.toISOString().substring(0,10);
+    }}
+    
+    function formatarData(iso) {{
+      if (!iso) return '';
+      const [y,m,d] = iso.split('-');
+      return d + '/' + m + '/' + y;
+    }}
+    
+    // ================================================================
+    // Instrucao de proxima acao (substitui o loader de espera)
+    // ================================================================
+    
+    function exibirInstrucao(titulo, detalhe) {{
+      const el = document.getElementById('instrucao-wrap');
+      if (!el) return;
+      el.innerHTML = `
+        <div style="
+          background:#FFF8E1; border-left:4px solid #F59E0B;
+          border-radius:6px; padding:14px 18px; margin-top:16px;
+          font-size:13px; color:#78350F; line-height:1.6;
+        ">
+          <strong>${{titulo}}</strong><br>
+          ${{detalhe}}
+        </div>`;
+      el.scrollIntoView({{ behavior:'smooth', block:'nearest' }});
+    }}
+    
+    // ================================================================
+    // Estado pre-populado injetado pela Celula 4.5
+    // Quando _injected_state_json nao e vazio, restaura resultados e
+    // metricas sem nenhuma interacao adicional do usuario.
+    // ================================================================
+    
+    (function() {{
+      let injetado;
+      try {{ injetado = JSON.parse('{_injected_state_json}'); }} catch(e) {{ return; }}
+      if (!injetado || !injetado.acao) return;
+    
+      const dtIni = document.getElementById('dt_ini').value;
+      const dtFim = document.getElementById('dt_fim').value;
+    
+      if (injetado.acao === 'busca_resultado' && Array.isArray(injetado.resultados)) {{
+        state.resultados = injetado.resultados;
+        // Restaura os campos de busca
+        if (injetado.busca_nome)  document.getElementById('busca_nome').value  = injetado.busca_nome;
+        if (injetado.busca_email) document.getElementById('busca_email').value = injetado.busca_email;
+        if (injetado.dt_ini)      document.getElementById('dt_ini').value      = injetado.dt_ini;
+        if (injetado.dt_fim)      document.getElementById('dt_fim').value      = injetado.dt_fim;
+        renderizarResultados(injetado.resultados, injetado.dt_ini || dtIni, injetado.dt_fim || dtFim);
+      }}
+    
+      if (injetado.acao === 'metricas_resultado' && injetado.metricas) {{
+        state.resultados = injetado.resultados || state.resultados;
+        state.produto    = injetado.produto;
+        state.metricas   = injetado.metricas;
+    
+        if (injetado.dt_ini) document.getElementById('dt_ini').value = injetado.dt_ini;
+        if (injetado.dt_fim) document.getElementById('dt_fim').value = injetado.dt_fim;
+    
+        // Restaura campos de busca e identificacao
+        if (injetado.busca_nome)  document.getElementById('busca_nome').value  = injetado.busca_nome;
+        if (injetado.busca_email) document.getElementById('busca_email').value = injetado.busca_email;
+        if (injetado.produto) {{
+          document.getElementById('nome_display').value = (injetado.produto.nome_produto || '').replace(/_/g,' ');
+          document.getElementById('tipo_produto').value  = injetado.produto.tipo_produto || '';
+        }}
+    
+        // Re-renderiza a tabela de resultados com a linha selecionada marcada
+        if (Array.isArray(injetado.resultados)) {{
+          renderizarResultados(injetado.resultados, injetado.dt_ini || dtIni, injetado.dt_fim || dtFim);
+          const idx = injetado.resultados.findIndex(r => r.nome_produto === injetado.produto?.nome_produto);
+          if (idx >= 0) {{
+            setTimeout(() => {{
+              const tr = document.querySelector(`#tbody-resultados tr[data-idx="${{idx}}"]`);
+              if (tr) tr.classList.add('selected');
+            }}, 50);
+          }}
+        }}
+    
+        atualizarMetricasSidebar(injetado.metricas, injetado.dt_ini || dtIni, injetado.dt_fim || dtFim);
+        atualizarCardsDimensoes(injetado.metricas);
+        document.getElementById('secao-metricas').style.display  = '';
+        document.getElementById('secao-dimensoes').style.display = '';
+        document.getElementById('produto-selecionado-label').textContent =
+          (injetado.produto?.nome_produto || '').replace(/_/g,' ');
+      }}
+    }})();
+    </script>
+    </body>
+    </html>
+    """)
 
-// ================================================================
-// Cards de dimensoes
-// ================================================================
 
-function atualizarCardsDimensoes(metricas) {{
-  DIMS.forEach(dim => {{
-    if (dim === 'disponibilidade') return;
-    const m     = metricas[dim] || {{}};
-    const count = m.count || 0;
-    const qClass = m.query === 'BI' ? 'source-bi' : 'source-genquery';
+_renderizar_painel()
 
-    const dvEl = document.getElementById('dv-' + dim);
-    const dbEl = document.getElementById('db-' + dim);
-    const card = document.getElementById('card-' + dim);
 
-    if (dvEl) dvEl.textContent = count;
-    if (dbEl) {{ dbEl.textContent = m.query || ''; dbEl.className = 'dim-card-badge ' + qClass; }}
 
-    if (count === 0) card.classList.add('dim-card-zero');
-    else card.classList.remove('dim-card-zero');
+# ==============================================================================
+# CELULA 4.5 - Processamento da busca / metricas e re-renderizacao do painel
+#
+# Execute esta celula apos clicar em "Buscar Produto" OU apos selecionar um
+# produto na tabela de resultados no painel da Celula 4.
+#
+# O que esta celula faz:
+#   - Le o search_payload gravado pelo painel.
+#   - Se acao == 'busca': executa search_nome_produto (GenQuery) e, se sem
+#     resultado, search_nome_produto_bi (BI). Injeta a lista de resultados.
+#   - Se acao == 'metricas': executa coletar_metricas para o produto escolhido
+#     e injeta os valores calculados no painel.
+#   - Em ambos os casos re-renderiza a Celula 4 com _injected_state_json
+#     preenchido, restaurando o estado da interface automaticamente.
+# ==============================================================================
 
-    const checked = count > 0;
-    document.getElementById('chk-' + dim).checked = checked;
-    state.dimensoes[dim] = checked;
-    card.classList.toggle('active', checked);
-    state.valores[dim] = count;
-  }});
+_raw_search = dbutils.widgets.get("search_payload")
 
-  atualizarValores();
-  atualizarTextosAbas();
-  document.getElementById('secao-valores').style.display = '';
-  document.getElementById('secao-textos').style.display  = '';
-}}
+if not _raw_search or _raw_search == "{}":
+    print("Nenhum pedido de busca recebido. Use o painel da Celula 4 primeiro.")
+else:
+    _pedido = json.loads(_raw_search)
+    _acao   = _pedido.get("acao", "")
 
-function toggleDim(dim) {{
-  const chk = document.getElementById('chk-' + dim);
-  chk.checked = !chk.checked;
-  state.dimensoes[dim] = chk.checked;
-  document.getElementById('card-' + dim).classList.toggle('active', chk.checked);
-  atualizarValores();
-  atualizarTextosAbas();
-}}
+    if _acao == "busca":
+        _busca_nome  = _pedido.get("busca_nome", "")
+        _busca_email = _pedido.get("busca_email", "")
+        _dt_ini_p    = _pedido.get("dt_ini", _dt_ini_padrao)
+        _dt_fim_p    = _pedido.get("dt_fim", _dt_fim_padrao)
 
-// ================================================================
-// Valores editaveis
-// ================================================================
+        _m_busca = ModelDados(params={}, spark=spark)
 
-function atualizarValores() {{
-  const grid  = document.getElementById('valores-grid');
-  const dispW = document.getElementById('disponibilidade-texto-wrap');
-  grid.innerHTML = '';
+        # Tenta GenQuery primeiro; se sem resultado, tenta BI
+        _resultados = _m_busca.search_nome_produto(_busca_nome, _busca_email)
+        if not _resultados:
+            _resultados_bi = _m_busca.search_nome_produto_bi(_busca_nome)
+            # Marca a origem para exibir o badge correto na tabela
+            for r in _resultados_bi:
+                r["_query"] = "BI"
+            _resultados = _resultados_bi
+        else:
+            for r in _resultados:
+                r["_query"] = "GenQuery"
 
-  DIMS.filter(d => d !== 'disponibilidade' && state.dimensoes[d]).forEach(dim => {{
-    const wrap = document.createElement('div');
-    wrap.className = 'value-field-wrap';
-    const atual = state.valores[dim] ?? (state.metricas[dim] || {{}}).count ?? 0;
-    wrap.innerHTML = `
-      <label>${{LABELS[dim]}}</label>
-      <input type="number" id="val-${{dim}}" value="${{atual}}"
-             onchange="state.valores['${{dim}}'] = this.value">`;
-    grid.appendChild(wrap);
-  }});
+        _injected = {
+            "acao":        "busca_resultado",
+            "busca_nome":  _busca_nome,
+            "busca_email": _busca_email,
+            "dt_ini":      _dt_ini_p,
+            "dt_fim":      _dt_fim_p,
+            "resultados":  _resultados,
+        }
 
-  const dispAtivo = state.dimensoes['disponibilidade'];
-  dispW.style.display = dispAtivo ? '' : 'none';
-}}
+        print(f"Busca concluida: {len(_resultados)} produto(s) encontrado(s).")
+        for r in _resultados:
+            print(f"  [{r.get('_query','?')}] {r.get('nome_produto','')}  |  {r.get('tipo_produto','')}")
 
-// ================================================================
-// Abas de textos por secao
-// ================================================================
+    elif _acao == "metricas":
+        _nome_prod   = _pedido.get("nome_produto", "")
+        _tipo_prod   = _pedido.get("tipo_produto", "")
+        _query_orig  = _pedido.get("query_origem", "GenQuery")
+        _dt_ini_p    = _pedido.get("dt_ini", _dt_ini_padrao)
+        _dt_fim_p    = _pedido.get("dt_fim", _dt_fim_padrao)
 
-function atualizarTextosAbas() {{
-  const tabsEl   = document.getElementById('abas-textos');
-  const paineis  = document.getElementById('paineis-textos');
-  tabsEl.innerHTML   = '';
-  paineis.innerHTML  = '';
+        _m_metricas  = ModelDados(params={}, spark=spark)
+        _metricas    = _m_metricas.coletar_metricas(_nome_prod, _tipo_prod, _dt_ini_p, _dt_fim_p)
 
-  const ativas = DIMS.filter(d => state.dimensoes[d]);
-  if (!ativas.length) {{
-    tabsEl.innerHTML = '<span style="padding:10px;color:var(--neutral-500);font-size:13px">Nenhuma dimensao selecionada.</span>';
-    return;
-  }}
+        # Serializa decimais do Spark para float nativo Python
+        def _serial(obj):
+            if hasattr(obj, "item"):   return obj.item()   # numpy/spark scalar
+            if isinstance(obj, dict):  return {k: _serial(v) for k, v in obj.items()}
+            return obj
+        _metricas = _serial(_metricas)
 
-  ativas.forEach((dim, i) => {{
-    const tab = document.createElement('div');
-    tab.className = 'tab' + (i === 0 ? ' active' : '');
-    tab.textContent = LABELS[dim];
-    tab.onclick = () => ativarAba(dim, ativas);
-    tab.id = 'tab-' + dim;
-    tabsEl.appendChild(tab);
+        # Produto selecionado (reconstruido para o estado do painel)
+        _produto_obj = {
+            "nome_produto": _nome_prod,
+            "tipo_produto": _tipo_prod,
+            "_query":       _query_orig,
+        }
 
-    const painel = document.createElement('div');
-    painel.className = 'tab-panel' + (i === 0 ? ' active' : '');
-    painel.id = 'painel-' + dim;
+        _injected = {
+            "acao":        "metricas_resultado",
+            "busca_nome":  _pedido.get("busca_nome", ""),
+            "busca_email": _pedido.get("busca_email", ""),
+            "dt_ini":      _dt_ini_p,
+            "dt_fim":      _dt_fim_p,
+            "produto":     _produto_obj,
+            "metricas":    _metricas,
+            # resultados e repassado para restaurar a tabela de busca
+            "resultados":  [],
+        }
 
-    const tplAtual = state.textos[dim] || TEMPLATES_DEFAULT[dim] || '';
-    const vars     = VARS_POR_DIM[dim] || [];
+        print(f"Metricas carregadas para: {_nome_prod}")
+        for dim, val in _metricas.items():
+            print(f"  {dim}: count={val.get('count',0)}  query={val.get('query','?')}")
 
-    painel.innerHTML = `
-      <textarea id="tpl-${{dim}}" rows="6"
-        onchange="state.textos['${{dim}}'] = this.value"
-        oninput="state.textos['${{dim}}'] = this.value"
-      >${{escHtml(tplAtual)}}</textarea>
-      <div class="template-hint">
-        Esta alteracao e valida apenas para a geracao atual. A variavel <code>{{numero}}</code>
-        e preenchida automaticamente conforme as dimensoes selecionadas.
-      </div>
-      <div class="template-vars">
-        <span style="font-size:11px;color:var(--neutral-500);align-self:center">Variaveis disponíveis:</span>
-        ${{vars.map(v => `<span class="var-chip">${{v}}</span>`).join('')}}
-        <span class="var-chip">{{numero}}</span>
-      </div>`;
-    paineis.appendChild(painel);
-  }});
-}}
+    else:
+        print(f"Acao desconhecida no search_payload: '{_acao}'")
+        _injected = {}
 
-function ativarAba(dim, ativas) {{
-  ativas.forEach(d => {{
-    document.getElementById('tab-' + d)?.classList.toggle('active', d === dim);
-    document.getElementById('painel-' + d)?.classList.toggle('active', d === dim);
-  }});
-}}
+    # Re-renderiza o painel com o estado injetado
+    _injected_state_json = json.dumps(_injected, ensure_ascii=False, default=str)
 
-// ================================================================
-// Atalhos de periodo
-// ================================================================
-
-function aplicarAtalho(dias) {{
-  if (!dias) return;
-  const hoje = new Date();
-  const ini  = new Date(hoje);
-  ini.setDate(ini.getDate() - parseInt(dias));
-  document.getElementById('dt_fim').value = toISODate(hoje);
-  document.getElementById('dt_ini').value = toISODate(ini);
-}}
-
-// ================================================================
-// Preparar payload para Python
-// ================================================================
-
-function prepararPayload() {{
-  if (!state.produto) {{
-    alert('Selecione um produto antes de gerar o PDF.');
-    return;
-  }}
-
-  // Coleta textos editados
-  DIMS.filter(d => state.dimensoes[d]).forEach(dim => {{
-    const el = document.getElementById('tpl-' + dim);
-    if (el) state.textos[dim] = el.value;
-  }});
-
-  const dispEl = document.getElementById('disponibilidade_texto');
-  if (dispEl) state.valores['disponibilidade'] = dispEl.value;
-
-  const payload = {{
-    autor:       document.getElementById('autor').value.trim(),
-    ana_esp:     document.getElementById('ana_esp').value,
-    nome_display:document.getElementById('nome_display').value.trim(),
-    nome_produto: state.produto.nome_produto,
-    tipo_produto: document.getElementById('tipo_produto').value.trim(),
-    dt_ini:      document.getElementById('dt_ini').value,
-    dt_fim:      document.getElementById('dt_fim').value,
-    dimensoes:   state.dimensoes,
-    valores:     state.valores,
-    textos:      state.textos,
-    metricas:    state.metricas,
-  }};
-
-  // Grava no widget Databricks para leitura na proxima celula
-  try {{
-    window.dbutils_widget_set('json_payload', JSON.stringify(payload));
-  }} catch(e) {{
-    // Fallback: exibe o payload para copia manual se o comm nao estiver disponivel
-    console.log('PAYLOAD:', JSON.stringify(payload));
-  }}
-
-  setLoader(true, 'Payload preparado. Execute a proxima celula do notebook para gerar o PDF.');
-  setTimeout(() => setLoader(false), 2000);
-}}
-
-// ================================================================
-// Utilidades
-// ================================================================
-
-function setLoader(ativo, texto) {{
-  document.getElementById('loader').classList.toggle('active', ativo);
-  if (texto) document.getElementById('loader-text').textContent = texto;
-}}
-
-function resetarPainel() {{
-  if (!confirm('Limpar todos os campos?')) return;
-  state = {{ produto: null, metricas: {{}}, dimensoes: {{}}, valores: {{}}, textos: {{}}, resultados: [], pdfB64: null }};
-  document.getElementById('busca_nome').value   = '';
-  document.getElementById('busca_email').value  = '';
-  document.getElementById('autor').value        = '';
-  document.getElementById('nome_display').value = '';
-  document.getElementById('tipo_produto').value = '';
-  document.getElementById('resultados-busca').innerHTML = '<div class="empty-state">Nenhuma busca realizada ainda.</div>';
-  document.getElementById('secao-metricas').style.display  = 'none';
-  document.getElementById('secao-dimensoes').style.display = 'none';
-  document.getElementById('secao-valores').style.display   = 'none';
-  document.getElementById('secao-textos').style.display    = 'none';
-  document.getElementById('pdf-section').style.display     = 'none';
-}}
-
-function abrirPDF() {{
-  if (!state.pdfB64) return;
-  const byteCharacters = atob(state.pdfB64);
-  const byteNumbers    = new Array(byteCharacters.length);
-  for (let i = 0; i < byteCharacters.length; i++) byteNumbers[i] = byteCharacters.charCodeAt(i);
-  const blob = new Blob([new Uint8Array(byteNumbers)], {{type: 'application/pdf'}});
-  const url  = URL.createObjectURL(blob);
-  const w    = window.open(url, '_blank');
-  if (!w) alert('Bloqueio de pop-up detectado. Use o botao Baixar PDF.');
-}}
-
-function escHtml(s) {{
-  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}}
-
-function toISODate(d) {{
-  return d.toISOString().substring(0,10);
-}}
-
-function formatarData(iso) {{
-  if (!iso) return '';
-  const [y,m,d] = iso.split('-');
-  return d + '/' + m + '/' + y;
-}}
-</script>
-</body>
-</html>
-""")
+    # Re-renderiza o painel com o estado injetado.
+    # O JS inicializa automaticamente via _injected_state_json no HTML.
+    _renderizar_painel(_injected_state_json)
 
 
 # ==============================================================================
@@ -1686,7 +1904,7 @@ function formatarData(iso) {{
 
 _raw_payload = dbutils.widgets.get("json_payload")
 
-if not _raw_payload or _raw_payload == "{{}}":
+if not _raw_payload or _raw_payload == "{}":
     print("Nenhum payload recebido. Preencha o painel e clique em 'Gerar PDF' antes de executar esta celula.")
 else:
     payload = json.loads(_raw_payload)
