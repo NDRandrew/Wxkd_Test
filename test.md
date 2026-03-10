@@ -597,27 +597,38 @@ class ModelDados:
 # FLUXO DE USO:
 #   1. Execute esta celula para renderizar o painel.
 #   2. Preencha os campos de busca e clique em "Buscar Produto".
-#      O painel gravara o pedido em search_payload e exibira instrucao
+#      que aparecera no campo de instrucoes do painel.
 #      para executar a Celula 4.5.
 #   3. Execute a Celula 4.5 — ela roda as queries Python reais e re-renderiza
 #      o painel ja populado com resultados e metricas.
 #   4. Selecione o produto desejado, ajuste dimensoes/valores/textos e clique
-#      em "Gerar PDF". O painel gravara o payload em json_payload e exibira
+#      em "Gerar PDF". Copie o JSON gerado, cole no widget json_payload
 #      instrucao para executar a Celula 5.
 #   5. Execute a Celula 5 para gerar e baixar o PDF.
 # ==============================================================================
 
 dbutils.widgets.removeAll()
-dbutils.widgets.text("search_payload", "{}", "Search payload (nao editar manualmente)")
-dbutils.widgets.text("json_payload",   "{}", "PDF payload (nao editar manualmente)")
 
-_dt_fim_padrao = datetime.now().strftime("%Y-%m-%d")
-_dt_ini_padrao = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+# Parametros de busca — preenchidos pelo usuario nos widgets nativos do Databricks.
+# Apos preencher, execute a Celula 4.5 para buscar produtos.
+dbutils.widgets.text("busca_nome",  "", "Nome do Produto (busca parcial)")
+dbutils.widgets.text("busca_email", "", "E-mail do Responsavel (opcional, so GenQuery)")
+dbutils.widgets.text("dt_ini",      (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"), "Data Inicio")
+dbutils.widgets.text("dt_fim",      datetime.now().strftime("%Y-%m-%d"),                        "Data Fim")
+
+# Produto selecionado — preenchido manualmente apos ver os resultados na Celula 4.5.
+# Use exatamente o valor da coluna nome_produto da tabela de resultados.
+dbutils.widgets.text("nome_produto_selecionado", "", "Produto Selecionado (nome exato)")
+dbutils.widgets.text("tipo_produto_selecionado", "", "Tipo do Produto Selecionado")
+dbutils.widgets.dropdown("query_origem_selecionada", "GenQuery", ["GenQuery", "BI"], "Query de Origem")
+
+_dt_fim_padrao = dbutils.widgets.get("dt_fim")
+_dt_ini_padrao = dbutils.widgets.get("dt_ini")
 
 _templates_json = json.dumps(SECTION_TEMPLATES_DEFAULT, ensure_ascii=False)
 
-# Estado pre-populado: injetado pela Celula 4.5 apos retorno das queries.
-# Quando vazio, o painel inicia em estado limpo.
+# Estado injetado pela Celula 4.5 apos execucao das queries.
+# Nao editar manualmente — e sobrescrito toda vez que a Celula 4.5 roda.
 _injected_state_json = "{}"
 
 
@@ -1273,11 +1284,27 @@ def _renderizar_painel(_injected_state_json="{}"):
           <div class="action-bar">
             <div class="action-info">
               Revise todas as secoes antes de gerar. Apos clicar em Gerar PDF, execute a proxima celula do notebook.
-            </div>
+              Revise todas as secoes antes de gerar. Clique em <strong>Gerar PDF</strong>,
+              copie o JSON gerado, cole no widget <strong>json_payload</strong> do Databricks
+              e execute a <strong>Celula 5</strong>.
             <div style="display:flex; gap:10px">
               <button class="btn btn-secondary" onclick="resetarPainel()">Limpar tudo</button>
               <button class="btn btn-primary" onclick="prepararPayload()">Gerar PDF</button>
             </div>
+          </div>
+        </div>
+        <div style="margin-top:16px">
+          <textarea
+            id="payload-output"
+            readonly
+            style="display:none; width:100%; min-height:80px; font-family:monospace;
+                   font-size:11px; border:1px solid #E2E2E2; border-radius:6px;
+                   padding:10px; background:#FAFAFA; color:#3D3D3D; resize:vertical;"
+            onclick="this.select()"
+          ></textarea>
+          <div id="payload-copy-hint" style="display:none; margin-top:6px; font-size:11px; color:#6B6B6B">
+            Clique no campo acima para selecionar tudo (Ctrl+A) e copie (Ctrl+C).
+            Cole no widget <strong>json_payload</strong> do Databricks e execute a Celula 5.
           </div>
         </div>
       </div>
@@ -1338,26 +1365,14 @@ def _renderizar_painel(_injected_state_json="{}"):
       const nome  = document.getElementById('busca_nome').value.trim();
       const email = document.getElementById('busca_email').value.trim();
       if (!nome) return;
-    
-      const dtIni = document.getElementById('dt_ini').value;
-      const dtFim = document.getElementById('dt_fim').value;
-    
-      const pedido = JSON.stringify({{
-        acao:        'busca',
-        busca_nome:  nome,
-        busca_email: email,
-        dt_ini:      dtIni,
-        dt_fim:      dtFim,
-      }});
-    
-      try {{
-        // Grava o pedido para leitura pela Celula 4.5
-        dbutils.widgets.set('search_payload', pedido);
-      }} catch(e) {{ /* fora do contexto Databricks */ }}
-    
+
+      // O JS nao tem acesso ao kernel Python — nao e possivel gravar widgets via JS.
+      // O fluxo correto: preencher os widgets nativos do Databricks e executar a Celula 4.5.
       exibirInstrucao(
-        'Pedido de busca registrado.',
-        'Execute agora a <strong>Celula 4.5</strong> para carregar os resultados do Spark.'
+        'Preencha os widgets nativos do Databricks acima:',
+        '<strong>Nome do Produto</strong>: <code>' + nome + '</code>' +
+        (email ? '<br><strong>E-mail</strong>: <code>' + email + '</code>' : '') +
+        '<br><br>Em seguida execute a <strong>Celula 4.5</strong> para buscar os resultados.'
       );
     }}
     
@@ -1421,25 +1436,15 @@ def _renderizar_painel(_injected_state_json="{}"):
     }}
     
     function carregarMetricas(produto, dtIni, dtFim) {{
-      // O pedido de metricas e incluido no search_payload junto com o produto
-      // selecionado. A Celula 4.5 executa as queries e re-injeta os dados via
-      // _injected_state_json, que popula o painel automaticamente ao renderizar.
-      const pedido = JSON.stringify({{
-        acao:          'metricas',
-        nome_produto:  produto.nome_produto,
-        tipo_produto:  produto.tipo_produto,
-        query_origem:  produto._query,
-        dt_ini:        dtIni,
-        dt_fim:        dtFim,
-      }});
-    
-      try {{
-        dbutils.widgets.set('search_payload', pedido);
-      }} catch(e) {{ /* fora do contexto Databricks */ }}
-    
+      // O JS nao tem acesso ao kernel Python — orienta o usuario a copiar os valores
+      // para os widgets nativos do Databricks e executar a Celula 4.5.
       exibirInstrucao(
-        'Produto selecionado: ' + produto.nome_produto.replace(/_/g,' '),
-        'Execute agora a <strong>Celula 4.5</strong> para carregar as metricas do Spark.'
+        'Produto selecionado: <strong>' + produto.nome_produto.replace(/_/g,' ') + '</strong>',
+        'Preencha os widgets nativos do Databricks:<br>' +
+        '&nbsp;&nbsp;<strong>Produto Selecionado</strong>: <code>' + produto.nome_produto + '</code><br>' +
+        '&nbsp;&nbsp;<strong>Tipo do Produto</strong>: <code>' + (produto.tipo_produto || '') + '</code><br>' +
+        '&nbsp;&nbsp;<strong>Query de Origem</strong>: <code>' + (produto._query || 'GenQuery') + '</code><br><br>' +
+        'Em seguida execute a <strong>Celula 4.5</strong> para carregar as metricas.'
       );
     }}
     
@@ -1636,15 +1641,19 @@ def _renderizar_painel(_injected_state_json="{}"):
       }};
     
     
-      try {{
-        dbutils.widgets.set('json_payload', JSON.stringify(payload));
-      }} catch(e) {{
-        console.log('PAYLOAD:', JSON.stringify(payload, null, 2));
+      // Exibe o JSON serializado num campo copiavel — o usuario cola no widget
+      // "json_payload" do Databricks e executa a Celula 5.
+      const jsonStr = JSON.stringify(payload);
+      const area = document.getElementById('payload-output');
+      if (area) {{
+        area.value = jsonStr;
+        area.style.display = 'block';
       }}
-    
+
       exibirInstrucao(
-        'Payload de geracao registrado.',
-        'Execute agora a <strong>Celula 5</strong> para gerar e baixar o PDF.'
+        'Payload gerado.',
+        'Copie o JSON do campo abaixo, cole no widget <strong>json_payload</strong> ' +
+        'do Databricks e execute a <strong>Celula 5</strong>.'
       );
     }}
     
@@ -1788,113 +1797,88 @@ _renderizar_painel()
 
 
 # ==============================================================================
-# CELULA 4.5 - Processamento da busca / metricas e re-renderizacao do painel
+# ==============================================================================
+# CELULA 4.5 - Busca de produto e carregamento de metricas
 #
-# Execute esta celula apos clicar em "Buscar Produto" OU apos selecionar um
-# produto na tabela de resultados no painel da Celula 4.
+# Execute esta celula sempre que quiser:
+#   a) Buscar produtos: preencha o widget "Nome do Produto (busca parcial)"
+#      e opcionalmente "E-mail do Responsavel", depois execute esta celula.
+#   b) Carregar metricas: apos ver os resultados no painel, copie o nome
+#      exato para o widget "Produto Selecionado (nome exato)", preencha
+#      "Tipo do Produto" e "Query de Origem", depois execute esta celula.
 #
-# O que esta celula faz:
-#   - Le o search_payload gravado pelo painel.
-#   - Se acao == 'busca': executa search_nome_produto (GenQuery) e, se sem
-#     resultado, search_nome_produto_bi (BI). Injeta a lista de resultados.
-#   - Se acao == 'metricas': executa coletar_metricas para o produto escolhido
-#     e injeta os valores calculados no painel.
-#   - Em ambos os casos re-renderiza a Celula 4 com _injected_state_json
-#     preenchido, restaurando o estado da interface automaticamente.
+# Em ambos os casos o painel HTML e re-renderizado com os dados reais.
 # ==============================================================================
 
-_raw_search = dbutils.widgets.get("search_payload")
+_busca_nome  = dbutils.widgets.get("busca_nome").strip()
+_busca_email = dbutils.widgets.get("busca_email").strip()
+_dt_ini_p    = dbutils.widgets.get("dt_ini")
+_dt_fim_p    = dbutils.widgets.get("dt_fim")
+_nome_prod   = dbutils.widgets.get("nome_produto_selecionado").strip()
+_tipo_prod   = dbutils.widgets.get("tipo_produto_selecionado").strip()
+_query_orig  = dbutils.widgets.get("query_origem_selecionada").strip()
 
-if not _raw_search or _raw_search == "{}":
-    print("Nenhum pedido de busca recebido. Use o painel da Celula 4 primeiro.")
-else:
-    _pedido = json.loads(_raw_search)
-    _acao   = _pedido.get("acao", "")
+_m       = ModelDados(params={}, spark=spark)
+_injected    = {}
+_resultados  = []
 
-    if _acao == "busca":
-        _busca_nome  = _pedido.get("busca_nome", "")
-        _busca_email = _pedido.get("busca_email", "")
-        _dt_ini_p    = _pedido.get("dt_ini", _dt_ini_padrao)
-        _dt_fim_p    = _pedido.get("dt_fim", _dt_fim_padrao)
-
-        _m_busca = ModelDados(params={}, spark=spark)
-
-        # Tenta GenQuery primeiro; se sem resultado, tenta BI
-        _resultados = _m_busca.search_nome_produto(_busca_nome, _busca_email)
-        if not _resultados:
-            _resultados_bi = _m_busca.search_nome_produto_bi(_busca_nome)
-            # Marca a origem para exibir o badge correto na tabela
-            for r in _resultados_bi:
-                r["_query"] = "BI"
-            _resultados = _resultados_bi
-        else:
-            for r in _resultados:
-                r["_query"] = "GenQuery"
-
-        _injected = {
-            "acao":        "busca_resultado",
-            "busca_nome":  _busca_nome,
-            "busca_email": _busca_email,
-            "dt_ini":      _dt_ini_p,
-            "dt_fim":      _dt_fim_p,
-            "resultados":  _resultados,
-        }
-
-        print(f"Busca concluida: {len(_resultados)} produto(s) encontrado(s).")
+if _busca_nome:
+    # GenQuery primeiro; se sem resultado, tenta BI
+    _resultados = _m.search_nome_produto(_busca_nome, _busca_email)
+    if not _resultados:
+        _resultados = _m.search_nome_produto_bi(_busca_nome)
         for r in _resultados:
-            print(f"  [{r.get('_query','?')}] {r.get('nome_produto','')}  |  {r.get('tipo_produto','')}")
-
-    elif _acao == "metricas":
-        _nome_prod   = _pedido.get("nome_produto", "")
-        _tipo_prod   = _pedido.get("tipo_produto", "")
-        _query_orig  = _pedido.get("query_origem", "GenQuery")
-        _dt_ini_p    = _pedido.get("dt_ini", _dt_ini_padrao)
-        _dt_fim_p    = _pedido.get("dt_fim", _dt_fim_padrao)
-
-        _m_metricas  = ModelDados(params={}, spark=spark)
-        _metricas    = _m_metricas.coletar_metricas(_nome_prod, _tipo_prod, _dt_ini_p, _dt_fim_p)
-
-        # Serializa decimais do Spark para float nativo Python
-        def _serial(obj):
-            if hasattr(obj, "item"):   return obj.item()   # numpy/spark scalar
-            if isinstance(obj, dict):  return {k: _serial(v) for k, v in obj.items()}
-            return obj
-        _metricas = _serial(_metricas)
-
-        # Produto selecionado (reconstruido para o estado do painel)
-        _produto_obj = {
-            "nome_produto": _nome_prod,
-            "tipo_produto": _tipo_prod,
-            "_query":       _query_orig,
-        }
-
-        _injected = {
-            "acao":        "metricas_resultado",
-            "busca_nome":  _pedido.get("busca_nome", ""),
-            "busca_email": _pedido.get("busca_email", ""),
-            "dt_ini":      _dt_ini_p,
-            "dt_fim":      _dt_fim_p,
-            "produto":     _produto_obj,
-            "metricas":    _metricas,
-            # resultados e repassado para restaurar a tabela de busca
-            "resultados":  [],
-        }
-
-        print(f"Metricas carregadas para: {_nome_prod}")
-        for dim, val in _metricas.items():
-            print(f"  {dim}: count={val.get('count',0)}  query={val.get('query','?')}")
-
+            r["_query"] = "BI"
     else:
-        print(f"Acao desconhecida no search_payload: '{_acao}'")
-        _injected = {}
+        for r in _resultados:
+            r["_query"] = "GenQuery"
 
-    # Re-renderiza o painel com o estado injetado
-    _injected_state_json = json.dumps(_injected, ensure_ascii=False, default=str)
+    print(f"Busca: {len(_resultados)} produto(s) para '{_busca_nome}'")
+    for r in _resultados:
+        print(f"  [{r.get('_query','?')}]  {r.get('nome_produto','')}  |  {r.get('tipo_produto','')}")
 
-    # Re-renderiza o painel com o estado injetado.
-    # O JS inicializa automaticamente via _injected_state_json no HTML.
-    _renderizar_painel(_injected_state_json)
+    _injected = {
+        "acao":        "busca_resultado",
+        "busca_nome":  _busca_nome,
+        "busca_email": _busca_email,
+        "dt_ini":      _dt_ini_p,
+        "dt_fim":      _dt_fim_p,
+        "resultados":  _resultados,
+    }
+else:
+    print("Widget 'busca_nome' vazio — sem busca executada.")
 
+if _nome_prod:
+    # Coleta metricas para o produto selecionado
+    _metricas = _m.coletar_metricas(_nome_prod, _tipo_prod, _dt_ini_p, _dt_fim_p)
+
+    # Serializa escalares Spark/numpy para tipos Python nativos
+    def _serial(obj):
+        if hasattr(obj, "item"):  return obj.item()
+        if isinstance(obj, dict): return {k: _serial(v) for k, v in obj.items()}
+        return obj
+    _metricas = _serial(_metricas)
+
+    print(f"\nMetricas para '{_nome_prod}':") 
+    for dim, val in _metricas.items():
+        print(f"  {dim}: count={val.get('count', 0)}  query={val.get('query', '?')}")
+
+    _injected = {
+        "acao":        "metricas_resultado",
+        "busca_nome":  _busca_nome,
+        "busca_email": _busca_email,
+        "dt_ini":      _dt_ini_p,
+        "dt_fim":      _dt_fim_p,
+        "produto":     {"nome_produto": _nome_prod, "tipo_produto": _tipo_prod, "_query": _query_orig},
+        "metricas":    _metricas,
+        "resultados":  _resultados,
+    }
+elif not _busca_nome:
+    print("Nenhum widget preenchido. Preencha 'busca_nome' ou 'nome_produto_selecionado'.")
+
+# Re-renderiza o painel com o estado injetado via f-string no HTML
+_injected_state_json = json.dumps(_injected, ensure_ascii=False, default=str)
+_renderizar_painel(_injected_state_json)
 
 # ==============================================================================
 # CELULA 5 - Leitura do payload e geracao do PDF
@@ -1902,10 +1886,21 @@ else:
 # Execute esta celula apos clicar em "Gerar PDF" no painel acima.
 # ==============================================================================
 
-_raw_payload = dbutils.widgets.get("json_payload")
+# Widget json_payload: cole aqui o JSON copiado do campo "Gerar PDF" no painel HTML.
+# Se o widget nao existir ainda, ele sera criado vazio na primeira execucao desta celula.
+try:
+    dbutils.widgets.text("json_payload", "", "JSON Payload (cole aqui e reexecute)")
+except Exception:
+    pass  # widget ja existe
 
-if not _raw_payload or _raw_payload == "{}":
-    print("Nenhum payload recebido. Preencha o painel e clique em 'Gerar PDF' antes de executar esta celula.")
+_raw_payload = dbutils.widgets.get("json_payload").strip()
+
+if not _raw_payload or _raw_payload in ("{}", ""):
+    print("Widget 'json_payload' vazio.")
+    print("1. No painel da Celula 4, clique em 'Gerar PDF'.")
+    print("2. Copie o JSON exibido no campo que aparecer.")
+    print("3. Cole aqui no widget 'json_payload' acima.")
+    print("4. Execute esta celula novamente.")
 else:
     payload = json.loads(_raw_payload)
 
