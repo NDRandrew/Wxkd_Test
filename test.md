@@ -614,157 +614,212 @@ from IPython.display import display as _display, HTML as _HTML
 # PALETA E CSS COMPARTILHADO (injetado 1x via HTML widget)
 # ─────────────────────────────────────────────
 _STYLES = W.HTML(value="""<style>
-/* ── Reset e raiz ── */
+/* ── Reset e base ── */
 .pq-wrap * { box-sizing: border-box; margin: 0; padding: 0; }
 .pq-wrap {
   font-family: 'Segoe UI', Arial, sans-serif;
   font-size: 13px;
-  color: #3D3D3D;
+  color: #2C2C2C;
   max-width: 900px;
+  background: #F2F2F2;
+  padding: 16px;
+  border-radius: 4px;
 }
 
 /* ── Header ── */
 .pq-header {
-  background: linear-gradient(135deg, #8B0000, #CC0000);
+  background: #8B0000;
   color: #fff;
-  border-radius: 8px;
-  padding: 18px 24px;
-  margin-bottom: 4px;
+  border-radius: 4px 4px 0 0;
+  padding: 20px 28px 18px;
+  border-bottom: 4px solid #CC0000;
+  margin-bottom: 0;
 }
-.pq-header h2 { font-size: 17px; font-weight: 700; }
-.pq-header p  { font-size: 12px; opacity: .82; margin-top: 3px; }
+.pq-header h2 {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .4px;
+  text-transform: uppercase;
+}
+.pq-header p {
+  font-size: 11px;
+  color: #FFCCCC;
+  margin-top: 4px;
+  letter-spacing: .2px;
+}
 
 /* ── Stepper ── */
 .pq-stepper {
   display: flex;
   align-items: center;
-  margin: 12px 0 8px;
-  gap: 0;
+  background: #fff;
+  border: 1px solid #DCDCDC;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  padding: 13px 20px;
+  margin-bottom: 16px;
 }
 .pq-step {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   font-size: 11px;
-  font-weight: 700;
-  color: #BDBDBD;
+  font-weight: 600;
+  color: #ABABAB;
   flex: 1;
+  white-space: nowrap;
 }
 .pq-step.active { color: #CC0000; }
-.pq-step.done   { color: #1A7A4A; }
+.pq-step.done   { color: #1A6B3A; }
 .pq-step-num {
-  width: 24px; height: 24px;
+  width: 22px; height: 22px;
   border-radius: 50%;
-  border: 2px solid #BDBDBD;
+  border: 2px solid #DCDCDC;
   display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 700; flex-shrink: 0;
+  font-size: 10px; font-weight: 700; flex-shrink: 0;
   background: #fff;
+  color: #ABABAB;
 }
-.pq-step.active .pq-step-num { border-color: #CC0000; color: #CC0000; }
-.pq-step.done   .pq-step-num { border-color: #1A7A4A; background: #1A7A4A; color: #fff; }
+.pq-step.active .pq-step-num {
+  border-color: #CC0000; color: #CC0000; background: #FFF5F5;
+}
+.pq-step.done .pq-step-num {
+  border-color: #1A6B3A; background: #1A6B3A; color: #fff;
+}
 .pq-step-line {
-  flex: 1; height: 2px;
-  background: #E2E2E2;
-  margin: 0 4px;
+  flex: 1; height: 1px;
+  background: #DCDCDC;
+  margin: 0 8px;
+  min-width: 16px;
 }
-.pq-step-line.done { background: #1A7A4A; }
+.pq-step-line.done { background: #1A6B3A; }
 
 /* ── Card de secao ── */
 .pq-card {
   background: #fff;
-  border: 1px solid #E2E2E2;
-  border-radius: 8px;
+  border: 1px solid #DCDCDC;
+  border-radius: 4px;
   overflow: hidden;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 .pq-card-hdr {
-  background: #FAFAFA;
-  border-bottom: 1px solid #E2E2E2;
-  padding: 12px 18px;
+  background: #F7F7F7;
+  border-bottom: 1px solid #DCDCDC;
+  padding: 11px 18px;
   font-weight: 700;
-  font-size: 13px;
+  font-size: 11px;
   color: #1A1A1A;
+  text-transform: uppercase;
+  letter-spacing: .6px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
-.pq-card-hdr .pq-icon {
-  width: 22px; height: 22px; border-radius: 50%;
-  background: #CC0000; color: #fff;
+.pq-icon {
+  width: 20px; height: 20px; border-radius: 2px;
+  background: #8B0000; color: #fff;
   display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 700; flex-shrink: 0;
+  font-size: 10px; font-weight: 700; flex-shrink: 0;
 }
-.pq-card-body { padding: 18px; }
+.pq-card-body { padding: 20px 18px; }
+
+/* ── Field label ── */
+.pq-lbl {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: #6B6B6B;
+  margin-bottom: 5px;
+}
+
+/* ── Divisor interno ── */
+.pq-divider { border: none; border-top: 1px solid #EBEBEB; margin: 16px 0; }
 
 /* ── Tabela de resultados ── */
 .pq-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .pq-table th {
-  background: #F5F5F5; padding: 8px 12px;
-  text-align: left; font-weight: 700; font-size: 11px;
-  text-transform: uppercase; letter-spacing: .3px;
-  color: #6B6B6B; border-bottom: 2px solid #E2E2E2;
+  background: #F7F7F7; padding: 8px 12px;
+  text-align: left; font-weight: 700; font-size: 10px;
+  text-transform: uppercase; letter-spacing: .5px;
+  color: #6B6B6B; border-bottom: 2px solid #DCDCDC;
 }
-.pq-table td { padding: 9px 12px; border-bottom: 1px solid #E2E2E2; vertical-align: middle; }
-.pq-table tbody tr { cursor: pointer; transition: background .1s; }
-.pq-table tbody tr:hover   { background: #FEF2F2; }
-.pq-table tbody tr.pq-sel  { background: #FFF0F0; outline: 2px solid #CC0000; }
+.pq-table td {
+  padding: 9px 12px; border-bottom: 1px solid #EBEBEB;
+  vertical-align: middle; color: #2C2C2C;
+}
+.pq-table tbody tr:hover  { background: #FEF5F5; }
+.pq-table tbody tr.pq-sel {
+  background: #FFF0F0;
+  border-left: 3px solid #CC0000;
+}
+
+/* ── Badge produto ── */
+.pq-produto-badge {
+  background: #FFF5F5;
+  border-left: 4px solid #CC0000;
+  border-radius: 0 4px 4px 0;
+  padding: 10px 14px;
+  font-size: 13px; color: #8B0000;
+  font-weight: 600; margin-bottom: 16px;
+}
 
 /* ── Metric cards ── */
 .pq-mcards { display: grid; grid-template-columns: repeat(5,1fr); gap: 8px; }
 .pq-mc {
-  background: #FAFAFA; border: 1px solid #E2E2E2;
-  border-radius: 8px; padding: 12px; text-align: center;
+  background: #FAFAFA; border: 1px solid #DCDCDC;
+  border-radius: 4px; padding: 14px 10px; text-align: center;
 }
 .pq-mc .dn {
-  font-size: 10px; font-weight: 700;
-  text-transform: uppercase; letter-spacing: .4px;
-  color: #6B6B6B; margin-bottom: 6px;
+  font-size: 9px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .6px;
+  color: #6B6B6B; margin-bottom: 8px;
 }
-.pq-mc .dv { font-size: 22px; font-weight: 700; color: #1A1A1A; }
+.pq-mc .dv { font-size: 24px; font-weight: 700; color: #1A1A1A; line-height: 1; margin-bottom: 6px; }
 .pq-mc .dv.zero { color: #BDBDBD; }
-.pq-tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; }
-.pq-gq  { background: #DBEAFE; color: #1E40AF; }
-.pq-bi  { background: #FEF3C7; color: #92400E; }
-.pq-manual { background: #F0F0F0; color: #6B6B6B; }
 
-/* ── Dimension toggles ── */
-.pq-dimcards { display: flex; flex-wrap: wrap; gap: 8px; }
-.pq-dcard {
-  border: 2px solid #E2E2E2; border-radius: 8px;
-  padding: 10px 16px; cursor: pointer;
-  transition: all .15s; user-select: none;
-  display: flex; align-items: center; gap: 8px;
-  font-weight: 600; font-size: 13px; background: #fff;
-}
-.pq-dcard.on { border-color: #CC0000; background: #FFF0F0; color: #CC0000; }
+/* ── Tags ── */
+.pq-tag { display: inline-block; padding: 2px 7px; border-radius: 2px; font-size: 10px; font-weight: 700; letter-spacing: .3px; }
+.pq-gq     { background: #E8F0FE; color: #1A56DB; }
+.pq-bi     { background: #FEF3C7; color: #92400E; }
+.pq-manual { background: #F0F0F0; color: #5C5C5C; }
 
-/* ── Misc ── */
-.pq-nota  { font-size: 11px; color: #6B6B6B; font-style: italic; margin-bottom: 10px; }
-.pq-empty { text-align: center; padding: 20px; color: #BDBDBD; font-size: 12px; }
-.pq-chip  {
-  display: inline-block; background: #F5F5F5;
-  border: 1px solid #E2E2E2; border-radius: 4px;
-  padding: 2px 7px; font-family: monospace;
-  font-size: 11px; color: #3D3D3D;
-  margin: 2px 1px; cursor: pointer;
+/* ── Status messages ── */
+.pq-status-ok  { font-size: 12px; color: #1A6B3A; font-weight: 600; }
+.pq-status-err { font-size: 12px; color: #CC0000; font-weight: 600; }
+.pq-status-inf { font-size: 12px; color: #5C5C5C; }
+
+/* ── Info box ── */
+.pq-infobox {
+  background: #F7F7F7; border-left: 3px solid #DCDCDC;
+  border-radius: 0 4px 4px 0;
+  padding: 9px 13px; font-size: 12px;
+  color: #5C5C5C; margin-bottom: 14px;
 }
-.pq-chip:hover { background: #FFF0F0; border-color: #CC0000; }
-.pq-tabs { display: flex; border-bottom: 2px solid #E2E2E2; margin-bottom: 14px; flex-wrap: wrap; }
-.pq-tab  {
-  padding: 8px 16px; cursor: pointer;
-  font-weight: 600; font-size: 12px;
-  border-bottom: 2px solid transparent; margin-bottom: -2px;
-  color: #6B6B6B; transition: all .15s;
+
+/* ── Chips de variaveis ── */
+.pq-chip {
+  display: inline-block; background: #F0F0F0;
+  border: 1px solid #DCDCDC; border-radius: 2px;
+  padding: 2px 7px; font-family: 'Courier New', monospace;
+  font-size: 11px; color: #2C2C2C; margin: 2px 2px;
 }
-.pq-tab.on { color: #CC0000; border-bottom-color: #CC0000; }
-.pq-tc     { display: none; }
-.pq-tc.on  { display: block; }
-.pq-produto-badge {
-  background: #FFF0F0; border: 1px solid #CC0000;
-  border-radius: 6px; padding: 10px 14px;
-  font-size: 13px; color: #8B0000;
-  font-weight: 600; margin-bottom: 12px;
+
+/* ── Empty state ── */
+.pq-empty {
+  text-align: center; padding: 24px;
+  color: #ABABAB; font-size: 12px;
+  border: 1px dashed #DCDCDC; border-radius: 4px;
 }
+
+/* ── Sumario passo 5 ── */
+.pq-summary {
+  background: #FAFAFA; border: 1px solid #DCDCDC;
+  border-radius: 4px; padding: 16px 18px;
+  font-size: 13px; line-height: 2; margin-bottom: 16px;
+}
+.pq-summary b { color: #1A1A1A; }
 </style>""")
 
 # ─────────────────────────────────────────────
@@ -878,24 +933,22 @@ _w_stepper = W.HTML(value=_h_stepper(1))
 # ─── PASSO 1: Identificacao ────────────────────────────────────────────────────
 _w_autor    = W.Text(placeholder='Nome do analista', layout=W.Layout(width='340px'))
 _w_ana_esp  = W.Dropdown(options=['Analista', 'Especialista'], layout=W.Layout(width='200px'))
-_w_p1_next  = W.Button(description='Proximo →', button_style='', layout=W.Layout(width='140px'))
-_w_p1_next.style.button_color = '#CC0000'
-_w_p1_next.style.text_color   = '#fff' if hasattr(_w_p1_next.style, 'text_color') else None
+_w_p1_next  = W.Button(description='Continuar →', button_style='', layout=W.Layout(width='140px'))
+_w_p1_next.style.button_color = '#8B0000'
 
 _w_p1_status = W.HTML(value='')
 
-_w_p1_label_autor   = W.HTML('<span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#6B6B6B">Autor do Documento</span>')
-_w_p1_label_cargo   = W.HTML('<span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#6B6B6B">Cargo / Perfil</span>')
+_w_p1_label_autor   = W.HTML('<span class="pq-lbl">Autor do Documento</span>')
+_w_p1_label_cargo   = W.HTML('<span class="pq-lbl">Cargo / Perfil</span>')
 
 _w_passo1 = W.VBox([
-    W.HTML('<div class="pq-card"><div class="pq-card-hdr"><div class="pq-icon">1</div>Identificacao do Documento</div><div class="pq-card-body">'),
-    W.HBox([
+    W.HTML('<div class="pq-card-hdr" style="margin-bottom:12px;border-radius:4px;border:1px solid #DCDCDC"><div class="pq-icon">1</div>Identificacao do Documento</div>'),
+        W.HBox([
         W.VBox([_w_p1_label_autor, _w_autor], layout=W.Layout(gap='4px')),
         W.VBox([_w_p1_label_cargo, _w_ana_esp], layout=W.Layout(gap='4px')),
     ], layout=W.Layout(gap='16px', align_items='flex-start')),
     W.HTML('<br>'),
     W.HBox([_w_p1_next, _w_p1_status], layout=W.Layout(gap='12px', align_items='center')),
-    W.HTML('</div></div>'),
 ])
 
 # ─── PASSO 2: Busca ────────────────────────────────────────────────────────────
@@ -903,28 +956,25 @@ _w_busca_nome  = W.Text(placeholder='Digite parte do nome do produto...', layout
 _w_busca_email = W.Text(placeholder='Filtro opcional', layout=W.Layout(width='220px'))
 _w_btn_buscar  = W.Button(description='Buscar', layout=W.Layout(width='100px'))
 _w_btn_buscar.style.button_color = '#8B0000'
-_w_btn_buscar.style.text_color   = '#fff' if hasattr(_w_btn_buscar.style, 'text_color') else None
 
 _w_busca_result = W.HTML(value='<div class="pq-empty">Nenhuma busca realizada ainda.</div>')
 _w_busca_status = W.HTML(value='')
 
 _w_p2_back = W.Button(description='← Voltar', layout=W.Layout(width='100px'))
-_w_p2_next = W.Button(description='Proximo →', button_style='', layout=W.Layout(width='140px'), disabled=True)
-_w_p2_next.style.button_color = '#CC0000'
-_w_p2_next.style.text_color   = '#fff' if hasattr(_w_p2_next.style, 'text_color') else None
+_w_p2_next = W.Button(description='Continuar →', button_style='', layout=W.Layout(width='140px'), disabled=True)
+_w_p2_next.style.button_color = '#8B0000'
 
 _w_passo2 = W.VBox([
-    W.HTML('<div class="pq-card"><div class="pq-card-hdr"><div class="pq-icon">2</div>Busca de Produto</div><div class="pq-card-body">'),
-    W.HTML('<span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#6B6B6B">Nome do Produto</span>'),
+    W.HTML('<div class="pq-card-hdr" style="margin-bottom:12px;border-radius:4px;border:1px solid #DCDCDC"><div class="pq-icon">2</div>Busca de Produto</div>'),
+        W.HTML('<span class="pq-lbl">Nome do Produto</span>'),
     W.HBox([_w_busca_nome, _w_btn_buscar], layout=W.Layout(gap='8px', align_items='center')),
-    W.HTML('<span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#6B6B6B">E-mail Responsavel (so GenQuery)</span>'),
+    W.HTML('<span class="pq-lbl">E-mail Responsavel (so GenQuery)</span>'),
     _w_busca_email,
     W.HTML('<br>'),
     _w_busca_status,
     _w_busca_result,
     W.HTML('<br>'),
     W.HBox([_w_p2_back, _w_p2_next], layout=W.Layout(gap='8px')),
-    W.HTML('</div></div>'),
 ])
 
 # ─── PASSO 3: Periodo + Metricas ───────────────────────────────────────────────
@@ -937,28 +987,23 @@ _w_atalho    = W.Dropdown(
 )
 _w_btn_metricas  = W.Button(description='Coletar Metricas', layout=W.Layout(width='160px'))
 _w_btn_metricas.style.button_color = '#8B0000'
-_w_btn_metricas.style.text_color   = '#fff' if hasattr(_w_btn_metricas.style, 'text_color') else None
 
 _w_metricas_status = W.HTML(value='')
 _w_metricas_cards  = W.HTML(value='')
 
 _w_p3_back = W.Button(description='← Voltar', layout=W.Layout(width='100px'))
-_w_p3_next = W.Button(description='Proximo →', button_style='', layout=W.Layout(width='140px'), disabled=True)
-_w_p3_next.style.button_color = '#CC0000'
-_w_p3_next.style.text_color   = '#fff' if hasattr(_w_p3_next.style, 'text_color') else None
+_w_p3_next = W.Button(description='Continuar →', button_style='', layout=W.Layout(width='140px'), disabled=True)
+_w_p3_next.style.button_color = '#8B0000'
 
 _w_passo3 = W.VBox([
-    W.HTML('<div class="pq-card"><div class="pq-card-hdr"><div class="pq-icon">3</div>Periodo de Analise</div><div class="pq-card-body">'),
-    W.HTML('<span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#6B6B6B">Data Inicio &nbsp;&nbsp;&nbsp; Data Fim &nbsp;&nbsp;&nbsp; Atalho</span>'),
+    W.HTML('<div class="pq-card-hdr" style="margin-bottom:12px;border-radius:4px;border:1px solid #DCDCDC"><div class="pq-icon">3</div>Periodo de Analise e Metricas</div>'),
+        W.HTML('<span class="pq-lbl">Periodo</span>'),
     W.HBox([_w_dt_ini, _w_dt_fim, _w_atalho, _w_btn_metricas], layout=W.Layout(gap='12px', align_items='center')),
     W.HTML('<br>'),
     _w_metricas_status,
-    W.HTML('<div class="pq-card"><div class="pq-card-hdr"><div class="pq-icon">&#9650;</div>Metricas Coletadas</div><div class="pq-card-body">'),
     _w_metricas_cards,
-    W.HTML('</div></div>'),
     W.HTML('<br>'),
     W.HBox([_w_p3_back, _w_p3_next], layout=W.Layout(gap='8px')),
-    W.HTML('</div></div>'),
 ])
 
 # ─── PASSO 4: Dimensoes + Valores + Textos ─────────────────────────────────────
@@ -985,17 +1030,16 @@ _w_txt_areas  = {d: W.Textarea(layout=W.Layout(width='100%', height='100px'),
 _w_txt_tabs   = W.Tab()   # tabs de textos
 
 _w_p4_back = W.Button(description='← Voltar', layout=W.Layout(width='100px'))
-_w_p4_next = W.Button(description='Proximo →', button_style='', layout=W.Layout(width='140px'))
-_w_p4_next.style.button_color = '#CC0000'
-_w_p4_next.style.text_color   = '#fff' if hasattr(_w_p4_next.style, 'text_color') else None
+_w_p4_next = W.Button(description='Continuar →', button_style='', layout=W.Layout(width='140px'))
+_w_p4_next.style.button_color = '#8B0000'
 
 # Display do produto selecionado no topo do passo 4
 _w_p4_produto  = W.HTML(value='')
 _w_nome_display = W.Text(placeholder='Preenchido automaticamente', layout=W.Layout(width='340px'))
 _w_tipo_produto = W.Text(placeholder='Preenchido automaticamente', layout=W.Layout(width='220px'))
 
-_w_p4_label_nome = W.HTML('<span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#6B6B6B">Nome para Exibicao no PDF</span>')
-_w_p4_label_tipo = W.HTML('<span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#6B6B6B">Tipo do Produto</span>')
+_w_p4_label_nome = W.HTML('<span class="pq-lbl">Nome para Exibicao no PDF</span>')
+_w_p4_label_tipo = W.HTML('<span class="pq-lbl">Tipo do Produto</span>')
 
 def _build_p4():
     """Reconstroi o conteudo do passo 4 com base no estado atual."""
@@ -1004,19 +1048,18 @@ def _build_p4():
     # Secao valores
     val_widgets = []
     for d in ativas:
-        lbl = W.HTML(f'<span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#6B6B6B">{_DLBL[d]}</span>')
+        lbl = W.HTML(f'<span class="pq-lbl">{_DLBL[d]}</span>')
         if d == 'disponibilidade':
             val_widgets.append(W.VBox([lbl, _w_val_disp], layout=W.Layout(gap='4px', width='100%')))
         else:
             val_widgets.append(W.VBox([lbl, _w_val_inputs[d]], layout=W.Layout(gap='4px')))
 
     val_section = W.VBox([
-        W.HTML('<div class="pq-card"><div class="pq-card-hdr"><div class="pq-icon">V</div>Revisao de Valores</div><div class="pq-card-body">'),
-        W.HTML('<p class="pq-nota">Valores pre-preenchidos pela query. Edite se necessario.</p>'),
+        W.HTML('<div class="pq-card-hdr" style="margin:12px 0 8px;border-radius:4px;border:1px solid #DCDCDC"><div class="pq-icon">V</div>Revisao de Valores</div>'),
+        W.HTML('<div class="pq-infobox">Valores pre-preenchidos pela query. Edite se necessario.</div>'),
         W.HBox(val_widgets, layout=W.Layout(flex_wrap='wrap', gap='16px')) if val_widgets
           else W.HTML('<div class="pq-empty">Selecione ao menos uma dimensao.</div>'),
-        W.HTML('</div></div>'),
-    ]) if ativas else W.HTML('')
+        ]) if ativas else W.HTML('')
 
     # Secao textos (abas)
     if ativas:
@@ -1031,30 +1074,27 @@ def _build_p4():
             }
             chips_html = ' '.join(f'<span class="pq-chip">{v}</span>' for v in CHIP_VARS.get(d, []))
             tab_children.append(W.VBox([
-                W.HTML(f'<p class="pq-nota">Variaveis: {chips_html}</p>'),
+                W.HTML(f'<div class="pq-infobox" style="margin-bottom:8px">Variaveis: {chips_html}</div>'),
                 _w_txt_areas[d],
             ]))
         _w_txt_tabs.children = tab_children
         for i, d in enumerate(ativas):
             _w_txt_tabs.set_title(i, _DLBL[d])
         txt_section = W.VBox([
-            W.HTML('<div class="pq-card"><div class="pq-card-hdr"><div class="pq-icon">T</div>Textos das Secoes</div><div class="pq-card-body">'),
             _w_txt_tabs,
-            W.HTML('</div></div>'),
-        ])
+                ])
     else:
         txt_section = W.HTML('')
 
     return W.VBox([
-        W.HTML('<div class="pq-card"><div class="pq-card-hdr"><div class="pq-icon">4</div>Dimensoes, Valores e Textos</div><div class="pq-card-body">'),
         _w_p4_produto,
-        W.HTML('<span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#6B6B6B">Nome para Exibicao no PDF &nbsp;&nbsp; Tipo do Produto</span>'),
+        W.HTML('<span class="pq-lbl">Nome para Exibicao no PDF &nbsp;&nbsp; Tipo do Produto</span>'),
         W.HBox([
             W.VBox([_w_p4_label_nome, _w_nome_display], layout=W.Layout(gap='4px')),
             W.VBox([_w_p4_label_tipo, _w_tipo_produto], layout=W.Layout(gap='4px')),
         ], layout=W.Layout(gap='16px', align_items='flex-start')),
-        W.HTML('<br><span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#6B6B6B">Dimensoes a incluir no parecer</span>'),
-        W.HTML('<p class="pq-nota">Marcadas automaticamente quando count &gt; 0.</p>'),
+        W.HTML('<br><span class="pq-lbl">Dimensoes a incluir no parecer</span>'),
+        W.HTML('<div class="pq-infobox">Marcadas automaticamente quando count &gt; 0.</div>'),
         W.HBox(list(_w_dim_checks.values()), layout=W.Layout(flex_wrap='wrap', gap='8px')),
         _w_dim_status,
         W.HTML('<br>'),
@@ -1063,8 +1103,7 @@ def _build_p4():
         txt_section,
         W.HTML('<br>'),
         W.HBox([_w_p4_back, _w_p4_next], layout=W.Layout(gap='8px')),
-        W.HTML('</div></div>'),
-    ])
+        ])
 
 _w_passo4_container = W.VBox([])  # preenchido dinamicamente
 
@@ -1073,19 +1112,17 @@ _w_pdf_status  = W.HTML(value='')
 _w_pdf_output  = W.HTML(value='')
 _w_p5_back     = W.Button(description='← Voltar', layout=W.Layout(width='100px'))
 _w_btn_pdf     = W.Button(description='Gerar PDF', layout=W.Layout(width='140px'))
-_w_btn_pdf.style.button_color = '#CC0000'
-_w_btn_pdf.style.text_color   = '#fff' if hasattr(_w_btn_pdf.style, 'text_color') else None
+_w_btn_pdf.style.button_color = '#8B0000'
 _w_btn_limpar  = W.Button(description='Limpar tudo', layout=W.Layout(width='120px'))
 
 _w_passo5 = W.VBox([
-    W.HTML('<div class="pq-card"><div class="pq-card-hdr"><div class="pq-icon">5</div>Gerar Documento</div><div class="pq-card-body">'),
-    W.HTML('<p class="pq-nota">Revise os dados nos passos anteriores. Ao clicar em Gerar PDF, as metricas serao re-coletadas e o documento sera gerado.</p>'),
+    W.HTML('<div class="pq-card-hdr" style="margin-bottom:12px;border-radius:4px;border:1px solid #DCDCDC"><div class="pq-icon">5</div>Gerar Documento</div>'),
+    W.HTML('<div class="pq-infobox">Revise os dados nos passos anteriores. Ao clicar em Gerar PDF, as metricas serao re-coletadas e o documento sera gerado.</div>'),
     W.HTML('<br>'),
     W.HBox([_w_p5_back, _w_btn_pdf, _w_btn_limpar], layout=W.Layout(gap='10px', align_items='center')),
     W.HTML('<br>'),
     _w_pdf_status,
     _w_pdf_output,
-    W.HTML('</div></div>'),
 ])
 
 # ─────────────────────────────────────────────
@@ -1095,11 +1132,9 @@ _w_passo_area = W.VBox([])   # troca de conteudo a cada passo
 
 _main_ui = W.VBox([
     _STYLES,
-    W.HTML('<div class="pq-wrap">'),
     _w_header,
     _w_stepper,
     _w_passo_area,
-    W.HTML('</div>'),
 ], layout=W.Layout(max_width='920px'))
 
 
@@ -1122,7 +1157,7 @@ def _show_step(n):
 def _on_p1_next(b):
     nome = _w_autor.value.strip()
     if not nome:
-        _w_p1_status.value = '<span style="color:#CC0000;font-size:12px">Preencha o nome do autor.</span>'
+        _w_p1_status.value = '<span class="pq-status-err">Preencha o nome do autor.</span>'
         return
     _state['autor']   = nome
     _state['ana_esp'] = _w_ana_esp.value
@@ -1139,9 +1174,9 @@ _w_p5_back.on_click(lambda b: _show_step(4))
 def _on_buscar(b):
     nome = _w_busca_nome.value.strip()
     if not nome:
-        _w_busca_status.value = '<span style="color:#CC0000;font-size:12px">Digite o nome do produto.</span>'
+        _w_busca_status.value = '<span class="pq-status-err">Digite o nome do produto.</span>'
         return
-    _w_busca_status.value  = '<span style="color:#6B6B6B;font-size:12px">&#x23F3; Buscando...</span>'
+    _w_busca_status.value  = '<span class="pq-status-inf">&#x23F3; Buscando...</span>'
     _w_busca_result.value  = ''
     _w_p2_next.disabled    = True
     def _run():
@@ -1153,7 +1188,7 @@ def _on_buscar(b):
         else:
             for r in res: r['_query'] = 'GenQuery'
         _state['resultados'] = _fmt_serial(res)
-        _w_busca_status.value = f'<span style="color:#1A7A4A;font-size:12px">&#10003; {len(res)} resultado(s) encontrado(s).</span>' if res else ''
+        _w_busca_status.value = f'<span class="pq-status-ok">&#10003; {len(res)} resultado(s) encontrado(s). Selecione abaixo.</span>' if res else ''
         _w_busca_result.value = _h_search_table(res)
     _t.Thread(target=_run, daemon=True).start()
 
@@ -1168,14 +1203,14 @@ def _select_produto(idx):
 # Dropdown de selecao do produto (aparece apos busca)
 _w_prod_select = W.Dropdown(options=[('— Selecione um produto —', None)],
                              layout=W.Layout(width='100%', max_width='500px'))
-_w_prod_select_label = W.HTML('<span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#6B6B6B">Produto Encontrado</span>')
+_w_prod_select_label = W.HTML('<span class="pq-lbl">Produto Encontrado</span>')
 
 
 def _on_buscar_full(b):
     """Versao completa: busca e atualiza dropdown de selecao."""
     nome = _w_busca_nome.value.strip()
     if not nome:
-        _w_busca_status.value = '<span style="color:#CC0000;font-size:12px">Digite o nome do produto.</span>'
+        _w_busca_status.value = '<span class="pq-status-err">Digite o nome do produto.</span>'
         return
     _w_busca_status.value = '<span style="color:#6B6B6B;font-size:12px">&#x23F3; Buscando...</span>'
     _w_busca_result.value = ''
@@ -1198,10 +1233,10 @@ def _on_buscar_full(b):
             ]
             _w_prod_select.options = opts
             _w_prod_select.value   = None
-            _w_busca_status.value  = f'<span style="color:#1A7A4A;font-size:12px">&#10003; {len(res)} resultado(s). Selecione abaixo.</span>'
+            _w_busca_status.value  = f'<span class="pq-status-ok">&#10003; {len(res)} resultado(s). Selecione abaixo.</span>'
         else:
             _w_prod_select.options = [('Nenhum produto encontrado', None)]
-            _w_busca_status.value  = '<span style="color:#CC0000;font-size:12px">Nenhum resultado encontrado.</span>'
+            _w_busca_status.value  = '<span class="pq-status-err">Nenhum resultado encontrado.</span>'
 
     _t.Thread(target=_run, daemon=True).start()
 
@@ -1224,9 +1259,9 @@ _w_prod_select.observe(_on_prod_select, names=['value'])
 # Reconstruir passo 2 para incluir dropdown de selecao
 _w_passo2.children = [
     W.HTML('<div class="pq-card"><div class="pq-card-hdr"><div class="pq-icon">2</div>Busca de Produto</div><div class="pq-card-body">'),
-    W.HTML('<span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#6B6B6B">Nome do Produto</span>'),
+    W.HTML('<span class="pq-lbl">Nome do Produto</span>'),
     W.HBox([_w_busca_nome, _w_btn_buscar], layout=W.Layout(gap='8px', align_items='center')),
-    W.HTML('<span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#6B6B6B">E-mail Responsavel (so GenQuery)</span>'),
+    W.HTML('<span class="pq-lbl">E-mail Responsavel (so GenQuery)</span>'),
     _w_busca_email,
     W.HTML('<br>'),
     _w_busca_status,
@@ -1236,7 +1271,6 @@ _w_passo2.children = [
     _w_prod_select,
     W.HTML('<br>'),
     W.HBox([_w_p2_back, _w_p2_next], layout=W.Layout(gap='8px')),
-    W.HTML('</div></div>'),
 ]
 
 def _on_p2_next(b):
@@ -1266,7 +1300,7 @@ _w_atalho.observe(_on_atalho, names=['value'])
 def _on_coletar_metricas(b):
     p = _state.get('produto')
     if not p:
-        _w_metricas_status.value = '<span style="color:#CC0000;font-size:12px">Selecione um produto primeiro (Passo 2).</span>'
+        _w_metricas_status.value = '<span class="pq-status-err">Selecione um produto primeiro (Passo 2).</span>'
         return
     nome   = p.get('nome_produto', '')
     tipo   = p.get('tipo_produto', '')
@@ -1274,7 +1308,7 @@ def _on_coletar_metricas(b):
     dt_fim = _w_dt_fim.value.strftime('%Y-%m-%d') if _w_dt_fim.value else _state['dt_fim']
     _state['dt_ini'] = dt_ini
     _state['dt_fim'] = dt_fim
-    _w_metricas_status.value = '<span style="color:#6B6B6B;font-size:12px">&#x23F3; Coletando metricas...</span>'
+    _w_metricas_status.value = '<span class="pq-status-inf">&#x23F3; Coletando metricas...</span>'
     _w_metricas_cards.value  = ''
     _w_p3_next.disabled      = True
 
@@ -1289,7 +1323,7 @@ def _on_coletar_metricas(b):
             if d != 'disponibilidade':
                 _w_val_inputs[d].value = float(met.get(d, {}).get('count', 0) or 0)
         _w_metricas_cards.value  = _h_mcards(met)
-        _w_metricas_status.value = '<span style="color:#1A7A4A;font-size:12px">&#10003; Metricas coletadas.</span>'
+        _w_metricas_status.value = '<span class="pq-status-ok">&#10003; Metricas coletadas.</span>'
         _w_p3_next.disabled      = False
 
     _t.Thread(target=_run, daemon=True).start()
@@ -1320,15 +1354,17 @@ def _on_p4_next(b):
     nome_disp = _w_nome_display.value.strip() or (p.get('nome_produto') or '').replace('_', ' ')
     ativas    = [_DLBL[d] for d in _DIMS if _w_dim_checks[d].value]
     _w_pdf_status.value = f"""
-    <div class="pq-card" style="margin-bottom:10px">
-      <div class="pq-card-hdr"><div class="pq-icon">&#9432;</div>Resumo</div>
-      <div class="pq-card-body" style="font-size:13px;line-height:1.8">
-        <b>Autor:</b> {_state.get('autor','')} ({_state.get('ana_esp','')})<br>
-        <b>Produto:</b> {nome_disp}<br>
-        <b>Periodo:</b> {_state.get('dt_ini','')} a {_state.get('dt_fim','')}<br>
-        <b>Dimensoes:</b> {', '.join(ativas) if ativas else '<em>nenhuma</em>'}
-      </div>
-    </div>"""
+<div class="pq-card" style="margin-bottom:10px">
+  <div class="pq-card-hdr"><div class="pq-icon">&#9432;</div>Resumo para Geracao</div>
+  <div class="pq-card-body">
+    <div class="pq-summary">
+      <b>Autor:</b> {_state.get('autor','')} ({_state.get('ana_esp','')})<br>
+      <b>Produto:</b> {nome_disp}<br>
+      <b>Periodo:</b> {_state.get('dt_ini','')} a {_state.get('dt_fim','')}<br>
+      <b>Dimensoes:</b> {', '.join(ativas) if ativas else '<em style="color:#ABABAB">nenhuma selecionada</em>'}
+    </div>
+  </div>
+</div>"""
 
 _w_p4_next.on_click(_on_p4_next)
 
@@ -1350,7 +1386,7 @@ def _on_gerar_pdf(b):
     textos    = {d: _w_txt_areas[d].value for d in _DIMS}
 
     _w_btn_pdf.disabled    = True
-    _w_pdf_output.value    = '<span style="color:#6B6B6B;font-size:12px">&#x23F3; Gerando PDF...</span>'
+    _w_pdf_output.value    = '<span class="pq-status-inf">&#x23F3; Gerando PDF, aguarde...</span>'
 
     def _run():
         m               = ModelDados(params={}, spark=spark)
