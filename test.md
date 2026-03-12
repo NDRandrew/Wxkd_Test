@@ -185,7 +185,7 @@ Sugere-se as seguintes acoes para mitigacao dos problemas identificados:
 
 ________________________________________
 6. Conclusao
-Com base na analise realizada, conclui-se que o conjunto de dados apresenta nivel de qualidade classificado como [ex.: moderado / insatisfatorio / satisfatorio], demandando [baixa/media/alta] priorizacao de acoes corretivas. Recomenda-se acompanhamento continuo e a implementacao das acoes propostas para garantir maior confiabilidade e qualidade dos dados.
+Com base na analise realizada, conclui-se que o conjunto de dados apresenta nivel de qualidade classificado como ${prod.classificacao}, demandando ${prod.demanda} priorizacao de acoes corretivas. Recomenda-se acompanhamento continuo e a implementacao das acoes propostas para garantir maior confiabilidade e qualidade dos dados.
 O consumidor ou gerador do dado solicitou a inclusao/exclusao de novas regras de qualidade por sua total responsabilidade.
 """
 
@@ -540,6 +540,8 @@ class ModelDados:
             "autor"          : payload.get("autor", ""),
             "ana_esp"        : ana_esp,
             "data_relatorio" : datetime.now().strftime("%d/%m/%Y"),
+            "classificacao"  : payload.get("classificacao", "satisfatorio"),
+            "demanda"        : payload.get("demanda", "baixa"),
         }
 
         # Numeracao dinamica das secoes ativas
@@ -1055,6 +1057,20 @@ _w_tipo_produto.add_class('pq-input')
 _w_p4_label_nome = W.HTML('<span class="pq-lbl">Nome para Exibicao no PDF</span>')
 _w_p4_label_tipo = W.HTML('<span class="pq-lbl">Tipo do Produto</span>')
 
+# Dropdowns de Conclusao
+_w_classificacao = W.Dropdown(
+    options=['satisfatorio', 'moderado', 'insatisfatorio'],
+    value='satisfatorio',
+    layout=W.Layout(width='200px')
+)
+_w_classificacao.add_class('pq-dropdown')
+_w_demanda = W.Dropdown(
+    options=['baixa', 'media', 'alta'],
+    value='baixa',
+    layout=W.Layout(width='160px')
+)
+_w_demanda.add_class('pq-dropdown')
+
 def _build_p4():
     """Reconstroi o conteudo do passo 4 com base no estado atual."""
     ativas = [d for d in _DIMS if _w_dim_checks[d].value]
@@ -1107,6 +1123,19 @@ def _build_p4():
             W.VBox([_w_p4_label_nome, _w_nome_display], layout=W.Layout(gap='4px')),
             W.VBox([_w_p4_label_tipo, _w_tipo_produto], layout=W.Layout(gap='4px')),
         ], layout=W.Layout(gap='16px', align_items='flex-start')),
+        W.HTML('<br>'),
+        W.HTML('<div class="pq-card-hdr" style="margin-bottom:8px;border-radius:4px;border:1px solid #DCDCDC"><div class="pq-icon">6</div>Conclusao</div>'),
+        W.HTML('<div class="pq-infobox">Estes valores serao inseridos automaticamente na secao de Conclusao do documento.</div>'),
+        W.HBox([
+            W.VBox([
+                W.HTML('<span class="pq-lbl">Nivel de Qualidade</span>'),
+                _w_classificacao,
+            ], layout=W.Layout(gap='4px')),
+            W.VBox([
+                W.HTML('<span class="pq-lbl">Priorizacao de Acoes</span>'),
+                _w_demanda,
+            ], layout=W.Layout(gap='4px')),
+        ], layout=W.Layout(gap='24px', align_items='flex-start')),
         W.HTML('<br><span class="pq-lbl">Dimensoes a incluir no parecer</span>'),
         W.HTML('<div class="pq-infobox">Marcadas automaticamente quando count &gt; 0.</div>'),
         W.HBox(list(_w_dim_checks.values()), layout=W.Layout(flex_wrap='wrap', gap='8px')),
@@ -1378,7 +1407,8 @@ def _on_p4_next(b):
       <b>Autor:</b> {_state.get('autor','')} ({_state.get('ana_esp','')})<br>
       <b>Produto:</b> {nome_disp}<br>
       <b>Periodo:</b> {_state.get('dt_ini','')} a {_state.get('dt_fim','')}<br>
-      <b>Dimensoes:</b> {', '.join(ativas) if ativas else '<em style="color:#ABABAB">nenhuma selecionada</em>'}
+      <b>Dimensoes:</b> {', '.join(ativas) if ativas else '<em style="color:#ABABAB">nenhuma selecionada</em>'}<br>
+      <b>Classificacao:</b> {_w_classificacao.value} &nbsp;&nbsp; <b>Demanda:</b> {_w_demanda.value}
     </div>
   </div>
 </div>"""
@@ -1418,6 +1448,8 @@ def _on_gerar_pdf(b):
             'nome_display': nome_disp, 'nome_produto': nome,
             'tipo_produto': tipo, 'dt_ini': dt_ini, 'dt_fim': dt_fim,
             'dimensoes': dimensoes, 'valores': valores, 'textos': textos,
+            'classificacao': _w_classificacao.value,
+            'demanda': _w_demanda.value,
         }
         ctx      = m.build_context_ns(payload, metricas_reais)
         rendered = render_template_dotted(template_text, ctx)
@@ -1491,6 +1523,8 @@ def _on_limpar(b):
             _w_val_inputs[d].value = 0
         _w_txt_areas[d].value = SECTION_TEMPLATES_DEFAULT.get(d, '')
     _w_val_disp.value = ''
+    _w_classificacao.value = 'satisfatorio'
+    _w_demanda.value       = 'baixa'
     _show_step(1)
 
 _w_btn_limpar.on_click(_on_limpar)
