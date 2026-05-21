@@ -52,7 +52,7 @@
 /* ── RESET ── */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden}
-body{font-family:var(--font-body);background:var(--g50);color:var(--g800)}
+body{font-family:var(--font-body);background:var(--g50);color:var(--g800);transition:background .45s var(--ease)}
 ::-webkit-scrollbar{width:5px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--g200);border-radius:3px}
@@ -186,12 +186,15 @@ body{font-family:var(--font-body);background:var(--g50);color:var(--g800)}
   display:flex;flex-direction:column;
   transition:margin-left .65s var(--ease);
   overflow:hidden;position:relative;
+  background:transparent;
 }
 .main.col{margin-left:var(--sb-col)}
 
 /* Progress bar */
-.progress-track{height:3px;background:var(--g200);flex-shrink:0}
-.progress-fill{height:100%;background:linear-gradient(90deg,var(--red-dk),var(--red));transition:width .45s var(--ease)}
+.progress-track{height:3px;background:rgba(255,255,255,.2);flex-shrink:0;transition:background .45s var(--ease)}
+.progress-track.on-light{background:var(--g200)}
+.progress-fill{height:100%;background:rgba(255,255,255,.85);transition:width .45s var(--ease)}
+.progress-track.on-light .progress-fill{background:linear-gradient(90deg,var(--red-dk),var(--red))}
 
 /* Slide container */
 .slides{flex:1;position:relative;overflow:hidden}
@@ -1130,6 +1133,9 @@ function init() {
   buildIndicators();
   updateProgress();
   updateNav();
+  // set initial body background to match slide 0 (cover)
+  document.body.style.background = 'linear-gradient(135deg, #9E0723 0%, #CC092F 50%, #8B0621 100%)';
+  document.querySelector('.progress-track').classList.remove('on-light');
   // restore theme
   const t = localStorage.getItem('deva-pres-theme');
   if (t === 'dark') { document.documentElement.setAttribute('data-theme','dark'); }
@@ -1219,16 +1225,39 @@ function goSlide(n) {
 function nextSlide() { goSlide(current + 1); }
 function prevSlide() { goSlide(current - 1); }
 
+function syncBodyBg() {
+  const slideEl = document.getElementById('slide-' + current);
+  const type = SLIDES[current].type;
+
+  if (type === 'cover') {
+    document.body.style.background = 'linear-gradient(135deg, #9E0723 0%, #CC092F 50%, #8B0621 100%)';
+  } else if (type === 'content') {
+    // The header strip is red gradient — match it so it bleeds behind sidebar
+    const hdr = slideEl.querySelector('.slide-hdr');
+    if (hdr) {
+      const bg = window.getComputedStyle(hdr).background;
+      document.body.style.background = bg;
+    } else {
+      document.body.style.background = '#CC092F';
+    }
+  } else {
+    // final: white
+    const bg = window.getComputedStyle(slideEl).backgroundColor;
+    document.body.style.background = bg || '#ffffff';
+  }
+
+  const track = document.querySelector('.progress-track');
+  track.classList.toggle('on-light', type !== 'cover');
+}
+
 function updateAll() {
   updateProgress();
   updateNav();
-  // sidebar items
   document.querySelectorAll('.nav-item').forEach((el, i) => el.classList.toggle('active', i === current));
-  // indicators
   document.querySelectorAll('.ind').forEach((el, i) => el.classList.toggle('active', i === current));
-  // chip
   document.getElementById('sbChipNum').textContent = current + 1;
   document.getElementById('navCount').textContent = (current + 1) + ' / ' + total;
+  requestAnimationFrame(syncBodyBg);
 }
 
 function updateProgress() {
