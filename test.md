@@ -574,6 +574,35 @@ html,body{height:100%;font-family:var(--font-body);background:var(--bg);color:va
           </div>
         </div>
 
+        <!-- Causas-Raiz / Chamados + Análise -->
+        <div class="chart-with-analysis side" style="margin-top:14px">
+          <div class="cwa-chart">
+            <div class="chart-title">Distribuição de Causas-Raiz — Chamados Abr/26</div>
+            <div class="chart-sub">Volume e percentual de cada causa — valores explícitos nos segmentos</div>
+            <div class="chart-wrap h300" style="margin-top:14px"><canvas id="cCausas"></canvas></div>
+            <div id="legCausas" class="legend-row" style="margin-top:14px"></div>
+          </div>
+          <div class="cwa-analysis">
+            <div class="cwa-analysis-title">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+              Análise das Causas
+            </div>
+            <div class="cwa-sep"></div>
+            <div>
+              <div class="cwa-block-label">Concentração</div>
+              <div class="cwa-block-text" id="ana-causas-conc">As 2 principais causas (Alteração na Estrutura e Open Finance) concentram 67% dos chamados — padrão de Pareto claro. Ações preventivas nessas categorias teriam impacto direto no volume total.</div>
+            </div>
+            <div class="cwa-sep"></div>
+            <div>
+              <div class="cwa-block-label">Ações Previstas</div>
+              <div class="cwa-block-text" id="ana-causas-acoes">Preenchimento Incorreto pode ser reduzido com capacitação direcionada dos times. Diversas e Externo são residuais — sem ação imediata necessária.</div>
+            </div>
+            <div class="cwa-insight">
+              <p id="ana-causas-insight">63% dos chamados de Alteração na Estrutura estão concentrados em 2 produtos. Mapear origem para mitigação sistêmica no próximo ciclo.</p>
+            </div>
+          </div>
+        </div>
+
         <!-- Tabela Consolidada + Análise -->
         <div class="chart-with-analysis side" style="margin-top:14px">
           <div class="cwa-chart">
@@ -748,7 +777,10 @@ let D = {
     evol_insight: "ID apresentou crescimento de 96,5% para 98,4% — trajetória positiva a ser mantida.",
     tabela_crit: "6 produtos com criticidade baixa, 2 com atenção e 2 com risco alto. Foco em PLDFT e MANIFESTAÇÕES SACL.",
     tabela_cham: "Open Finance concentra 81 dos 94 chamados totais (86%). Demais produtos com volumes residuais.",
-    tabela_insight: "Produtos novos (IA Generativa, Visão 360) entraram com zero chamados — qualidade de onboarding acima do esperado."
+    tabela_insight: "Produtos novos (IA Generativa, Visão 360) entraram com zero chamados — qualidade de onboarding acima do esperado.",
+    causas_conc: "As 2 principais causas (Alteração na Estrutura e Open Finance) concentram 67% dos chamados — padrão de Pareto claro. Ações preventivas nessas categorias teriam impacto direto no volume total.",
+    causas_acoes: "Preenchimento Incorreto pode ser reduzido com capacitação direcionada dos times. Diversas e Externo são residuais — sem ação imediata necessária.",
+    causas_insight: "63% dos chamados de Alteração na Estrutura estão concentrados em 2 produtos. Mapear origem para mitigação sistêmica no próximo ciclo."
   },
   meses: ['Dez/25','Jan/26','Fev/26','Mar/26','Abr/26'],
   produtos: [
@@ -764,7 +796,11 @@ let D = {
     {nome:'IA GENERATIVA',gestor:'ID',scores:[null,null,null,96.5,98.4],chamados:0,dim:'—',crit:1}
   ],
   tendencia: {abertos:[41,11,44,2,0],concluidos:[31,111,55,64,102]},
-  mediaDias: {data:[14,11,14,12,10]}
+  mediaDias: {data:[14,11,14,12,10]},
+  causas: {
+    labels:['Alt. Estrutura','Open Finance','Preench. Incor.','Não Informado','Orig. Indispon.','Diversas','Externo'],
+    data:[34,29,19,7,3,1,1]
+  }
 };
 
 const COLORS=['#CC0A2F','#3B6BF5','#00C07A','#F5A623','#7C4DFF','#00BFCF','#E8143A','#059669','#D97706','#2563EB'];
@@ -794,6 +830,7 @@ function applyData(){
     'ana-score':'score','ana-prod':'prod','ana-tempo':'tempo','ana-chamados':'chamados',
     'ana-scores-dest':'scores_dest','ana-scores-atenc':'scores_atenc','ana-scores-insight':'scores_insight',
     'ana-evol-tend':'evol_tend','ana-evol-atenc':'evol_atenc','ana-evol-insight':'evol_insight',
+    'ana-causas-conc':'causas_conc','ana-causas-acoes':'causas_acoes','ana-causas-insight':'causas_insight',
     'ana-tabela-crit':'tabela_crit','ana-tabela-cham':'tabela_cham','ana-tabela-insight':'tabela_insight'
   };
   Object.entries(anaMap).forEach(([id,key])=>setEl(id,D.analises[key]||''));
@@ -834,6 +871,57 @@ document.querySelectorAll('.reveal').forEach(el=>ro.observe(el));
 function initCharts(){
   buildScoreChart();
   buildEvolucaoChart();
+  buildCausasChart();
+}
+
+function buildCausasChart(){
+  const ctx=getCtx('cCausas');if(!ctx)return;
+  const total=D.causas.data.reduce((a,b)=>a+b,0);
+  const clrs=['#CC0A2F','#3B6BF5','#00C07A','#F5A623','#7C4DFF','#00BFCF','#E8143A'];
+
+  chartInstances['cCausas']=new Chart(ctx,{
+    type:'doughnut',
+    data:{
+      labels:D.causas.labels,
+      datasets:[{
+        data:D.causas.data,
+        backgroundColor:clrs.slice(0,D.causas.data.length),
+        borderWidth:2,
+        borderColor:'var(--wh)',
+        hoverOffset:6
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      cutout:'52%',
+      plugins:{
+        legend:{display:false},
+        datalabels:{
+          display:ctx=>{
+            const v=ctx.dataset.data[ctx.dataIndex];
+            return (v/total)>=0.04; // hide slices <4% to avoid clutter
+          },
+          formatter:(v)=>{
+            const pct=((v/total)*100).toFixed(0);
+            return v+'\n('+pct+'%)';
+          },
+          color:'#fff',
+          font:{weight:'700',size:10,family:"'DM Sans',sans-serif"},
+          textAlign:'center'
+        }
+      }
+    }
+  });
+
+  // Build legend with balls + label + value
+  const leg=document.getElementById('legCausas');
+  if(leg){
+    leg.innerHTML=D.causas.labels.map((lbl,i)=>{
+      const v=D.causas.data[i];
+      const pct=((v/total)*100).toFixed(0);
+      return `<div class="legend-item"><div class="legend-dot" style="background:${clrs[i%clrs.length]}"></div>${lbl}: <strong style="margin-left:3px">${v}</strong>&nbsp;<span style="color:var(--g500);font-size:.66rem">(${pct}%)</span></div>`;
+    }).join('');
+  }
 }
 
 function buildScoreChart(){
@@ -953,11 +1041,12 @@ function showJsonSchema(e){
   const schema={
     periodo:"string",gerado:"string",
     kpis:{score:"string",score_delta:"string",prod_ativos:0,prod_entregues:0,prod_delta:"string",tempo:0,tempo_delta:"string",chamados:0,chamados_delta:"string"},
-    analises:{score:"string",prod:"string",tempo:"string",chamados:"string",scores_dest:"string",scores_atenc:"string",scores_insight:"string",evol_tend:"string",evol_atenc:"string",evol_insight:"string",tabela_crit:"string",tabela_cham:"string",tabela_insight:"string"},
+    analises:{score:"string",prod:"string",tempo:"string",chamados:"string",scores_dest:"string",scores_atenc:"string",scores_insight:"string",evol_tend:"string",evol_atenc:"string",evol_insight:"string",causas_conc:"string",causas_acoes:"string",causas_insight:"string",tabela_crit:"string",tabela_cham:"string",tabela_insight:"string"},
     meses:["string"],
     produtos:[{nome:"string",gestor:"string",scores:["number|null"],chamados:0,dim:"string",crit:1}],
     tendencia:{abertos:[0],concluidos:[0]},
-    mediaDias:{data:[0]}
+    mediaDias:{data:[0]},
+    causas:{labels:["string"],data:[0]}
   };
   document.getElementById('jsonInput').value=JSON.stringify(schema,null,2);
 }
@@ -1002,8 +1091,10 @@ function buildEmailHtml(){
   // Capture charts as base64 images
   const scoresCanvas = document.getElementById('cScores');
   const evolCanvas   = document.getElementById('cEvolucao');
+  const causasCanvas = document.getElementById('cCausas');
   const scoresImg = scoresCanvas ? scoresCanvas.toDataURL('image/png') : '';
   const evolImg   = evolCanvas   ? evolCanvas.toDataURL('image/png')   : '';
+  const causasImg = causasCanvas ? causasCanvas.toDataURL('image/png') : '';
 
   const prodRows=D.produtos.map((p,i)=>{
     const a=p.scores[4]||p.scores[3],m=p.scores[3];
@@ -1020,33 +1111,35 @@ function buildEmailHtml(){
     </tr>`;
   }).join('');
 
-  // Build chart sections — only include if we got a valid data URL
+  // Helper to build an analysis strip
+  const anaStrip=(color,label,text)=>`
+    <div style="margin-top:8px;background:${color}0D;border-left:3px solid ${color};border-radius:0 8px 8px 0;padding:10px 14px">
+      <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:${color};margin-bottom:3px">${label}</div>
+      <div style="font-size:11px;color:#5C6180;line-height:1.6;font-style:italic">${text}</div>
+    </div>`;
+
   const scoresSection = scoresImg ? `
   <tr><td style="background:#fff;padding:20px 36px;border-top:1px solid #E2E4EA">
     <p style="font-size:9px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.08em;margin:0 0 12px">Score de Qualidade por Produto — Abril/26</p>
-    <img src="${scoresImg}" width="568" style="width:100%;max-width:568px;display:block;border-radius:8px" alt="Gráfico de scores por produto">
-    <div style="margin-top:12px;background:#FFF5F7;border-left:3px solid #c01137;border-radius:0 8px 8px 0;padding:10px 14px">
-      <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#c01137;margin-bottom:3px">Destaques</div>
-      <div style="font-size:11px;color:#5C6180;line-height:1.6;font-style:italic">${D.analises.scores_dest}</div>
-    </div>
-    <div style="margin-top:8px;background:#FFF5F7;border-left:3px solid #E8143A;border-radius:0 8px 8px 0;padding:10px 14px">
-      <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#E8143A;margin-bottom:3px">Atenção</div>
-      <div style="font-size:11px;color:#5C6180;line-height:1.6;font-style:italic">${D.analises.scores_atenc}</div>
-    </div>
+    <img src="${scoresImg}" width="568" style="width:100%;max-width:568px;display:block;border-radius:8px" alt="Scores por produto">
+    ${anaStrip('#c01137','Destaques',D.analises.scores_dest)}
+    ${anaStrip('#E8143A','Atenção',D.analises.scores_atenc)}
   </td></tr>` : '';
 
   const evolSection = evolImg ? `
   <tr><td style="background:#fff;padding:20px 36px;border-top:1px solid #E2E4EA">
     <p style="font-size:9px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.08em;margin:0 0 12px">Evolução do Score por Vertical — Últimos 5 Meses</p>
-    <img src="${evolImg}" width="568" style="width:100%;max-width:568px;display:block;border-radius:8px" alt="Gráfico de evolução por vertical">
-    <div style="margin-top:12px;background:#FFF5F7;border-left:3px solid #c01137;border-radius:0 8px 8px 0;padding:10px 14px">
-      <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#c01137;margin-bottom:3px">Tendências</div>
-      <div style="font-size:11px;color:#5C6180;line-height:1.6;font-style:italic">${D.analises.evol_tend}</div>
-    </div>
-    <div style="margin-top:8px;background:#FFF8F0;border-left:3px solid #F5A623;border-radius:0 8px 8px 0;padding:10px 14px">
-      <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#F5A623;margin-bottom:3px">Pontos de Atenção</div>
-      <div style="font-size:11px;color:#5C6180;line-height:1.6;font-style:italic">${D.analises.evol_atenc}</div>
-    </div>
+    <img src="${evolImg}" width="568" style="width:100%;max-width:568px;display:block;border-radius:8px" alt="Evolução por vertical">
+    ${anaStrip('#c01137','Tendências',D.analises.evol_tend)}
+    ${anaStrip('#F5A623','Pontos de Atenção',D.analises.evol_atenc)}
+  </td></tr>` : '';
+
+  const causasSection = causasImg ? `
+  <tr><td style="background:#fff;padding:20px 36px;border-top:1px solid #E2E4EA">
+    <p style="font-size:9px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.08em;margin:0 0 12px">Distribuição de Causas-Raiz — Chamados Abr/26</p>
+    <img src="${causasImg}" width="568" style="width:100%;max-width:568px;display:block;border-radius:8px" alt="Causas raiz">
+    ${anaStrip('#c01137','Concentração',D.analises.causas_conc)}
+    ${anaStrip('#3B6BF5','Ações Previstas',D.analises.causas_acoes)}
   </td></tr>` : '';
 
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Boletim Qualidade — ${D.periodo}</title></head>
@@ -1082,10 +1175,10 @@ function buildEmailHtml(){
         <div style="font-size:10px;color:#8A8FA8;margin-top:4px">${D.kpis.chamados_delta}</div>
       </td></tr></table></td>
     </tr></table>
-    <div style="margin-top:14px;background:#FFF5F7;border-left:3px solid #c01137;border-radius:0 8px 8px 0;padding:10px 14px">
-      <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#c01137;margin-bottom:3px">Análise</div>
-      <div style="font-size:11px;color:#5C6180;line-height:1.6;font-style:italic">${D.analises.score}</div>
-    </div>
+    ${anaStrip('#c01137','Score Médio Geral',D.analises.score)}
+    ${anaStrip('#00C07A','Produtos',D.analises.prod)}
+    ${anaStrip('#3B6BF5','Tempo de Entrega',D.analises.tempo)}
+    ${anaStrip('#F5A623','Taxa de Resolução',D.analises.chamados)}
   </td></tr>
   ${scoresSection}
   <tr><td style="background:#fff;padding:20px 36px;border-top:1px solid #E2E4EA">
@@ -1101,12 +1194,11 @@ function buildEmailHtml(){
       </tr>
       ${prodRows}
     </table>
-    <div style="margin-top:12px;background:#FFF5F7;border-left:3px solid #c01137;border-radius:0 8px 8px 0;padding:10px 14px">
-      <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#c01137;margin-bottom:3px">Análise</div>
-      <div style="font-size:11px;color:#5C6180;line-height:1.6;font-style:italic">${D.analises.tabela_crit}</div>
-    </div>
+    ${anaStrip('#c01137','Criticidade',D.analises.tabela_crit)}
+    ${anaStrip('#F5A623','Volume de Chamados',D.analises.tabela_cham)}
   </td></tr>
   ${evolSection}
+  ${causasSection}
   <tr><td style="background:linear-gradient(120deg,#8C0F3B,#c01137);border-radius:0 0 16px 16px;padding:18px 36px">
     <div style="font-size:12px;font-weight:700;color:#fff">Boletim de Qualidade de Dados — ${D.periodo}</div>
     <div style="font-size:10px;color:rgba(255,255,255,.55);margin-top:2px">Gerado automaticamente · Inteligência de Dados / Bradesco</div>
