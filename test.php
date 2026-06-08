@@ -105,8 +105,8 @@ html,body{height:100%;font-family:var(--font-body);background:linear-gradient(18
 .modal-overlay.open{display:flex}
 .modal-box{
   background:var(--wh);border-radius:var(--r-lg);padding:32px;
-  width:100%;max-width:900px;box-shadow:var(--sh2);
-  height:82vh;max-height:820px;
+  width:100%;max-width:1020px;box-shadow:var(--sh2);
+  height:88vh;max-height:920px;
   display:flex;flex-direction:column;
 }
 .modal-title{font-family:var(--font-display);font-size:1.1rem;font-weight:700;color:var(--g800);margin-bottom:6px}
@@ -125,7 +125,7 @@ html,body{height:100%;font-family:var(--font-body);background:linear-gradient(18
 .mbtn.apply{background:var(--pr);color:#fff}
 .mbtn.apply:hover{background:var(--pr-dk)}
 .mbtn.dl{background:var(--blue);color:#fff}
-.modal-preview{flex:1;overflow-y:auto;border:1px solid var(--g200);border-radius:var(--r);min-height:0;background:#f9f9f9;margin-bottom:14px}
+.modal-preview{flex:1;overflow-y:auto;border:1px solid var(--g200);border-radius:var(--r);min-height:0;background:#ECEEF3;margin-bottom:14px}
 .modal-preview iframe{width:100%;height:100%;min-height:420px;border:none;border-radius:var(--r)}
 
 /* ─── MAIN ─── */
@@ -292,10 +292,6 @@ html,body{height:100%;font-family:var(--font-body);background:linear-gradient(18
 .release-card.update .release-badge{background:rgba(59,107,245,.1);color:var(--blue)}
 .release-name{font-size:.85rem;font-weight:700;color:var(--g800);margin-bottom:3px;line-height:1.3}
 .release-ver{font-size:.7rem;color:var(--g500)}
-
-/* ─── RESET EVOLUCAO BTN ─── */
-#btnResetEvolucao{background:var(--g100);border:1px solid var(--g200);color:var(--g600);font-family:var(--font-body);font-size:.75rem;font-weight:600;padding:6px 12px;border-radius:8px;cursor:pointer;transition:all .2s ease-in-out;align-items:center;gap:3px}
-#btnResetEvolucao:hover{background:rgba(192,17,55,.08);border-color:rgba(192,17,55,.25);color:var(--pr);transform:translateY(-1px)}
 
 /* ─── SCROLL REVEAL ─── */
 .reveal{opacity:0;transform:translateY(22px);transition:opacity .5s ease,transform .5s ease}
@@ -594,38 +590,6 @@ html,body{height:100%;font-family:var(--font-body);background:linear-gradient(18
           </div>
         </div>
 
-        <!-- Evolução do Score Por Vertical + Análise -->
-        <div class="chart-with-analysis side" style="margin-top:14px">
-          <div class="cwa-chart">
-            <div class="chart-title">Evolução do Score Por Vertical — Últimos 5 Meses</div>
-            <div class="chart-wrap h300" style="margin-bottom:14px;margin-top:14px"><canvas id="cEvolucao"></canvas></div>
-            <div id="legEvolucao" class="legend-row" style="cursor:pointer"></div>
-            <button id="btnResetEvolucao" style="display:none;margin-left:3px;margin-top:5px">
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle;margin-right:4px"><path d="M1 1L9 9M9 1L1 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-              Limpar filtro
-            </button>
-          </div>
-          <div class="cwa-analysis">
-            <div class="cwa-analysis-title">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-              Análise da Evolução
-            </div>
-            <div class="cwa-sep"></div>
-            <div>
-              <div class="cwa-block-label">Tendências</div>
-              <div class="cwa-block-text" id="ana-evol-tend">Carteira apresenta trajetória ascendente consistente. AOC – Contact Center demonstra estabilidade acima de 98% nos últimos 3 meses. OPEN FINANCE oscilante, mas dentro do intervalo aceitável.</div>
-            </div>
-            <div class="cwa-sep"></div>
-            <div>
-              <div class="cwa-block-label">Pontos de Atenção</div>
-              <div class="cwa-block-text" id="ana-evol-atenc">OPEN FINANCE atingiu 98,73% em Fev/26 e recuou para 95,98% em Abr/26. Investigar causa da regressão — possível relação com aumento de chamados de Consistência.</div>
-            </div>
-            <div class="cwa-insight">
-              <p id="ana-evol-insight">ID apresentou crescimento de 96,5% para 98,4% no mesmo período — trajetória positiva a ser mantida.</p>
-            </div>
-          </div>
-        </div>
-
         <!-- Causas-Raiz / Chamados + Análise -->
         <div class="chart-with-analysis side" style="margin-top:14px">
           <div class="cwa-chart">
@@ -662,7 +626,7 @@ html,body{height:100%;font-family:var(--font-body);background:linear-gradient(18
               <thead>
                 <tr>
                   <th>Criticidade</th><th>Produto</th><th>Área</th>
-                  <th>Score Mai/26</th><th>Score Mar/26</th><th>Tendência</th>
+                  <th>Score Mai/26</th><th>Score Abr/26</th><th>Tendência</th>
                   <th>Chamados</th><th>Dimensão Crítica</th>
                 </tr>
               </thead>
@@ -843,9 +807,6 @@ let D = {
     scores_dest: "7 dos 10 produtos atingiram score ≥99%, demonstrando alta maturidade. Open Finance mantém desempenho consistente acima de 95% mesmo com alta volumetria.",
     scores_atenc: "Rating de Risco PLDFT segue como ponto crítico (80,0%), porém em trajetória de recuperação desde Jan/26 (64,0%). Plano de ação em andamento.",
     scores_insight: "Recomendação: priorizar revisão do fluxo de Disponibilidade no PLDFT para o próximo ciclo.",
-    evol_tend: "Carteira apresenta trajetória ascendente consistente. AOC – Contact Center demonstra estabilidade acima de 98% nos últimos 3 meses.",
-    evol_atenc: "OPEN FINANCE atingiu 98,73% em Fev/26 e recuou para 95,98% em Abr/26. Investigar causa da regressão.",
-    evol_insight: "ID apresentou crescimento de 96,5% para 98,4% — trajetória positiva a ser mantida.",
     tabela_crit: "6 produtos com criticidade baixa, 2 com atenção e 2 com risco alto. Foco em PLDFT e MANIFESTAÇÕES SACL.",
     tabela_cham: "Open Finance concentra 81 dos 94 chamados totais (86%). Demais produtos com volumes residuais.",
     tabela_insight: "Produtos novos (IA Generativa, Visão 360) entraram com zero chamados — qualidade de onboarding acima do esperado.",
@@ -871,11 +832,16 @@ let D = {
   causas: {
     labels:['Alt. Estrutura','Open Finance','Preench. Incor.','Não Informado','Orig. Indispon.','Diversas','Externo'],
     data:[34,29,19,7,3,1,1]
-  },
-  evolucao: null
+  }
 };
 
-const COLORS=['#CC0A2F','#3B6BF5','#00C07A','#F5A623','#7C4DFF','#00BFCF','#E8143A','#059669','#D97706','#2563EB'];
+const COLORS = [
+  '#CC0A2F', '#3B6BF5', '#00C07A', '#F5A623', '#7C4DFF', '#00BFCF',
+  '#E8143A', '#059669', '#D97706', '#2563EB', '#5A32C8', '#008C9E',
+  '#EC4899', '#9CA3AF', '#BE185D', '#6B7280', '#06B6D4', '#8B5CF6',
+  '#10B981', '#F59E0B', '#3B82F6', '#EF4444', '#0891B2', '#7C3AED',
+  '#047857', '#B45309'
+];
 const baseFont={family:"'DM Sans', sans-serif",size:11};
 const gridColor=()=>getComputedStyle(document.documentElement).getPropertyValue('--g200').trim()||'#E2E4EA';
 const textColor=()=>getComputedStyle(document.documentElement).getPropertyValue('--g600').trim()||'#5C6180';
@@ -903,7 +869,6 @@ function applyData(){
   const anaMap={
     'ana-score':'score','ana-prod':'prod','ana-tempo':'tempo','ana-chamados':'chamados','ana-chamados-aberto':'chamados_aberto',
     'ana-scores-dest':'scores_dest','ana-scores-atenc':'scores_atenc','ana-scores-insight':'scores_insight',
-    'ana-evol-tend':'evol_tend','ana-evol-atenc':'evol_atenc','ana-evol-insight':'evol_insight',
     'ana-causas-conc':'causas_conc','ana-causas-acoes':'causas_acoes','ana-causas-insight':'causas_insight',
     'ana-tabela-crit':'tabela_crit','ana-tabela-cham':'tabela_cham','ana-tabela-insight':'tabela_insight'
   };
@@ -944,7 +909,6 @@ document.querySelectorAll('.reveal').forEach(el=>ro.observe(el));
 // ─── CHARTS ───
 function initCharts(){
   buildScoreChart();
-  buildEvolucaoChart();
   buildCausasChart();
 }
 
@@ -953,47 +917,53 @@ function buildCausasChart(){
   const total=D.causas.data.reduce((a,b)=>a+b,0);
   const clrs=['#CC0A2F','#3B6BF5','#00C07A','#F5A623','#7C4DFF','#00BFCF','#E8143A'];
 
+  // Sort descending so biggest bar is on top
+  const sorted=[...D.causas.labels.map((l,i)=>({l,v:D.causas.data[i],c:clrs[i%clrs.length]}))].sort((a,b)=>b.v-a.v);
+
   chartInstances['cCausas']=new Chart(ctx,{
-    type:'doughnut',
+    type:'bar',
     data:{
-      labels:D.causas.labels,
+      labels:sorted.map(x=>x.l),
       datasets:[{
-        data:D.causas.data,
-        backgroundColor:clrs.slice(0,D.causas.data.length),
-        borderWidth:2,
-        borderColor:'transparent',
-        hoverOffset:6
+        data:sorted.map(x=>x.v),
+        backgroundColor:sorted.map(x=>x.c),
+        borderRadius:6,
+        borderSkipped:false,
+        barThickness:20
       }]
     },
     options:{
-      responsive:true,maintainAspectRatio:false,
-      cutout:'52%',
+      indexAxis:'y',
+      responsive:true,
+      maintainAspectRatio:false,
+      layout:{padding:{right:56}},
       plugins:{
         legend:{display:false},
         datalabels:{
-          display:ctx=>{
-            const v=ctx.dataset.data[ctx.dataIndex];
-            return (v/total)>=0.04;
-          },
+          anchor:'end',
+          align:'end',
           formatter:(v)=>{
             const pct=((v/total)*100).toFixed(0);
-            return v+'\n('+pct+'%)';
+            return v+' ('+pct+'%)';
           },
-          color:'#fff',
-          font:{weight:'700',size:10,family:"'DM Sans',sans-serif"},
-          textAlign:'center'
+          font:{size:10,weight:'700',family:"'DM Sans',sans-serif"},
+          color:textColor,
+          padding:{left:4}
         }
+      },
+      scales:{
+        x:{ticks:{font:baseFont,color:textColor},grid:{color:gridColor()}},
+        y:{ticks:{font:{...baseFont,size:10},color:textColor},grid:{display:false}}
       }
     }
   });
 
-  // Build legend with balls + label + value
+  // Legend: balls below chart
   const leg=document.getElementById('legCausas');
   if(leg){
-    leg.innerHTML=D.causas.labels.map((lbl,i)=>{
-      const v=D.causas.data[i];
-      const pct=((v/total)*100).toFixed(0);
-      return `<div class="legend-item"><div class="legend-dot" style="background:${clrs[i%clrs.length]}"></div>${lbl}: <strong style="margin-left:3px">${v}</strong>&nbsp;<span style="color:var(--g500);font-size:.66rem">(${pct}%)</span></div>`;
+    leg.innerHTML=sorted.map(x=>{
+      const pct=((x.v/total)*100).toFixed(0);
+      return `<div class="legend-item"><div class="legend-dot" style="background:${x.c}"></div>${x.l}: <strong style="margin-left:3px">${x.v}</strong>&nbsp;<span style="color:var(--g500);font-size:.66rem">(${pct}%)</span></div>`;
     }).join('');
   }
 }
@@ -1025,86 +995,6 @@ function buildScoreChart(){
   });
 }
 
-function aggregateByGestor(produtos){
-  const map={};
-  produtos.forEach(p=>{
-    if(!map[p.gestor]){map[p.gestor]={gestor:p.gestor,scores:Array(p.scores.length).fill(null),counts:Array(p.scores.length).fill(0)};}
-    p.scores.forEach((val,i)=>{if(val!==null){if(map[p.gestor].scores[i]===null)map[p.gestor].scores[i]=0;map[p.gestor].scores[i]+=val;map[p.gestor].counts[i]+=1;}});
-  });
-  return Object.values(map).map(g=>({gestor:g.gestor,scores:g.scores.map((sum,i)=>g.counts[i]>0?+(sum/g.counts[i]).toFixed(2):null)}));
-}
-
-function buildEvolucaoChart(){
-  const ctx=getCtx('cEvolucao');if(!ctx)return;
-
-  // Se D.evolucao estiver definido, usa as séries explícitas; caso contrário agrega por gestor
-  let seriesData;
-  if(D.evolucao && Array.isArray(D.evolucao.series) && D.evolucao.series.length>0){
-    seriesData=D.evolucao.series.map((s,i)=>({
-      gestor:s.label,
-      scores:s.data
-    }));
-  }else{
-    seriesData=aggregateByGestor(D.produtos).slice(0,6);
-  }
-
-  const datasets=seriesData.map((g,i)=>({
-    label:g.gestor.length>20?g.gestor.slice(0,20)+'…':g.gestor,
-    data:g.scores,borderColor:COLORS[i],backgroundColor:'transparent',
-    borderWidth:2,pointRadius:4,pointHoverRadius:6,spanGaps:true,tension:.35
-  }));
-  const leg=document.getElementById('legEvolucao');
-  const btnReset=document.getElementById('btnResetEvolucao');
-  if(leg){
-    leg.innerHTML='';
-    seriesData.forEach((g,i)=>{
-      const name=g.gestor.length>20?g.gestor.slice(0,20)+'…':g.gestor;
-      const item=document.createElement('div');
-      item.className='legend-item';item.dataset.index=i;
-      item.innerHTML=`<div class="legend-dot" style="background:${COLORS[i]}"></div>${name}`;
-      item.onclick=function(){
-        const chart=chartInstances['cEvolucao'];if(!chart)return;
-        const dsIdx=parseInt(this.dataset.index);
-        let anyHidden=false;
-        for(let i=0;i<chart.data.datasets.length;i++){if(chart.getDatasetMeta(i).hidden){anyHidden=true;break;}}
-        if(!anyHidden){
-          for(let i=0;i<chart.data.datasets.length;i++){
-            const meta=chart.getDatasetMeta(i);const hide=i!==dsIdx;meta.hidden=hide;
-            const el=leg.querySelector(`[data-index="${i}"]`);if(el)el.classList.toggle('hidden',hide);
-          }
-        }else{
-          const meta=chart.getDatasetMeta(dsIdx);meta.hidden=meta.hidden===null?true:!meta.hidden;
-          this.classList.toggle('hidden',meta.hidden);
-        }
-        chart.update();
-        let hasHidden=false;
-        for(let i=0;i<chart.data.datasets.length;i++){if(chart.getDatasetMeta(i).hidden){hasHidden=true;break;}}
-        btnReset.style.display=hasHidden?'':'none';
-      };
-      leg.appendChild(item);
-    });
-    btnReset.style.display='none';
-  }
-  chartInstances['cEvolucao']=new Chart(ctx,{
-    type:'line',data:{labels:D.meses,datasets},
-    options:{
-      responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},datalabels:{display:false}},
-      scales:{
-        x:{ticks:{font:baseFont,color:textColor},grid:{color:gridColor()}},
-        y:{min:80,max:100,ticks:{callback:v=>v+'%',font:baseFont,color:textColor},grid:{color:gridColor()}}
-      }
-    }
-  });
-}
-document.getElementById('btnResetEvolucao').onclick=function(){
-  const chart=chartInstances['cEvolucao'];if(!chart)return;
-  for(let i=0;i<chart.data.datasets.length;i++)chart.getDatasetMeta(i).hidden=null;
-  chart.update();
-  document.querySelectorAll('#legEvolucao .legend-item').forEach(el=>el.classList.remove('hidden'));
-  document.getElementById('btnResetEvolucao').style.display='none';
-};
-
 function buildScoreTable(){
   const tbody=document.getElementById('scoreTbody');if(!tbody)return;
   tbody.innerHTML=D.produtos.map(p=>{
@@ -1127,9 +1017,8 @@ function showJsonSchema(e){
   const schema={
     periodo:"string",gerado:"string",
     kpis:{score:"string",score_delta:"string",prod_ativos:0,prod_entregues:0,prod_delta:"string",tempo:0,tempo_delta:"string",chamados:0,chamados_delta:"string",chamados_aberto:0,chamados_aberto_delta:"string"},
-    analises:{score:"string",prod:"string",tempo:"string",chamados:"string",chamados_aberto:"string",scores_dest:"string",scores_atenc:"string",scores_insight:"string",evol_tend:"string",evol_atenc:"string",evol_insight:"string",causas_conc:"string",causas_acoes:"string",causas_insight:"string",tabela_crit:"string",tabela_cham:"string",tabela_insight:"string"},
+    analises:{score:"string",prod:"string",tempo:"string",chamados:"string",chamados_aberto:"string",scores_dest:"string",scores_atenc:"string",scores_insight:"string",causas_conc:"string",causas_acoes:"string",causas_insight:"string",tabela_crit:"string",tabela_cham:"string",tabela_insight:"string"},
     meses:["string"],
-    evolucao:{series:[{label:"string",data:["number|null"]}]},
     produtos:[{nome:"string",gestor:"string",scores:["number|null"],chamados:0,dim:"string",crit:1}],
     tendencia:{abertos:[0],concluidos:[0]},
     mediaDias:{data:[0]},
@@ -1175,131 +1064,324 @@ function downloadEmail(){
 }
 
 function buildEmailHtml(){
-  // Capture charts as base64 images
+  // ── Capture charts ──────────────────────────────────────────────────────────
   const scoresCanvas = document.getElementById('cScores');
-  const evolCanvas   = document.getElementById('cEvolucao');
   const causasCanvas = document.getElementById('cCausas');
   const scoresImg = scoresCanvas ? scoresCanvas.toDataURL('image/png') : '';
-  const evolImg   = evolCanvas   ? evolCanvas.toDataURL('image/png')   : '';
   const causasImg = causasCanvas ? causasCanvas.toDataURL('image/png') : '';
 
-  const prodRows=D.produtos.map((p,i)=>{
-    const a=p.scores[4]||p.scores[3],m=p.scores[3];
-    const t=(!a||!m)?'→':(a>m?'▲':'▼');
-    const clr=!a?'#888':a>=95?'#00C07A':a>=85?'#F5A623':'#CC0A2F';
-    const critClr=p.crit===3?'#E8143A':p.crit===2?'#F5A623':'#00C07A';
-    const critLbl=p.crit===3?'Alta Criticidade':p.crit===2?'Média Criticidade':'Baixa Criticidade';
-    return `<tr style="background:${i%2===0?'#fff':'#F4F5F7'}">
-      <td style="padding:8px 10px;text-align:center;border-bottom:1px solid #E2E4EA;color:${critClr}"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${critClr}"></span>${critLbl}</td>
-      <td style="padding:8px 10px;font-size:11px;font-weight:700;color:#1A1D2E;border-bottom:1px solid #E2E4EA">${p.nome}</td>
-      <td style="padding:8px 10px;font-size:10px;color:#8A8FA8;border-bottom:1px solid #E2E4EA">${p.gestor}</td>
-      <td style="padding:8px 10px;text-align:center;border-bottom:1px solid #E2E4EA"><span style="background:${clr}18;color:${clr};font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px">${a?a.toFixed(2)+'%':'—'}</span></td>
-      <td style="padding:8px 10px;font-size:10px;text-align:center;font-weight:700;color:${a&&m?(a>m?'#00C07A':'#E8143A'):'#888'};border-bottom:1px solid #E2E4EA">${t}</td>
-      <td style="padding:8px 10px;font-size:10px;text-align:center;color:#5C6180;border-bottom:1px solid #E2E4EA">${p.chamados}</td>
+  // ── Shared helpers ───────────────────────────────────────────────────────────
+  const W = 900; // total email width
+  const pad = 40; // left/right section padding
+  const inner = W - pad * 2; // 820px usable width
+
+  // Coloured section heading
+  const secHd = (title) =>
+    `<tr><td style="padding:0 ${pad}px 0;background:#fff">
+       <table width="100%" cellpadding="0" cellspacing="0" border="0">
+         <tr><td style="border-top:1px solid #E2E4EA;padding-top:24px">
+           <table cellpadding="0" cellspacing="0" border="0"><tr>
+             <td style="width:4px;background:linear-gradient(180deg,#c01137,#8C0F3B);border-radius:2px">&nbsp;</td>
+             <td style="padding-left:10px;font-size:13px;font-weight:700;color:#1A1D2E;letter-spacing:-.01em">${title}</td>
+           </tr></table>
+         </td></tr>
+       </table>
+     </td></tr>`;
+
+  // Analysis block (left accent bar)
+  const ana = (color, label, text) =>
+    `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:8px"><tr>
+       <td style="width:3px;background:${color};border-radius:3px">&nbsp;</td>
+       <td style="background:${color}0D;padding:10px 14px;border-radius:0 8px 8px 0">
+         <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:${color};margin-bottom:3px">${label}</div>
+         <div style="font-size:11px;color:#5C6180;line-height:1.6;font-style:italic">${text}</div>
+       </td>
+     </tr></table>`;
+
+  // KPI card
+  const kpiCard = (color, label, value, delta, deltaColor='#8A8FA8') =>
+    `<td style="padding:3px"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+       <td style="background:#F4F5F7;border-radius:10px;padding:16px;border-top:3px solid ${color}">
+         <div style="font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">${label}</div>
+         <div style="font-size:26px;font-weight:800;color:${color};line-height:1">${value}</div>
+         <div style="font-size:10px;color:${deltaColor};margin-top:5px">${delta}</div>
+       </td>
+     </tr></table></td>`;
+
+  // ── Tabela consolidada ───────────────────────────────────────────────────────
+  const prodRows = D.produtos.map((p,i) => {
+    const a = p.scores[4]||p.scores[3], m = p.scores[3];
+    const t = (!a||!m)?'→':(a>m?'▲':'▼');
+    const tClr = (!a||!m)?'#888':(a>m?'#00C07A':'#E8143A');
+    const sClr = !a?'#888':a>=95?'#00C07A':a>=85?'#F5A623':'#CC0A2F';
+    const cClr = p.crit===3?'#E8143A':p.crit===2?'#F5A623':'#00C07A';
+    const cLbl = p.crit===3?'Alta':p.crit===2?'Média':'Baixa';
+    const nome = p.nome.length>28?p.nome.slice(0,28)+'…':p.nome;
+    return `<tr style="background:${i%2===0?'#fff':'#F8F9FB'}">
+      <td style="padding:9px 12px;border-bottom:1px solid #E2E4EA;white-space:nowrap">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${cClr};margin-right:5px;vertical-align:middle"></span>
+        <span style="font-size:10px;font-weight:700;color:${cClr}">${cLbl}</span>
+      </td>
+      <td style="padding:9px 12px;font-size:11px;font-weight:700;color:#1A1D2E;border-bottom:1px solid #E2E4EA">${nome}</td>
+      <td style="padding:9px 12px;font-size:10px;color:#8A8FA8;border-bottom:1px solid #E2E4EA">${p.gestor}</td>
+      <td style="padding:9px 12px;text-align:center;border-bottom:1px solid #E2E4EA">
+        <span style="background:${sClr}18;color:${sClr};font-size:10px;font-weight:700;padding:3px 9px;border-radius:10px">${a?a.toFixed(2)+'%':'—'}</span>
+      </td>
+      <td style="padding:9px 12px;font-size:10px;text-align:center;border-bottom:1px solid #E2E4EA">${m?m.toFixed(2)+'%':'—'}</td>
+      <td style="padding:9px 12px;font-size:13px;font-weight:800;text-align:center;color:${tClr};border-bottom:1px solid #E2E4EA">${t}</td>
+      <td style="padding:9px 12px;font-size:11px;text-align:center;color:#5C6180;border-bottom:1px solid #E2E4EA">${p.chamados}</td>
+      <td style="padding:9px 12px;font-size:10px;color:#8A8FA8;border-bottom:1px solid #E2E4EA">${p.dim}</td>
     </tr>`;
   }).join('');
 
-  // Helper to build an analysis strip
-  const anaStrip=(color,label,text)=>`
-    <div style="margin-top:8px;background:${color}0D;border-left:3px solid ${color};border-radius:0 8px 8px 0;padding:10px 14px">
-      <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:${color};margin-bottom:3px">${label}</div>
-      <div style="font-size:11px;color:#5C6180;line-height:1.6;font-style:italic">${text}</div>
-    </div>`;
+  // ── Releases — reads each .release-grid separately ───────────────────────────
+  const buildRelGrid = (section) => {
+    const cards = [...section.querySelectorAll('.release-card')].map(rc => {
+      const isNew = rc.classList.contains('new');
+      const color = isNew ? '#00C07A' : '#3B6BF5';
+      const badge = rc.querySelector('.release-badge')?.textContent || '';
+      const name  = rc.querySelector('.release-name')?.textContent  || '';
+      const ver   = rc.querySelector('.release-ver')?.textContent   || '';
+      return {color, badge, name, ver};
+    });
+    const cols = 3;
+    const rows = [];
+    for(let i=0;i<cards.length;i+=cols){
+      const chunk = cards.slice(i,i+cols);
+      let cells = chunk.map(r =>
+        `<td width="${Math.floor(inner/cols)}px" style="padding:4px;vertical-align:top">
+           <table width="100%" cellpadding="0" cellspacing="0" border="0">
+             <tr><td style="background:#fff;border:1px solid #E2E4EA;border-radius:10px;padding:14px 16px;border-bottom:3px solid ${r.color}">
+               <span style="display:inline-block;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:${r.color};background:${r.color}15;padding:2px 8px;border-radius:4px;margin-bottom:8px">${r.badge}</span>
+               <div style="font-size:12px;font-weight:700;color:#1A1D2E;line-height:1.35;margin-bottom:4px">${r.name}</div>
+               <div style="font-size:10px;color:#8A8FA8">${r.ver}</div>
+             </td></tr>
+           </table>
+         </td>`
+      ).join('');
+      // pad empty cells to fill row
+      for(let j=chunk.length;j<cols;j++) cells += `<td width="${Math.floor(inner/cols)}px" style="padding:4px"></td>`;
+      rows.push(`<tr>${cells}</tr>`);
+    }
+    return rows.join('');
+  };
 
-  const scoresSection = scoresImg ? `
-  <tr><td style="background:#fff;padding:20px 36px;border-top:1px solid #E2E4EA">
-    <p style="font-size:9px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.08em;margin:0 0 12px">Score de Qualidade por Produto — Top 10 Menor Score — Maio/26</p>
-    <img src="${scoresImg}" width="568" style="width:100%;max-width:568px;display:block;border-radius:8px" alt="Scores por produto">
-    ${anaStrip('#c01137','Destaques',D.analises.scores_dest)}
-    ${anaStrip('#E8143A','Atenção',D.analises.scores_atenc)}
-  </td></tr>` : '';
+  const relSections = document.querySelectorAll('section.reveal');
+  // Find the two release sections by matching title text
+  let relGrid1 = null, relGrid2 = null, relTitle1 = '', relTitle2 = '';
+  relSections.forEach(sec => {
+    const titleEl = sec.querySelector('.sec-hd-title');
+    const title   = titleEl?.textContent?.trim() || '';
+    const grid    = sec.querySelector('.release-grid');
+    if(!grid) return;
+    // Second section has "Previstas" or "Previst" in the title
+    if(title.toLowerCase().includes('prevista') || title.toLowerCase().includes('previst')){
+      relGrid2 = grid; relTitle2 = title;
+    } else {
+      relGrid1 = grid; relTitle1 = title;
+    }
+  });
+  const releaseRows1 = relGrid1 ? buildRelGrid(relGrid1) : '';
+  const releaseRows2 = relGrid2 ? buildRelGrid(relGrid2) : '';
 
-  const evolSection = evolImg ? `
-  <tr><td style="background:#fff;padding:20px 36px;border-top:1px solid #E2E4EA">
-    <p style="font-size:9px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.08em;margin:0 0 12px">Evolução do Score por Vertical — Últimos 5 Meses — Adicionar valores para cada vertical</p>
-    <img src="${evolImg}" width="568" style="width:100%;max-width:568px;display:block;border-radius:8px" alt="Evolução por vertical">
-    ${anaStrip('#c01137','Tendências',D.analises.evol_tend)}
-    ${anaStrip('#F5A623','Pontos de Atenção',D.analises.evol_atenc)}
-  </td></tr>` : '';
+  // ── PO cards ─────────────────────────────────────────────────────────────────
+  const poCards = [...document.querySelectorAll('.po-card')].map(pc => {
+    const name = pc.querySelector('.po-name')?.textContent||'';
+    const role = pc.querySelector('.po-role')?.textContent||'';
+    const items = [...pc.querySelectorAll('.po-item-content')].map(it => {
+      const tag   = it.querySelector('.po-item-tag')?.textContent||'';
+      const title = it.querySelector('.po-item-title')?.textContent||'';
+      const desc  = it.querySelector('.po-item-desc')?.textContent||'';
+      const tagClr= it.querySelector('.po-item-tag')?.classList.contains('tag-struct')?'#c01137':
+                    it.querySelector('.po-item-tag')?.classList.contains('tag-init')?'#3B6BF5':
+                    it.querySelector('.po-item-tag')?.classList.contains('tag-ops')?'#00C07A':'#7C4DFF';
+      return `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:10px"><tr>
+        <td style="width:5px;padding-top:4px"><div style="width:5px;height:5px;border-radius:50%;background:#c01137;margin-top:3px"></div></td>
+        <td style="padding-left:8px">
+          <span style="display:inline-block;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:${tagClr};background:${tagClr}15;padding:2px 6px;border-radius:3px;margin-bottom:4px">${tag}</span>
+          <div style="font-size:11px;font-weight:700;color:#1A1D2E;line-height:1.35;margin-bottom:3px">${title}</div>
+          <div style="font-size:10px;color:#5C6180;line-height:1.5">${desc}</div>
+        </td>
+      </tr></table>`;
+    }).join('<div style="height:1px;background:#E2E4EA;margin:2px 0 10px"></div>');
+    return {name, role, items};
+  });
 
-  const causasSection = causasImg ? `
-  <tr><td style="background:#fff;padding:20px 36px;border-top:1px solid #E2E4EA">
-    <p style="font-size:9px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.08em;margin:0 0 12px">Distribuição de Causas-Raiz para Chamados Maio/26</p>
-    <img src="${causasImg}" width="568" style="width:100%;max-width:568px;display:block;border-radius:8px" alt="Causas raiz">
-    ${anaStrip('#c01137','Concentração',D.analises.causas_conc)}
-    ${anaStrip('#3B6BF5','Ações Previstas',D.analises.causas_acoes)}
-  </td></tr>` : '';
+  const poRows = (() => {
+    const cols = 2;
+    const rows = [];
+    for(let i=0;i<poCards.length;i+=cols){
+      const chunk = poCards.slice(i,i+cols);
+      const cells = chunk.map(po =>
+        `<td width="${Math.floor(inner/cols)}px" style="padding:4px;vertical-align:top">
+           <table width="100%" cellpadding="0" cellspacing="0" border="0">
+             <tr><td style="background:#fff;border:1px solid #E2E4EA;border-radius:12px;overflow:hidden">
+               <div style="background:#F4F5F7;border-bottom:1px solid #E2E4EA;padding:12px 16px">
+                 <div style="font-size:12px;font-weight:700;color:#1A1D2E">${po.name}</div>
+                 <div style="font-size:10px;color:#8A8FA8;margin-top:2px">${po.role}</div>
+               </div>
+               <div style="padding:14px 16px">${po.items}</div>
+             </td></tr>
+           </table>
+         </td>`
+      ).join('');
+      rows.push(`<tr>${cells}</tr>`);
+    }
+    return rows.join('');
+  })();
 
-  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Boletim Qualidade — ${D.periodo}</title></head>
-<body style="margin:0;padding:0;background:#F4F5F7;font-family:'Segoe UI',Arial,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F4F5F7;padding:24px 0"><tr><td align="center">
-<table width="640" cellpadding="0" cellspacing="0" border="0" style="max-width:640px">
-  <tr><td style="background:linear-gradient(120deg,#8C0F3B,#c01137);border-radius:16px 16px 0 0;padding:28px 36px 24px">
-    <p style="font-size:9px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.1em;margin:0 0 10px">Boletim Mensal</p>
-    <h1 style="font-size:22px;font-weight:800;color:#fff;margin:0 0 6px;line-height:1.1">Boletim de Qualidade de Dados</h1>
-    <p style="font-size:11px;color:rgba(255,255,255,.65);margin:0">Referência: <strong style="color:#fff">${D.periodo}</strong> · ${D.gerado}</p>
-  </td></tr>
-  <tr><td style="background:#fff;padding:24px 36px;border-bottom:1px solid #E2E4EA">
-    <p style="font-size:9px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.08em;margin:0 0 14px">Resumo Executivo</p>
+  // ── Chart sections (chart left, analysis right) ────────────────────────────
+  const imgW = Math.round(inner * 0.60);
+  const anaW = inner - imgW - 16;
+
+  const chartSection = (title, img, ...strips) => !img ? '' :
+    `${secHd(title)}
+     <tr><td style="padding:16px ${pad}px 24px;background:#fff">
+       <table width="100%" cellpadding="0" cellspacing="0" border="0">
+         <tr valign="top">
+           <td width="${imgW}" style="padding-right:16px">
+             <img src="${img}" width="${imgW}" style="width:100%;max-width:${imgW}px;display:block;border-radius:10px;border:1px solid #E2E4EA" alt="">
+           </td>
+           <td width="${anaW}" style="vertical-align:top">
+             ${strips.join('')}
+           </td>
+         </tr>
+       </table>
+     </td></tr>`;
+
+  // ── Assemble ─────────────────────────────────────────────────────────────────
+  return `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Boletim Qualidade — ${D.periodo}</title>
+</head>
+<body style="margin:0;padding:0;background:#ECEEF3;font-family:'Segoe UI',Helvetica,Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ECEEF3;padding:28px 0">
+<tr><td align="center">
+<table width="${W}" cellpadding="0" cellspacing="0" border="0" style="max-width:${W}px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 32px rgba(0,0,0,.10)">
+
+  <!-- HEADER -->
+  <tr><td style="background:linear-gradient(120deg,#8C0F3B 0%,#c01137 100%);padding:32px ${pad}px 28px">
     <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-      <td width="25%" style="padding-right:6px"><table width="100%"><tr><td style="background:#F4F5F7;border-radius:10px;padding:14px;border-top:3px solid #c01137">
-        <div style="font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Score Médio</div>
-        <div style="font-size:24px;font-weight:800;color:#c01137;line-height:1">${D.kpis.score}</div>
-        <div style="font-size:10px;color:#00C07A;margin-top:4px">${D.kpis.score_delta}</div>
-      </td></tr></table></td>
-      <td width="25%" style="padding:0 3px"><table width="100%"><tr><td style="background:#F4F5F7;border-radius:10px;padding:14px;border-top:3px solid #00C07A">
-        <div style="font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Ativos de Dados</div>
-        <div style="font-size:24px;font-weight:800;color:#00C07A;line-height:1">${D.kpis.prod_ativos}</div>
-        <div style="font-size:10px;color:#8A8FA8;margin-top:4px">${D.kpis.prod_delta}</div>
-      </td></tr></table></td>
-      <td width="25%" style="padding:0 3px"><table width="100%"><tr><td style="background:#F4F5F7;border-radius:10px;padding:14px;border-top:3px solid #3B6BF5">
-        <div style="font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Tempo Médio</div>
-        <div style="font-size:24px;font-weight:800;color:#3B6BF5;line-height:1">${D.kpis.tempo}d</div>
-        <div style="font-size:10px;color:#8A8FA8;margin-top:4px">${D.kpis.tempo_delta}</div>
-      </td></tr></table></td>
-      <td width="25%" style="padding-left:6px"><table width="100%"><tr><td style="background:#F4F5F7;border-radius:10px;padding:14px;border-top:3px solid #F5A623">
-        <div style="font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Taxa Resolução</div>
-        <div style="font-size:24px;font-weight:800;color:#F5A623;line-height:1">${D.kpis.chamados}%</div>
-        <div style="font-size:10px;color:#8A8FA8;margin-top:4px">${D.kpis.chamados_delta}</div>
-      </td></tr></table></td>
+      <td>
+        <div style="display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:3px 12px;font-size:9px;font-weight:700;color:rgba(255,255,255,.8);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px">Boletim Mensal · Inteligência de Dados</div>
+        <div style="font-size:26px;font-weight:800;color:#fff;line-height:1.05;margin-bottom:8px">Boletim de Qualidade de Dados</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.65)">Referência: <strong style="color:#fff">${D.periodo}</strong> &nbsp;·&nbsp; Gerado em ${D.gerado}</div>
+      </td>
     </tr></table>
-    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:8px"><tr>
-      <td style="padding-right:3px"><table width="100%"><tr><td style="background:#F4F5F7;border-radius:10px;padding:14px;border-top:3px solid #c01137">
-        <div style="font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Chamados em Aberto</div>
-        <div style="font-size:24px;font-weight:800;color:#c01137;line-height:1">${D.kpis.chamados_aberto}</div>
-        <div style="font-size:10px;color:#8A8FA8;margin-top:4px">${D.kpis.chamados_aberto_delta}</div>
-      </td></tr></table></td>
-    </tr></table>
-    ${anaStrip('#c01137','Score Médio Geral',D.analises.score)}
-    ${anaStrip('#00C07A','Produtos',D.analises.prod)}
-    ${anaStrip('#3B6BF5','Tempo de Entrega',D.analises.tempo)}
-    ${anaStrip('#F5A623','Taxa de Resolução',D.analises.chamados)}
-    ${anaStrip('#c01137','Chamados em Aberto',D.analises.chamados_aberto)}
   </td></tr>
-  ${scoresSection}
-  <tr><td style="background:#fff;padding:20px 36px;border-top:1px solid #E2E4EA">
-    <p style="font-size:9px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.08em;margin:0 0 12px">Tabela Consolidada — Produtos Monitorados</p>
-    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #E2E4EA;border-radius:8px;overflow:hidden">
-      <tr style="background:#F0F1F4">
-        <th style="padding:8px 10px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:center;border-bottom:1px solid #E2E4EA">Crit.</th>
-        <th style="padding:8px 10px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:left;border-bottom:1px solid #E2E4EA">Produto</th>
-        <th style="padding:8px 10px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:left;border-bottom:1px solid #E2E4EA">Área</th>
-        <th style="padding:8px 10px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:center;border-bottom:1px solid #E2E4EA">Score Abr</th>
-        <th style="padding:8px 10px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:center;border-bottom:1px solid #E2E4EA">Tend.</th>
-        <th style="padding:8px 10px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:center;border-bottom:1px solid #E2E4EA">Cham.</th>
+
+  <!-- KPIs -->
+  ${secHd('Resumo Executivo')}
+  <tr><td style="padding:16px ${pad}px 0;background:#fff">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+      ${kpiCard('#c01137','Score Médio',D.kpis.score,D.kpis.score_delta,'#00C07A')}
+      ${kpiCard('#00C07A','Ativos de Dados',D.kpis.prod_ativos,D.kpis.prod_delta)}
+      ${kpiCard('#3B6BF5','Entregues no Mês',D.kpis.prod_entregues,D.kpis.prod_delta)}
+      ${kpiCard('#F5A623','Taxa de Resolução',D.kpis.chamados+'%',D.kpis.chamados_delta)}
+      ${kpiCard('#c01137','Chamados em Aberto',D.kpis.chamados_aberto,D.kpis.chamados_aberto_delta)}
+    </tr></table>
+  </td></tr>
+
+  <!-- KPI analyses -->
+  <tr><td style="padding:12px ${pad}px 24px;background:#fff">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+      <td width="${Math.floor(inner/2)-8}" style="padding-right:8px;vertical-align:top">
+        ${ana('#c01137','Score Médio Geral',D.analises.score)}
+        ${ana('#3B6BF5','Tempo de Entrega',D.analises.tempo)}
+        ${ana('#c01137','Chamados em Aberto',D.analises.chamados_aberto)}
+      </td>
+      <td width="${Math.floor(inner/2)-8}" style="padding-left:8px;vertical-align:top">
+        ${ana('#00C07A','Ativos de Dados',D.analises.prod)}
+        ${ana('#F5A623','Taxa de Resolução',D.analises.chamados)}
+      </td>
+    </tr></table>
+  </td></tr>
+
+  <!-- SCORE CHART + analyses -->
+  ${chartSection(
+    'Score de Qualidade por Ativo — '+D.periodo,
+    scoresImg,
+    ana('#c01137','Destaques',D.analises.scores_dest),
+    ana('#E8143A','Atenção',D.analises.scores_atenc),
+    `<div style="margin-top:10px;background:#FFF8EC;border-left:3px solid #F5A623;border-radius:0 8px 8px 0;padding:10px 14px">
+       <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#F5A623;margin-bottom:3px">Recomendação</div>
+       <div style="font-size:11px;color:#5C6180;line-height:1.6;font-style:italic">${D.analises.scores_insight}</div>
+     </div>`
+  )}
+
+  <!-- TABELA CONSOLIDADA -->
+  ${secHd('Tabela Consolidada — Ativos Monitorados')}
+  <tr><td style="padding:16px ${pad}px 24px;background:#fff">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #E2E4EA;border-radius:10px;overflow:hidden">
+      <tr style="background:#F4F5F7">
+        <th style="padding:10px 12px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:left;border-bottom:1px solid #E2E4EA;white-space:nowrap">Crit.</th>
+        <th style="padding:10px 12px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:left;border-bottom:1px solid #E2E4EA">Produto</th>
+        <th style="padding:10px 12px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:left;border-bottom:1px solid #E2E4EA">Área</th>
+        <th style="padding:10px 12px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:center;border-bottom:1px solid #E2E4EA;white-space:nowrap">Score Mai</th>
+        <th style="padding:10px 12px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:center;border-bottom:1px solid #E2E4EA;white-space:nowrap">Score Abr</th>
+        <th style="padding:10px 12px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:center;border-bottom:1px solid #E2E4EA">Tend.</th>
+        <th style="padding:10px 12px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:center;border-bottom:1px solid #E2E4EA;white-space:nowrap">Cham.</th>
+        <th style="padding:10px 12px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:left;border-bottom:1px solid #E2E4EA;white-space:nowrap">Dim. Crítica</th>
       </tr>
       ${prodRows}
     </table>
-    ${anaStrip('#c01137','Criticidade',D.analises.tabela_crit)}
-    ${anaStrip('#F5A623','Volume de Chamados',D.analises.tabela_cham)}
+    ${ana('#c01137','Distribuição por Criticidade',D.analises.tabela_crit)}
+    ${ana('#F5A623','Volume de Chamados',D.analises.tabela_cham)}
+    <div style="margin-top:8px;background:#F4F5F7;border-left:3px solid #8A8FA8;border-radius:0 8px 8px 0;padding:10px 14px">
+      <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#8A8FA8;margin-bottom:3px">Insight</div>
+      <div style="font-size:11px;color:#5C6180;line-height:1.6;font-style:italic">${D.analises.tabela_insight}</div>
+    </div>
   </td></tr>
-  ${evolSection}
-  ${causasSection}
-  <tr><td style="background:linear-gradient(120deg,#8C0F3B,#c01137);border-radius:0 0 16px 16px;padding:18px 36px">
-    <div style="font-size:12px;font-weight:700;color:#fff">Boletim de Qualidade de Dados — ${D.periodo}</div>
-    <div style="font-size:10px;color:rgba(255,255,255,.55);margin-top:2px">Gerado automaticamente · Inteligência de Dados / Bradesco</div>
+
+  <!-- CAUSAS CHART + analyses -->
+  ${chartSection(
+    'Causas-Raiz — Chamados '+D.periodo,
+    causasImg,
+    ana('#c01137','Concentração',D.analises.causas_conc),
+    ana('#3B6BF5','Ações Previstas',D.analises.causas_acoes),
+    `<div style="margin-top:10px;background:#F4F5F7;border-left:3px solid #8A8FA8;border-radius:0 8px 8px 0;padding:10px 14px">
+       <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#8A8FA8;margin-bottom:3px">Insight</div>
+       <div style="font-size:11px;color:#5C6180;line-height:1.6;font-style:italic">${D.analises.causas_insight}</div>
+     </div>`
+  )}
+
+  <!-- ENTREGAS POR SQUAD -->
+  ${secHd('Entregas por Squad')}
+  <tr><td style="padding:16px ${pad}px 24px;background:#fff">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+      ${poRows}
+    </table>
   </td></tr>
-</table></td></tr></table></body></html>`;
+
+  <!-- RELEASES -->
+  ${relTitle1 ? secHd(relTitle1) : secHd('Ativos de Dados — Releases '+D.periodo)}
+  <tr><td style="padding:16px ${pad}px 24px;background:#fff">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+      ${releaseRows1}
+    </table>
+  </td></tr>
+
+  ${releaseRows2 ? `
+  ${relTitle2 ? secHd(relTitle2) : secHd('Ativos de Dados — Releases Previstas')}
+  <tr><td style="padding:16px ${pad}px 24px;background:#fff">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+      ${releaseRows2}
+    </table>
+  </td></tr>` : ''}
+
+  <!-- FOOTER -->
+  <tr><td style="background:linear-gradient(120deg,#8C0F3B,#c01137);padding:20px ${pad}px">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+      <td>
+        <div style="font-size:13px;font-weight:700;color:#fff">Boletim de Qualidade de Dados — ${D.periodo}</div>
+        <div style="font-size:10px;color:rgba(255,255,255,.55);margin-top:3px">Gerado automaticamente · Inteligência de Dados / Bradesco</div>
+      </td>
+    </tr></table>
+  </td></tr>
+
+</table>
+</td></tr></table>
+</body></html>`;
 }
 
 // ─── INIT ───
