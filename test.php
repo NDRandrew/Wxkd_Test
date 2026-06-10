@@ -257,6 +257,7 @@ html,body{height:100%;font-family:var(--font-body);background:linear-gradient(18
 .charts-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
 .chart-card{background:var(--wh);border:1px solid var(--g200);border-radius:var(--r-lg);padding:22px;box-shadow:var(--sh)}
 .chart-card.span2{grid-column:1/-1}
+.chart-card{background:var(--wh);border:1px solid var(--g200);border-radius:var(--r-lg);padding:22px;box-shadow:var(--sh)}
 .chart-title{font-size:.82rem;font-weight:700;color:var(--g800);margin-bottom:2px}
 .chart-sub{font-size:.7rem;color:var(--g500);margin-bottom:16px}
 .chart-wrap{position:relative}
@@ -478,7 +479,7 @@ html,body{height:100%;font-family:var(--font-body);background:linear-gradient(18
         <div class="kpi-strip">
           <!-- Score -->
           <div class="kpi-wrapper">
-            <div class="kpi-card">
+            <div class="kpi-card green">
               <div class="kpi-lbl">Score Médio Geral</div>
               <div class="kpi-val" id="kpi-score">98,4%</div>
               <div class="kpi-delta up" id="kpi-score-delta">▲ +1,2 score vs Mar</div>
@@ -538,12 +539,12 @@ html,body{height:100%;font-family:var(--font-body);background:linear-gradient(18
               <div class="analysis-box-text" id="ana-chamados">Redução de 17 chamados em relação a Março. Taxa de resolução mantida em 95%, com 3 chamados ainda em análise ao final do período.</div>
             </div>
           </div>
-          <!-- Chamados em Aberto -->
+          <!-- Chamados em Aberto Fora Prazo -->
           <div class="kpi-wrapper">
             <div class="kpi-card">
-              <div class="kpi-lbl">Chamados em Aberto</div>
+              <div class="kpi-lbl">Chamados Fora do Prazo</div>
               <div class="kpi-val" id="kpi-chamados-aberto">0</div>
-              <div class="kpi-delta neutral" id="kpi-chamados-aberto-delta">→ vs mês anterior</div>
+              <div class="kpi-delta down" id="kpi-chamados-aberto-delta">→ vs mês anterior</div>
             </div>
             <div class="kpi-card-blw">
               <div class="analysis-box-label">
@@ -563,29 +564,40 @@ html,body{height:100%;font-family:var(--font-body);background:linear-gradient(18
           <div><div class="sec-hd-title">Dados Relevantes</div></div>
         </div>
 
-        <!-- Score de Qualidade + Painel de Análise -->
-        <div class="chart-with-analysis side">
-          <div class="cwa-chart">
-            <div class="chart-title">Score de Qualidade por Ativo — Maio/26</div>
-            <div class="chart-wrap h300"><canvas id="cScores"></canvas></div>
-          </div>
-          <div class="cwa-analysis">
-            <div class="cwa-analysis-title">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-              Análise dos Scores
-            </div>
-            <div class="cwa-sep"></div>
-            <div>
-              <div class="cwa-block-label">Destaques</div>
-              <div class="cwa-block-text" id="ana-scores-dest">7 dos 10 produtos atingiram score ≥99%, demonstrando alta maturidade. Open Finance mantém desempenho consistente acima de 95% mesmo com alta volumetria de chamados.</div>
-            </div>
-            <div class="cwa-sep"></div>
-            <div>
-              <div class="cwa-block-label" style="color:var(--red)">Atenção</div>
-              <div class="cwa-block-text" id="ana-scores-atenc">Rating de Risco PLDFT segue como ponto crítico (80,0%), porém em trajetória de recuperação desde Jan/26 (64,0%). Plano de ação em andamento na dimensão de Disponibilidade.</div>
-            </div>
-            <div class="cwa-insight">
-              <p id="ana-scores-insight">Recomendação: priorizar revisão do fluxo de Disponibilidade no PLDFT para o próximo ciclo.</p>
+        
+
+        <!-- Tabela Consolidada + Análise abaixo -->
+        <div class="chart-card" style="margin-top:14px">
+          <div class="chart-title">Tabela Consolidada — Ativos Monitorados</div>
+          <table class="dados-table" style="margin-top:12px">
+            <thead>
+              <tr>
+                <th>Criticidade</th><th>Produto</th><th>Área</th>
+                <th>Score Abr/26</th><th>Score Mai/26</th><th>Tendência</th>
+                <th>Chamados</th><th>Dimensão Crítica</th>
+              </tr>
+            </thead>
+            <tbody id="scoreTbody"></tbody>
+          </table>
+          <div style="margin-top:14px;display:flex;flex-direction:column;gap:10px">
+            <div class="cwa-analysis" style="border-radius:var(--r);flex-direction:column;gap:12px">
+              <div class="cwa-analysis-title">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                Análise da Tabela
+              </div>
+              <div class="cwa-sep"></div>
+              <div>
+                <div class="cwa-block-label">Distribuição por Criticidade</div>
+                <div class="cwa-block-text" id="ana-tabela-crit">6 produtos com criticidade baixa (verde), 2 com atenção (amarelo) e 2 com risco alto (vermelho). Foco de monitoramento em PLDFT e MANIFESTAÇÕES SACL nos próximos ciclos.</div>
+              </div>
+              <div class="cwa-sep"></div>
+              <div>
+                <div class="cwa-block-label">Volume de Chamados</div>
+                <div class="cwa-block-text" id="ana-tabela-cham">Open Finance concentra 81 dos 94 chamados totais (86%). Demais produtos com volumes residuais — sinal de processo maduro nos outros squads.</div>
+              </div>
+              <div class="cwa-insight">
+                <p id="ana-tabela-insight">Produtos novos (IA Generativa, Visão 360) entraram com zero chamados — qualidade de onboarding acima do esperado.</p>
+              </div>
             </div>
           </div>
         </div>
@@ -614,42 +626,6 @@ html,body{height:100%;font-family:var(--font-body);background:linear-gradient(18
             </div>
             <div class="cwa-insight">
               <p id="ana-causas-insight">63% dos chamados de Alteração na Estrutura estão concentrados em 2 produtos. Mapear origem para mitigação sistêmica no próximo ciclo.</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Tabela Consolidada + Análise -->
-        <div class="chart-with-analysis side" style="margin-top:14px">
-          <div class="cwa-chart">
-            <div class="chart-title">Tabela Consolidada — Ativos Monitorados</div>
-            <table class="dados-table" style="margin-top:12px">
-              <thead>
-                <tr>
-                  <th>Criticidade</th><th>Produto</th><th>Área</th>
-                  <th>Score Mai/26</th><th>Score Abr/26</th><th>Tendência</th>
-                  <th>Chamados</th><th>Dimensão Crítica</th>
-                </tr>
-              </thead>
-              <tbody id="scoreTbody"></tbody>
-            </table>
-          </div>
-          <div class="cwa-analysis">
-            <div class="cwa-analysis-title">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-              Análise da Tabela
-            </div>
-            <div class="cwa-sep"></div>
-            <div>
-              <div class="cwa-block-label">Distribuição por Criticidade</div>
-              <div class="cwa-block-text" id="ana-tabela-crit">6 produtos com criticidade baixa (verde), 2 com atenção (amarelo) e 2 com risco alto (vermelho). Foco de monitoramento em PLDFT e MANIFESTAÇÕES SACL nos próximos ciclos.</div>
-            </div>
-            <div class="cwa-sep"></div>
-            <div>
-              <div class="cwa-block-label">Volume de Chamados</div>
-              <div class="cwa-block-text" id="ana-tabela-cham">Open Finance concentra 81 dos 94 chamados totais (86%). Demais produtos com volumes residuais — sinal de processo maduro nos outros squads.</div>
-            </div>
-            <div class="cwa-insight">
-              <p id="ana-tabela-insight">Produtos novos (IA Generativa, Visão 360) entraram com zero chamados — qualidade de onboarding acima do esperado.</p>
             </div>
           </div>
         </div>
@@ -768,12 +744,17 @@ html,body{height:100%;font-family:var(--font-body);background:linear-gradient(18
           <div><div class="sec-hd-title">Ativos de Dados — Releases Previstas Junho/26</div></div>
         </div>
         <div class="release-grid">
-          <div class="release-card new"><span class="release-badge">Novo</span><div class="release-name">Autenticação de Usuários — Canais Digitais</div><div class="release-ver">Release 1</div></div>
-          <div class="release-card new"><span class="release-badge">Novo</span><div class="release-name">Captação Líquida</div><div class="release-ver">Release 1</div></div>
-          <div class="release-card new"><span class="release-badge">Novo</span><div class="release-name">Simulador de Métricas</div><div class="release-ver">Release 1</div></div>
-          <div class="release-card update"><span class="release-badge">Atualização</span><div class="release-name">Visão Clientes 360</div><div class="release-ver">Release 2</div></div>
-          <div class="release-card update"><span class="release-badge">Atualização</span><div class="release-name">Plataforma IA Generativa</div><div class="release-ver">Release 2</div></div>
-          <div class="release-card update"><span class="release-badge">Atualização</span><div class="release-name">Dados Públicos Socioeconômicos e Demográficos</div><div class="release-ver">Release 5</div></div>
+          <div class="release-card new"><span class="release-badge">Novo</span><div class="release-name">Capital Regulatório</div><div class="release-ver">Release 1</div></div>
+          <div class="release-card new"><span class="release-badge">Novo</span><div class="release-name">Fundos</div><div class="release-ver">Release 1</div></div>
+          <div class="release-card update"><span class="release-badge">Atualização</span><div class="release-name">Empréstimos e Financiamentos</div><div class="release-ver">Release 4</div></div>
+          <div class="release-card update"><span class="release-badge">Atualização</span><div class="release-name">Informação Agro</div><div class="release-ver">Release 2</div></div>
+          <div class="release-card update"><span class="release-badge">Atualização</span><div class="release-name">Simulador de Métricas de Risco de Contraparte de Derivativos - CVA</div><div class="release-ver">Release 2</div></div>
+          <div class="release-card update"><span class="release-badge">Atualização</span><div class="release-name">Open Finance</div><div class="release-ver">Release 7</div></div>
+          <div class="release-card update"><span class="release-badge">Atualização</span><div class="release-name">Carteiras Administradas de Terceiros</div><div class="release-ver">Release 3</div></div>
+          <div class="release-card update"><span class="release-badge">Atualização</span><div class="release-name">Captação Líquida</div><div class="release-ver">Release 2</div></div>
+          <div class="release-card update"><span class="release-badge">Atualização</span><div class="release-name">Empréstimo Rural</div><div class="release-ver">Release 3</div></div>
+          <div class="release-card update"><span class="release-badge">Atualização</span><div class="release-name">Folha de Pagamento</div><div class="release-ver">Release 3</div></div>
+          <div class="release-card update"><span class="release-badge">Atualização</span><div class="release-name">Interações BIA</div><div class="release-ver">Release 6</div></div>
         </div>
       </section>
 
@@ -790,48 +771,49 @@ Chart.register(ChartDataLabels);
 // ═══════════════════════════════════════
 let D = {
   periodo: "Maio de 2026",
-  gerado: "05/06/2026",
+  gerado: "31/05/2026",
   kpis: {
-    score: "98,4%", score_delta: "▲ +1,2 score vs Mar",
-    prod_ativos: 90, prod_entregues: 6, prod_delta: "▲ +3 vs Mar",
-    tempo: 10, tempo_delta: "▼ +1 dia vs Mar",
-    chamados: 69.46, chamados_delta: "▲ -17 vs Mar",
-    chamados_aberto: 0, chamados_aberto_delta: "→ vs mês anterior"
+    score: "97.06%", score_delta: "▲ 0.75% vs Abril/2026",
+    prod_ativos: 87, prod_entregues: 4, prod_delta: "▲ 2 Produtos e 2 Modelos",
+    tempo: 10, tempo_delta: "TESTE",
+    chamados: 92.83, chamados_delta: "▲ 1771 Chamados",
+    chamados_aberto: 514, chamados_aberto_delta: "▲ 496"
   },
   analises: {
-    score: "Score geral 1,2 pp acima do mês anterior. Melhora impulsionada pela estabilização do Open Finance e entrada de novos produtos com alta baseline.",
-    prod: "Carteira expandida com 3 novos produtos em Release 1. Base monitorada estável sem impacto no desempenho geral.",
-    tempo: "Aumento de 1 dia no tempo médio de entrega em relação a Março. Variação dentro da margem de normalidade operacional. Acompanhar tendência nos próximos ciclos.",
-    chamados: "Redução de 17 chamados em relação a Março. Taxa de resolução mantida em 95%, com 3 chamados ainda em análise ao final do período.",
-    chamados_aberto: "Sem chamados em aberto ao final do período.",
-    scores_dest: "7 dos 10 produtos atingiram score ≥99%, demonstrando alta maturidade. Open Finance mantém desempenho consistente acima de 95% mesmo com alta volumetria.",
-    scores_atenc: "Rating de Risco PLDFT segue como ponto crítico (80,0%), porém em trajetória de recuperação desde Jan/26 (64,0%). Plano de ação em andamento.",
-    scores_insight: "Recomendação: priorizar revisão do fluxo de Disponibilidade no PLDFT para o próximo ciclo.",
-    tabela_crit: "6 produtos com criticidade baixa, 2 com atenção e 2 com risco alto. Foco em PLDFT e MANIFESTAÇÕES SACL.",
-    tabela_cham: "Open Finance concentra 81 dos 94 chamados totais (86%). Demais produtos com volumes residuais.",
-    tabela_insight: "Produtos novos (IA Generativa, Visão 360) entraram com zero chamados — qualidade de onboarding acima do esperado.",
-    causas_conc: "As 2 principais causas (Alteração na Estrutura e Open Finance) concentram 67% dos chamados — padrão de Pareto claro. Ações preventivas nessas categorias teriam impacto direto no volume total.",
-    causas_acoes: "Preenchimento Incorreto pode ser reduzido com capacitação direcionada dos times. Diversas e Externo são residuais — sem ação imediata necessária.",
-    causas_insight: "63% dos chamados de Alteração na Estrutura estão concentrados em 2 produtos. Mapear origem para mitigação sistêmica no próximo ciclo."
+    score: "Score em 97,06% com alta de 0,75 pp vs Abril. Evolu\u00e7\u00e3o positiva sustentada pela estabilidade dos ativos consolidados e recupera\u00e7\u00e3o de produtos cr\u00edticos.",
+    prod: "87 ativos monitorados com 4 entregas no per\u00edodo (2 produtos e 2 modelos). Capacidade de absor\u00e7\u00e3o da esteira mantida sem impacto no desempenho geral.",
+    tempo: "Indicador em revis\u00e3o metodol\u00f3gica \u2014 desconsiderado neste ciclo.",
+    chamados: "Taxa de resolu\u00e7\u00e3o em 70,98% com 1.771 chamados no per\u00edodo. Volume elevado requer aten\u00e7\u00e3o nos fluxos de triagem e prioriza\u00e7\u00e3o.",
+    chamados_aberto: "514 chamados fora do prazo (aumento de 496 vs anterior). Necess\u00e1ria prioriza\u00e7\u00e3o imediata para redu\u00e7\u00e3o do backlog.",
+    scores_dest: "6 ativos com score acima de 97%. Autentica\u00e7\u00e3o de Usu\u00e1rios e Simulador CVA no teto (110%). Consist\u00eancia positiva no portf\u00f3lio.",
+    scores_atenc: "Rating PLDTF em 71,43% (queda de 15,5 pp vs Abril) \u2014 principal detrator. Pesquisa de Satisfa\u00e7\u00e3o oscila fortemente (93,29% ap\u00f3s 28,99% em Abril). Dados P\u00fablicos Socioecon\u00f4micos em recupera\u00e7\u00e3o (+8,3 pp).",
+    scores_insight: "Priorizar plano de a\u00e7\u00e3o para PLDTF na dimens\u00e3o Unicidade. Monitorar estabilidade da Pesquisa de Satisfa\u00e7\u00e3o ap\u00f3s forte recupera\u00e7\u00e3o.",
+    causas_conc: "Top 3 causas concentram 66% do volume: Base Indispon\u00edvel (34%), Erro Job/Malha (16%) e Atraso Job/Malha (16%). Padr\u00e3o de Pareto evidente.",
+    causas_acoes: "Estabilizar bases de origem com \u00e1reas provedoras. Revisar agendamentos no Control-M para erros e atrasos. Capacitar times para reduzir preenchimento incorreto.",
+    causas_insight: "34% em indisponibilidade de base sugere depend\u00eancia estrutural externa. Estabelecer SLAs formais com provedores priorit\u00e1rios.",
+    tabela_crit: "6 ativos criticidade 1, 2 criticidade 2 e 2 criticidade 3. PLDTF (crit. 3) com 71,43% \u2014 abaixo do limiar aceit\u00e1vel.",
+    tabela_cham: "Rentabilidade de Investimento concentra 653 dos 775 chamados (84%). Demais ativos com volumes residuais \u2014 processo maduro.",
+    tabela_insight: "Investiga\u00e7\u00e3o dedicada em Rentabilidade de Investimento: 653 chamados na dimens\u00e3o Consist\u00eancia indicam problema sist\u00eamico a ser endere\u00e7ado."
   },
-  meses: ['Jan/26','Fev/26','Mar/26','Abr/26','Mai/26'],
+  meses: ['Mai/26','Abr/26','Mar/26','Fev/26','Jan/26'],
   produtos: [
-    {nome:'OPEN FINANCE',gestor:'OPEN FINANCE',scores:[92.06,91.49,98.73,94.3,95.98],chamados:81,dim:'Consistência',crit:1},
-    {nome:'QUALIDADE DE DADOS',gestor:'OPEN FINANCE',scores:[null,null,null,100,94],chamados:0,dim:'—',crit:2},
-    {nome:'RATING DE RISCO PLDFT',gestor:'AOC - SQUAD CONTACT CENTER',scores:[null,64.0,85.52,74.58,80.0],chamados:2,dim:'Disponibilidade',crit:3},
-    {nome:'ATENDIMENTO AO CLIENTE',gestor:'AOC - SQUAD CONTACT CENTER',scores:[89.95,98.89,99.61,99.64,99.77],chamados:5,dim:'Completude',crit:1},
-    {nome:'COMUNICAÇÕES E ALERTAS PLDFT',gestor:'AOC - SQUAD CONTACT CENTER',scores:[93.53,99.24,100,100,99.65],chamados:2,dim:'Disponibilidade',crit:1},
-    {nome:'PROCESSOS JURÍDICOS',gestor:'AOC - SQUAD CONTACT CENTER',scores:[94.44,100,100,99.91,99.73],chamados:4,dim:'Completude',crit:2},
-    {nome:'MANIFESTAÇÕES SACL',gestor:'AOC - SQUAD CONTACT CENTER',scores:[99.73,100,100,100,100],chamados:0,dim:'—',crit:3},
-    {nome:'SRM CALENDÁRIO FERIADOS',gestor:'AOC - SQUAD CONTACT CENTER',scores:[99.72,99.72,100,100,100],chamados:0,dim:'—',crit:1},
-    {nome:'VISÃO CLIENTES 360',gestor:'ID',scores:[null,null,97.2,98.1,99.2],chamados:0,dim:'—',crit:1},
-    {nome:'IA GENERATIVA',gestor:'ID',scores:[null,null,null,96.5,98.4],chamados:0,dim:'—',crit:1}
+    {nome:'Dados Publicos Socioeconomicos e Demograficos',gestor:'Gestao Corporativa de Riscos',scores:[80.43,72.11,68.09,68.30,74.13],chamados:45,dim:'Disponibilidade',crit:1},
+    {nome:'Operacao e Repasse FINAME BNDES',gestor:'ID - Financas',scores:[99.46,87.66,100.00,100.00,78.79],chamados:3,dim:'Disponibilidade',crit:1},
+    {nome:'Rating de Risco PLDTF',gestor:'ID - Seguranca',scores:[71.43,86.96,80.00,83.33,87.85],chamados:2,dim:'Unicidade',crit:3},
+    {nome:'Rentabilidade de Investimento',gestor:'BU Wealth',scores:[87.81,88.38,88.18,87.66,88.33],chamados:653,dim:'Consistencia',crit:2},
+    {nome:'Autentificacao de Usuarios - Canais Digitais',gestor:'Bradesco Experience',scores:[110.00,110.00,110.00,90.19,92.40],chamados:6,dim:'Completude',crit:1},
+    {nome:'Restritivo',gestor:'Credito',scores:[99.82,99.57,100.00,98.98,92.94],chamados:9,dim:'Disponibilidade',crit:2},
+    {nome:'Simulador de Metricas de Risco de Contraparte de Derivativos CVA',gestor:'Inteligencia de Dados',scores:[110.00,110.00,99.71,92.96,94.89],chamados:42,dim:'Disponibilidade',crit:1},
+    {nome:'Folha de Pagamento',gestor:'BBI - Diretoria',scores:[97.32,96.38,97.36,95.46,95.09],chamados:5,dim:'Disponibilidade',crit:1},
+    {nome:'Pagamento Cobranca e Renegociacao de Dividas',gestor:'DRC',scores:[98.75,98.13,99.10,98.17,95.67],chamados:2,dim:'Disponibilidade',crit:3},
+    {nome:'Pesquisa de Satisfação Customer Satisfaction',gestor:'Bradesco Experience',scores:[93.29,28.99,75.47,95.12,95.91],chamados:8,dim:'Completude',crit:1},
+ 
   ],
-  tendencia: {abertos:[41,11,44,2,0],concluidos:[31,111,55,64,102]},
-  mediaDias: {data:[14,11,14,12,10]},
+  tendencia: {abertos:[1],concluidos:[1]},
+  mediaDias: {data:[1]},
   causas: {
-    labels:['Alt. Estrutura','Open Finance','Preench. Incor.','Não Informado','Orig. Indispon.','Diversas','Externo'],
-    data:[34,29,19,7,3,1,1]
+    labels:['Base Origem Indisponivel ou Disponibilizada com Atraso','Job/Malha com Erro de Execucao ou Abend','Job/Malha com Atraso','Alteracao na Estrutura da Tabela ou Rotina','Preenchimento Incorreto na Entrada do Dado','Open Finance Diversas','Externo','Problemas com Ambiente (Lentidao/Indisponibilidade/Etc.)','Falha Cluster - subnet_exhausted'],
+    data:[202,97,94,86,42,36,28,7,3]
   }
 };
 
@@ -908,14 +890,13 @@ document.querySelectorAll('.reveal').forEach(el=>ro.observe(el));
 
 // ─── CHARTS ───
 function initCharts(){
-  buildScoreChart();
   buildCausasChart();
 }
 
 function buildCausasChart(){
   const ctx=getCtx('cCausas');if(!ctx)return;
   const total=D.causas.data.reduce((a,b)=>a+b,0);
-  const clrs=['#CC0A2F','#3B6BF5','#00C07A','#F5A623','#7C4DFF','#00BFCF','#E8143A'];
+  const clrs=['#0c2a6e','#1f4a8a','#3567a5','#4f83bf','#6a9fd6','#87b9ea','#90c0ee','#99c7f1','#a2cef4','#abd5f7'];
 
   // Sort descending so biggest bar is on top
   const sorted=[...D.causas.labels.map((l,i)=>({l,v:D.causas.data[i],c:clrs[i%clrs.length]}))].sort((a,b)=>b.v-a.v);
@@ -1000,10 +981,11 @@ function buildScoreTable(){
   tbody.innerHTML=D.produtos.map(p=>{
     const abr=p.scores[4]||p.scores[3],mar=p.scores[3];
     const trend=(!abr||!mar)?'—':(abr>mar?'<span class="trend-arrow" style="color:var(--green)">▲</span>':abr<mar?'<span class="trend-arrow" style="color:var(--red)">▼</span>':'<span style="color:var(--g500)">→</span>');
-    const scoreClass=!abr?'':abr>=95?'score-great':abr>=85?'score-warn':'score-bad';
+    const scoreClass=!mar?'':mar>=95?'score-great':mar>=85?'score-warn':'score-bad';
+    const scoreClassMAI=!abr?'':abr>=95?'score-great':abr>=85?'score-warn':'score-bad';
     const critDot=p.crit===3?'<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--red)"></span>':p.crit===2?'<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--yellow)"></span>':'<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--green)"></span>';
     const critLbl=p.crit===3?'<span style="display:inline-block;color:var(--red)">Alta</span>':p.crit===2?'<span style="display:inline-block;color:var(--yellow)">Média</span>':'<span style="display:inline-block;color:var(--green)">Baixa</span>';
-    return `<tr><td style="text-align:center;width:20px;padding:2px">${critDot}&nbsp;${critLbl}</td><td><strong>${p.nome}</strong></td><td style="font-size:.75rem;color:var(--g600)">${p.gestor}</td><td><span class="badge-score ${scoreClass}">${abr?abr.toFixed(2)+'%':'—'}</span></td><td style="font-size:.78rem">${mar?mar.toFixed(2)+'%':'—'}</td><td style="text-align:center">${trend}</td><td style="font-size:.78rem">${p.chamados}</td><td style="font-size:.72rem;color:var(--g500)">${p.dim}</td></tr>`;
+    return `<tr><td style="text-align:center;width:20px;padding:2px">${critDot}&nbsp;${critLbl}</td><td><strong>${p.nome}</strong></td><td style="font-size:.75rem;color:var(--g600)">${p.gestor}</td><td><span class="badge-score ${scoreClass}">${mar?mar.toFixed(2)+'%':'—'}</span></td><td style="font-size:.78rem"><span class="badge-score ${scoreClassMAI}">${abr?abr.toFixed(2)+'%':'—'}</span></td><td style="text-align:center">${trend}</td><td style="font-size:.78rem">${p.chamados}</td><td style="font-size:.72rem;color:var(--g500)">${p.dim}</td></tr>`;
   }).join('');
 }
 
@@ -1064,77 +1046,97 @@ function downloadEmail(){
 }
 
 function buildEmailHtml(){
-  // ── Capture charts ──────────────────────────────────────────────────────────
-  const scoresCanvas = document.getElementById('cScores');
+  // ── Capture charts (only causas — scores chart removed) ─────────────────────
   const causasCanvas = document.getElementById('cCausas');
-  const scoresImg = scoresCanvas ? scoresCanvas.toDataURL('image/png') : '';
   const causasImg = causasCanvas ? causasCanvas.toDataURL('image/png') : '';
 
-  // ── Shared helpers ───────────────────────────────────────────────────────────
-  const W = 900; // total email width
-  const pad = 40; // left/right section padding
-  const inner = W - pad * 2; // 820px usable width
+  // ── Constants ────────────────────────────────────────────────────────────────
+  const W   = 900;
+  const pad = 40;
+  const inner = W - pad * 2; // 820px
 
-  // Coloured section heading
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+
+  // Section heading — solid left bar, no gradient
   const secHd = (title) =>
-    `<tr><td style="padding:0 ${pad}px 0;background:#fff">
+    `<tr><td style="padding:0 ${pad}px;background:#ffffff">
        <table width="100%" cellpadding="0" cellspacing="0" border="0">
-         <tr><td style="border-top:1px solid #E2E4EA;padding-top:24px">
+         <tr><td style="border-top:1px solid #E2E4EA;padding-top:24px;padding-bottom:4px">
            <table cellpadding="0" cellspacing="0" border="0"><tr>
-             <td style="width:4px;background:linear-gradient(180deg,#c01137,#8C0F3B);border-radius:2px">&nbsp;</td>
-             <td style="padding-left:10px;font-size:13px;font-weight:700;color:#1A1D2E;letter-spacing:-.01em">${title}</td>
+             <td style="width:4px;background:#8C0F3B;font-size:1px;line-height:1px">&nbsp;</td>
+             <td style="padding-left:10px;font-size:13px;font-weight:700;color:#1A1D2E;font-family:'Segoe UI',Helvetica,Arial,sans-serif">${title}</td>
            </tr></table>
          </td></tr>
        </table>
      </td></tr>`;
 
-  // Analysis block (left accent bar)
+  // Analysis strip — solid bg color, no gradient
   const ana = (color, label, text) =>
-    `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:8px"><tr>
-       <td style="width:3px;background:${color};border-radius:3px">&nbsp;</td>
-       <td style="background:${color}0D;padding:10px 14px;border-radius:0 8px 8px 0">
-         <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:${color};margin-bottom:3px">${label}</div>
-         <div style="font-size:11px;color:#5C6180;line-height:1.6;font-style:italic">${text}</div>
+    `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:0"><tr>
+       <td style="width:3px;background:${color};font-size:1px;line-height:1px">&nbsp;</td>
+       <td style="background:${color}18;padding:9px 13px">
+         <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:${color};margin-bottom:3px;font-family:'Segoe UI',Helvetica,Arial,sans-serif">${label}</div>
+         <div style="font-size:11px;color:#5C6180;line-height:1.6;font-style:italic;font-family:'Segoe UI',Helvetica,Arial,sans-serif">${text}</div>
        </td>
      </tr></table>`;
 
-  // KPI card
-  const kpiCard = (color, label, value, delta, deltaColor='#8A8FA8') =>
-    `<td style="padding:3px"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-       <td style="background:#F4F5F7;border-radius:10px;padding:16px;border-top:3px solid ${color}">
-         <div style="font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">${label}</div>
-         <div style="font-size:26px;font-weight:800;color:${color};line-height:1">${value}</div>
-         <div style="font-size:10px;color:${deltaColor};margin-top:5px">${delta}</div>
-       </td>
-     </tr></table></td>`;
+  // Spacer between ana strips
+  const anaSpacer = `<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="height:6px;font-size:1px;line-height:1px">&nbsp;</td></tr></table>`;
 
-  // ── Tabela consolidada ───────────────────────────────────────────────────────
+  // KPI card — solid border-top, no gradient
+  const kpiCard = (color, label, value, delta, deltaColor='#8A8FA8') =>
+    `<td style="padding:3px;vertical-align:top">
+       <table width="100%" cellpadding="0" cellspacing="0" border="0">
+         <tr><td style="background:#F4F5F7;padding:0">
+           <table width="100%" cellpadding="0" cellspacing="0" border="0">
+             <tr><td style="background:${color};height:3px;font-size:1px;line-height:1px">&nbsp;</td></tr>
+             <tr><td style="padding:14px 12px">
+               <div style="font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;font-family:'Segoe UI',Helvetica,Arial,sans-serif">${label}</div>
+               <div style="font-size:24px;font-weight:800;color:${color};line-height:1;font-family:'Segoe UI',Helvetica,Arial,sans-serif">${value}</div>
+               <div style="font-size:10px;color:${deltaColor};margin-top:4px;font-family:'Segoe UI',Helvetica,Arial,sans-serif">${delta}</div>
+             </td></tr>
+           </table>
+         </td></tr>
+       </table>
+     </td>`;
+
+  // ── Table rows ────────────────────────────────────────────────────────────────
   const prodRows = D.produtos.map((p,i) => {
     const a = p.scores[4]||p.scores[3], m = p.scores[3];
-    const t = (!a||!m)?'→':(a>m?'▲':'▼');
+    const t    = (!a||!m)?'→':(a>m?'▲':'▼');
     const tClr = (!a||!m)?'#888':(a>m?'#00C07A':'#E8143A');
     const sClr = !a?'#888':a>=95?'#00C07A':a>=85?'#F5A623':'#CC0A2F';
+    const mClr = !m?'#888':m>=95?'#00C07A':m>=85?'#F5A623':'#CC0A2F';
     const cClr = p.crit===3?'#E8143A':p.crit===2?'#F5A623':'#00C07A';
     const cLbl = p.crit===3?'Alta':p.crit===2?'Média':'Baixa';
-    const nome = p.nome.length>28?p.nome.slice(0,28)+'…':p.nome;
-    return `<tr style="background:${i%2===0?'#fff':'#F8F9FB'}">
-      <td style="padding:9px 12px;border-bottom:1px solid #E2E4EA;white-space:nowrap">
-        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${cClr};margin-right:5px;vertical-align:middle"></span>
-        <span style="font-size:10px;font-weight:700;color:${cClr}">${cLbl}</span>
+    const nome = p.nome.length>30?p.nome.slice(0,30)+'…':p.nome;
+    const bg   = i%2===0?'#ffffff':'#F8F9FB';
+    return `<tr style="background:${bg}">
+      <td style="padding:8px 10px;border-bottom:1px solid #E2E4EA;white-space:nowrap;font-family:'Segoe UI',Helvetica,Arial,sans-serif">
+        <table cellpadding="0" cellspacing="0" border="0"><tr>
+          <td style="width:8px;height:8px;background:${cClr};font-size:1px;line-height:8px">&nbsp;</td>
+          <td style="padding-left:5px;font-size:10px;font-weight:700;color:${cClr}">${cLbl}</td>
+        </tr></table>
       </td>
-      <td style="padding:9px 12px;font-size:11px;font-weight:700;color:#1A1D2E;border-bottom:1px solid #E2E4EA">${nome}</td>
-      <td style="padding:9px 12px;font-size:10px;color:#8A8FA8;border-bottom:1px solid #E2E4EA">${p.gestor}</td>
-      <td style="padding:9px 12px;text-align:center;border-bottom:1px solid #E2E4EA">
-        <span style="background:${sClr}18;color:${sClr};font-size:10px;font-weight:700;padding:3px 9px;border-radius:10px">${a?a.toFixed(2)+'%':'—'}</span>
+      <td style="padding:8px 10px;font-size:11px;font-weight:700;color:#1A1D2E;border-bottom:1px solid #E2E4EA;font-family:'Segoe UI',Helvetica,Arial,sans-serif">${nome}</td>
+      <td style="padding:8px 10px;font-size:10px;color:#8A8FA8;border-bottom:1px solid #E2E4EA;font-family:'Segoe UI',Helvetica,Arial,sans-serif">${p.gestor}</td>
+      <td style="padding:8px 10px;text-align:center;border-bottom:1px solid #E2E4EA">
+        <table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto"><tr>
+          <td style="background:${mClr}20;padding:2px 8px;font-size:10px;font-weight:700;color:${mClr};font-family:'Segoe UI',Helvetica,Arial,sans-serif;white-space:nowrap">${m?m.toFixed(2)+'%':'—'}</td>
+        </tr></table>
       </td>
-      <td style="padding:9px 12px;font-size:10px;text-align:center;border-bottom:1px solid #E2E4EA">${m?m.toFixed(2)+'%':'—'}</td>
-      <td style="padding:9px 12px;font-size:13px;font-weight:800;text-align:center;color:${tClr};border-bottom:1px solid #E2E4EA">${t}</td>
-      <td style="padding:9px 12px;font-size:11px;text-align:center;color:#5C6180;border-bottom:1px solid #E2E4EA">${p.chamados}</td>
-      <td style="padding:9px 12px;font-size:10px;color:#8A8FA8;border-bottom:1px solid #E2E4EA">${p.dim}</td>
+      <td style="padding:8px 10px;text-align:center;border-bottom:1px solid #E2E4EA">
+        <table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto"><tr>
+          <td style="background:${sClr}20;padding:2px 8px;font-size:10px;font-weight:700;color:${sClr};font-family:'Segoe UI',Helvetica,Arial,sans-serif;white-space:nowrap">${a?a.toFixed(2)+'%':'—'}</td>
+        </tr></table>
+      </td>
+      <td style="padding:8px 10px;font-size:13px;font-weight:800;text-align:center;color:${tClr};border-bottom:1px solid #E2E4EA;font-family:'Segoe UI',Helvetica,Arial,sans-serif">${t}</td>
+      <td style="padding:8px 10px;font-size:11px;text-align:center;color:#5C6180;border-bottom:1px solid #E2E4EA;font-family:'Segoe UI',Helvetica,Arial,sans-serif">${p.chamados}</td>
+      <td style="padding:8px 10px;font-size:10px;color:#8A8FA8;border-bottom:1px solid #E2E4EA;font-family:'Segoe UI',Helvetica,Arial,sans-serif">${p.dim}</td>
     </tr>`;
   }).join('');
 
-  // ── Releases — reads each .release-grid separately ───────────────────────────
+  // ── Releases ─────────────────────────────────────────────────────────────────
   const buildRelGrid = (section) => {
     const cards = [...section.querySelectorAll('.release-card')].map(rc => {
       const isNew = rc.classList.contains('new');
@@ -1145,82 +1147,95 @@ function buildEmailHtml(){
       return {color, badge, name, ver};
     });
     const cols = 3;
+    const cw   = Math.floor(inner/cols);
     const rows = [];
     for(let i=0;i<cards.length;i+=cols){
       const chunk = cards.slice(i,i+cols);
       let cells = chunk.map(r =>
-        `<td width="${Math.floor(inner/cols)}px" style="padding:4px;vertical-align:top">
+        `<td width="${cw}" style="padding:4px;vertical-align:top">
            <table width="100%" cellpadding="0" cellspacing="0" border="0">
-             <tr><td style="background:#fff;border:1px solid #E2E4EA;border-radius:10px;padding:14px 16px;border-bottom:3px solid ${r.color}">
-               <span style="display:inline-block;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:${r.color};background:${r.color}15;padding:2px 8px;border-radius:4px;margin-bottom:8px">${r.badge}</span>
-               <div style="font-size:12px;font-weight:700;color:#1A1D2E;line-height:1.35;margin-bottom:4px">${r.name}</div>
-               <div style="font-size:10px;color:#8A8FA8">${r.ver}</div>
+             <tr><td style="background:#ffffff;border:1px solid #E2E4EA;padding:0">
+               <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                 <tr><td style="background:${r.color};height:3px;font-size:1px;line-height:1px">&nbsp;</td></tr>
+                 <tr><td style="padding:12px 14px">
+                   <table cellpadding="0" cellspacing="0" border="0" style="margin-bottom:7px"><tr>
+                     <td style="background:${r.color}22;padding:2px 7px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:${r.color};font-family:'Segoe UI',Helvetica,Arial,sans-serif">${r.badge}</td>
+                   </tr></table>
+                   <div style="font-size:11px;font-weight:700;color:#1A1D2E;line-height:1.35;margin-bottom:4px;font-family:'Segoe UI',Helvetica,Arial,sans-serif">${r.name}</div>
+                   <div style="font-size:10px;color:#8A8FA8;font-family:'Segoe UI',Helvetica,Arial,sans-serif">${r.ver}</div>
+                 </td></tr>
+               </table>
              </td></tr>
            </table>
          </td>`
       ).join('');
-      // pad empty cells to fill row
-      for(let j=chunk.length;j<cols;j++) cells += `<td width="${Math.floor(inner/cols)}px" style="padding:4px"></td>`;
+      for(let j=chunk.length;j<cols;j++) cells += `<td width="${cw}" style="padding:4px"></td>`;
       rows.push(`<tr>${cells}</tr>`);
     }
     return rows.join('');
   };
 
   const relSections = document.querySelectorAll('section.reveal');
-  // Find the two release sections by matching title text
-  let relGrid1 = null, relGrid2 = null, relTitle1 = '', relTitle2 = '';
-  relSections.forEach(sec => {
-    const titleEl = sec.querySelector('.sec-hd-title');
-    const title   = titleEl?.textContent?.trim() || '';
-    const grid    = sec.querySelector('.release-grid');
+  let relGrid1=null,relGrid2=null,relTitle1='',relTitle2='';
+  relSections.forEach(sec=>{
+    const title = sec.querySelector('.sec-hd-title')?.textContent?.trim()||'';
+    const grid  = sec.querySelector('.release-grid');
     if(!grid) return;
-    // Second section has "Previstas" or "Previst" in the title
-    if(title.toLowerCase().includes('prevista') || title.toLowerCase().includes('previst')){
-      relGrid2 = grid; relTitle2 = title;
-    } else {
-      relGrid1 = grid; relTitle1 = title;
-    }
+    if(title.toLowerCase().includes('prevista')){relGrid2=grid;relTitle2=title;}
+    else{relGrid1=grid;relTitle1=title;}
   });
-  const releaseRows1 = relGrid1 ? buildRelGrid(relGrid1) : '';
-  const releaseRows2 = relGrid2 ? buildRelGrid(relGrid2) : '';
+  const releaseRows1 = relGrid1?buildRelGrid(relGrid1):'';
+  const releaseRows2 = relGrid2?buildRelGrid(relGrid2):'';
 
   // ── PO cards ─────────────────────────────────────────────────────────────────
-  const poCards = [...document.querySelectorAll('.po-card')].map(pc => {
-    const name = pc.querySelector('.po-name')?.textContent||'';
-    const role = pc.querySelector('.po-role')?.textContent||'';
-    const items = [...pc.querySelectorAll('.po-item-content')].map(it => {
-      const tag   = it.querySelector('.po-item-tag')?.textContent||'';
-      const title = it.querySelector('.po-item-title')?.textContent||'';
-      const desc  = it.querySelector('.po-item-desc')?.textContent||'';
-      const tagClr= it.querySelector('.po-item-tag')?.classList.contains('tag-struct')?'#c01137':
-                    it.querySelector('.po-item-tag')?.classList.contains('tag-init')?'#3B6BF5':
-                    it.querySelector('.po-item-tag')?.classList.contains('tag-ops')?'#00C07A':'#7C4DFF';
-      return `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:10px"><tr>
-        <td style="width:5px;padding-top:4px"><div style="width:5px;height:5px;border-radius:50%;background:#c01137;margin-top:3px"></div></td>
-        <td style="padding-left:8px">
-          <span style="display:inline-block;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:${tagClr};background:${tagClr}15;padding:2px 6px;border-radius:3px;margin-bottom:4px">${tag}</span>
-          <div style="font-size:11px;font-weight:700;color:#1A1D2E;line-height:1.35;margin-bottom:3px">${title}</div>
-          <div style="font-size:10px;color:#5C6180;line-height:1.5">${desc}</div>
+  const poCards = [...document.querySelectorAll('.po-card')].map(pc=>{
+    const name  = pc.querySelector('.po-name')?.textContent||'';
+    const role  = pc.querySelector('.po-role')?.textContent||'';
+    const items = [...pc.querySelectorAll('.po-item-content')].map(it=>{
+      const tag  = it.querySelector('.po-item-tag')?.textContent||'';
+      const ttl  = it.querySelector('.po-item-title')?.textContent||'';
+      const desc = it.querySelector('.po-item-desc')?.textContent||'';
+      const tagClr = it.querySelector('.po-item-tag')?.classList.contains('tag-struct')?'#c01137':
+                     it.querySelector('.po-item-tag')?.classList.contains('tag-init')?'#3B6BF5':
+                     it.querySelector('.po-item-tag')?.classList.contains('tag-ops')?'#00C07A':'#7C4DFF';
+      return `<tr>
+        <td style="width:6px;padding-top:2px;vertical-align:top">
+          <table cellpadding="0" cellspacing="0" border="0"><tr>
+            <td style="width:5px;height:5px;background:#c01137;font-size:1px;line-height:5px">&nbsp;</td>
+          </tr></table>
         </td>
-      </tr></table>`;
-    }).join('<div style="height:1px;background:#E2E4EA;margin:2px 0 10px"></div>');
-    return {name, role, items};
+        <td style="padding-left:8px;padding-bottom:10px">
+          <table cellpadding="0" cellspacing="0" border="0" style="margin-bottom:4px"><tr>
+            <td style="background:${tagClr}22;padding:2px 6px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:${tagClr};font-family:'Segoe UI',Helvetica,Arial,sans-serif">${tag}</td>
+          </tr></table>
+          <div style="font-size:11px;font-weight:700;color:#1A1D2E;line-height:1.35;margin-bottom:3px;font-family:'Segoe UI',Helvetica,Arial,sans-serif">${ttl}</div>
+          <div style="font-size:10px;color:#5C6180;line-height:1.5;font-family:'Segoe UI',Helvetica,Arial,sans-serif">${desc}</div>
+        </td>
+      </tr>`;
+    }).join(`<tr><td colspan="2" style="padding:0 0 0 14px"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="height:1px;background:#E2E4EA;font-size:1px;line-height:1px">&nbsp;</td></tr></table></td></tr>`);
+    return {name,role,items};
   });
 
-  const poRows = (() => {
-    const cols = 2;
-    const rows = [];
+  const poRows = (()=>{
+    const cols=2, cw=Math.floor(inner/cols)-4;
+    const rows=[];
     for(let i=0;i<poCards.length;i+=cols){
-      const chunk = poCards.slice(i,i+cols);
-      const cells = chunk.map(po =>
-        `<td width="${Math.floor(inner/cols)}px" style="padding:4px;vertical-align:top">
+      const chunk=poCards.slice(i,i+cols);
+      const cells=chunk.map(po=>
+        `<td width="${cw}" style="padding:4px;vertical-align:top">
            <table width="100%" cellpadding="0" cellspacing="0" border="0">
-             <tr><td style="background:#fff;border:1px solid #E2E4EA;border-radius:12px;overflow:hidden">
-               <div style="background:#F4F5F7;border-bottom:1px solid #E2E4EA;padding:12px 16px">
-                 <div style="font-size:12px;font-weight:700;color:#1A1D2E">${po.name}</div>
-                 <div style="font-size:10px;color:#8A8FA8;margin-top:2px">${po.role}</div>
-               </div>
-               <div style="padding:14px 16px">${po.items}</div>
+             <tr><td style="border:1px solid #E2E4EA">
+               <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                 <tr><td style="background:#F4F5F7;border-bottom:1px solid #E2E4EA;padding:11px 14px">
+                   <div style="font-size:12px;font-weight:700;color:#1A1D2E;font-family:'Segoe UI',Helvetica,Arial,sans-serif">${po.name}</div>
+                   <div style="font-size:10px;color:#8A8FA8;margin-top:2px;font-family:'Segoe UI',Helvetica,Arial,sans-serif">${po.role}</div>
+                 </td></tr>
+                 <tr><td style="padding:12px 14px">
+                   <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                     ${po.items}
+                   </table>
+                 </td></tr>
+               </table>
              </td></tr>
            </table>
          </td>`
@@ -1230,26 +1245,7 @@ function buildEmailHtml(){
     return rows.join('');
   })();
 
-  // ── Chart sections (chart left, analysis right) ────────────────────────────
-  const imgW = Math.round(inner * 0.60);
-  const anaW = inner - imgW - 16;
-
-  const chartSection = (title, img, ...strips) => !img ? '' :
-    `${secHd(title)}
-     <tr><td style="padding:16px ${pad}px 24px;background:#fff">
-       <table width="100%" cellpadding="0" cellspacing="0" border="0">
-         <tr valign="top">
-           <td width="${imgW}" style="padding-right:16px">
-             <img src="${img}" width="${imgW}" style="width:100%;max-width:${imgW}px;display:block;border-radius:10px;border:1px solid #E2E4EA" alt="">
-           </td>
-           <td width="${anaW}" style="vertical-align:top">
-             ${strips.join('')}
-           </td>
-         </tr>
-       </table>
-     </td></tr>`;
-
-  // ── Assemble ─────────────────────────────────────────────────────────────────
+  // ── Assemble ──────────────────────────────────────────────────────────────────
   return `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8">
 <title>Boletim Qualidade — ${D.periodo}</title>
@@ -1257,97 +1253,92 @@ function buildEmailHtml(){
 <body style="margin:0;padding:0;background:#ECEEF3;font-family:'Segoe UI',Helvetica,Arial,sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ECEEF3;padding:28px 0">
 <tr><td align="center">
-<table width="${W}" cellpadding="0" cellspacing="0" border="0" style="max-width:${W}px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 32px rgba(0,0,0,.10)">
+<table width="${W}" cellpadding="0" cellspacing="0" border="0" style="max-width:${W}px;background:#ffffff">
 
-  <!-- HEADER -->
-  <tr><td style="background:linear-gradient(120deg,#8C0F3B 0%,#c01137 100%);padding:32px ${pad}px 28px">
-    <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-      <td>
-        <div style="display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:3px 12px;font-size:9px;font-weight:700;color:rgba(255,255,255,.8);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px">Boletim Mensal · Inteligência de Dados</div>
-        <div style="font-size:26px;font-weight:800;color:#fff;line-height:1.05;margin-bottom:8px">Boletim de Qualidade de Dados</div>
-        <div style="font-size:12px;color:rgba(255,255,255,.65)">Referência: <strong style="color:#fff">${D.periodo}</strong> &nbsp;·&nbsp; Gerado em ${D.gerado}</div>
-      </td>
-    </tr></table>
+  <!-- HEADER — solid color, no gradient -->
+  <tr><td style="background:#8C0F3B;padding:30px ${pad}px 26px">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td>
+      <table cellpadding="0" cellspacing="0" border="0" style="margin-bottom:11px"><tr>
+        <td style="border:1px solid rgba(255,255,255,.25);padding:3px 12px;font-size:9px;font-weight:700;color:rgba(255,255,255,.8);text-transform:uppercase;letter-spacing:.1em;font-family:'Segoe UI',Helvetica,Arial,sans-serif">Boletim Mensal · Inteligência de Dados</td>
+      </tr></table>
+      <div style="font-size:24px;font-weight:800;color:#ffffff;line-height:1.05;margin-bottom:8px;font-family:'Segoe UI',Helvetica,Arial,sans-serif">Boletim de Qualidade de Dados</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.65);font-family:'Segoe UI',Helvetica,Arial,sans-serif">Referência: <strong style="color:#ffffff">${D.periodo}</strong> &nbsp;·&nbsp; Gerado em ${D.gerado}</div>
+    </td></tr></table>
   </td></tr>
 
   <!-- KPIs -->
   ${secHd('Resumo Executivo')}
-  <tr><td style="padding:16px ${pad}px 0;background:#fff">
+  <tr><td style="padding:14px ${pad}px 0;background:#ffffff">
     <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
       ${kpiCard('#c01137','Score Médio',D.kpis.score,D.kpis.score_delta,'#00C07A')}
       ${kpiCard('#00C07A','Ativos de Dados',D.kpis.prod_ativos,D.kpis.prod_delta)}
       ${kpiCard('#3B6BF5','Entregues no Mês',D.kpis.prod_entregues,D.kpis.prod_delta)}
       ${kpiCard('#F5A623','Taxa de Resolução',D.kpis.chamados+'%',D.kpis.chamados_delta)}
-      ${kpiCard('#c01137','Chamados em Aberto',D.kpis.chamados_aberto,D.kpis.chamados_aberto_delta)}
+      ${kpiCard('#c01137','Chamados Fora do Prazo',D.kpis.chamados_aberto,D.kpis.chamados_aberto_delta)}
     </tr></table>
   </td></tr>
 
-  <!-- KPI analyses -->
-  <tr><td style="padding:12px ${pad}px 24px;background:#fff">
+  <!-- KPI analyses — two columns -->
+  <tr><td style="padding:10px ${pad}px 24px;background:#ffffff">
     <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-      <td width="${Math.floor(inner/2)-8}" style="padding-right:8px;vertical-align:top">
+      <td width="${Math.floor(inner/2)-6}" style="vertical-align:top;padding-right:6px">
         ${ana('#c01137','Score Médio Geral',D.analises.score)}
+        ${anaSpacer}
         ${ana('#3B6BF5','Tempo de Entrega',D.analises.tempo)}
-        ${ana('#c01137','Chamados em Aberto',D.analises.chamados_aberto)}
+        ${anaSpacer}
+        ${ana('#c01137','Chamados Fora do Prazo',D.analises.chamados_aberto)}
       </td>
-      <td width="${Math.floor(inner/2)-8}" style="padding-left:8px;vertical-align:top">
+      <td width="${Math.floor(inner/2)-6}" style="vertical-align:top;padding-left:6px">
         ${ana('#00C07A','Ativos de Dados',D.analises.prod)}
+        ${anaSpacer}
         ${ana('#F5A623','Taxa de Resolução',D.analises.chamados)}
       </td>
     </tr></table>
   </td></tr>
 
-  <!-- SCORE CHART + analyses -->
-  ${chartSection(
-    'Score de Qualidade por Ativo — '+D.periodo,
-    scoresImg,
-    ana('#c01137','Destaques',D.analises.scores_dest),
-    ana('#E8143A','Atenção',D.analises.scores_atenc),
-    `<div style="margin-top:10px;background:#FFF8EC;border-left:3px solid #F5A623;border-radius:0 8px 8px 0;padding:10px 14px">
-       <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#F5A623;margin-bottom:3px">Recomendação</div>
-       <div style="font-size:11px;color:#5C6180;line-height:1.6;font-style:italic">${D.analises.scores_insight}</div>
-     </div>`
-  )}
-
   <!-- TABELA CONSOLIDADA -->
   ${secHd('Tabela Consolidada — Ativos Monitorados')}
-  <tr><td style="padding:16px ${pad}px 24px;background:#fff">
-    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #E2E4EA;border-radius:10px;overflow:hidden">
+  <tr><td style="padding:14px ${pad}px 8px;background:#ffffff">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #E2E4EA">
       <tr style="background:#F4F5F7">
-        <th style="padding:10px 12px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:left;border-bottom:1px solid #E2E4EA;white-space:nowrap">Crit.</th>
-        <th style="padding:10px 12px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:left;border-bottom:1px solid #E2E4EA">Produto</th>
-        <th style="padding:10px 12px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:left;border-bottom:1px solid #E2E4EA">Área</th>
-        <th style="padding:10px 12px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:center;border-bottom:1px solid #E2E4EA;white-space:nowrap">Score Mai</th>
-        <th style="padding:10px 12px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:center;border-bottom:1px solid #E2E4EA;white-space:nowrap">Score Abr</th>
-        <th style="padding:10px 12px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:center;border-bottom:1px solid #E2E4EA">Tend.</th>
-        <th style="padding:10px 12px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:center;border-bottom:1px solid #E2E4EA;white-space:nowrap">Cham.</th>
-        <th style="padding:10px 12px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:left;border-bottom:1px solid #E2E4EA;white-space:nowrap">Dim. Crítica</th>
+        <th style="padding:9px 10px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:left;border-bottom:1px solid #E2E4EA;font-family:'Segoe UI',Helvetica,Arial,sans-serif;white-space:nowrap">Crit.</th>
+        <th style="padding:9px 10px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:left;border-bottom:1px solid #E2E4EA;font-family:'Segoe UI',Helvetica,Arial,sans-serif">Produto</th>
+        <th style="padding:9px 10px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:left;border-bottom:1px solid #E2E4EA;font-family:'Segoe UI',Helvetica,Arial,sans-serif">Área</th>
+        <th style="padding:9px 10px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:center;border-bottom:1px solid #E2E4EA;font-family:'Segoe UI',Helvetica,Arial,sans-serif;white-space:nowrap">Score Abr</th>
+        <th style="padding:9px 10px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:center;border-bottom:1px solid #E2E4EA;font-family:'Segoe UI',Helvetica,Arial,sans-serif;white-space:nowrap">Score Mai</th>
+        <th style="padding:9px 10px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:center;border-bottom:1px solid #E2E4EA;font-family:'Segoe UI',Helvetica,Arial,sans-serif">Tend.</th>
+        <th style="padding:9px 10px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:center;border-bottom:1px solid #E2E4EA;font-family:'Segoe UI',Helvetica,Arial,sans-serif;white-space:nowrap">Cham.</th>
+        <th style="padding:9px 10px;font-size:8px;font-weight:700;color:#8A8FA8;text-transform:uppercase;letter-spacing:.06em;text-align:left;border-bottom:1px solid #E2E4EA;font-family:'Segoe UI',Helvetica,Arial,sans-serif;white-space:nowrap">Dim. Crítica</th>
       </tr>
       ${prodRows}
     </table>
+  </td></tr>
+  <!-- Table analyses below -->
+  <tr><td style="padding:0 ${pad}px 24px;background:#ffffff">
     ${ana('#c01137','Distribuição por Criticidade',D.analises.tabela_crit)}
+    ${anaSpacer}
     ${ana('#F5A623','Volume de Chamados',D.analises.tabela_cham)}
-    <div style="margin-top:8px;background:#F4F5F7;border-left:3px solid #8A8FA8;border-radius:0 8px 8px 0;padding:10px 14px">
-      <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#8A8FA8;margin-bottom:3px">Insight</div>
-      <div style="font-size:11px;color:#5C6180;line-height:1.6;font-style:italic">${D.analises.tabela_insight}</div>
-    </div>
+    ${anaSpacer}
+    ${ana('#8A8FA8','Insight',D.analises.tabela_insight)}
   </td></tr>
 
-  <!-- CAUSAS CHART + analyses -->
-  ${chartSection(
-    'Causas-Raiz — Chamados '+D.periodo,
-    causasImg,
-    ana('#c01137','Concentração',D.analises.causas_conc),
-    ana('#3B6BF5','Ações Previstas',D.analises.causas_acoes),
-    `<div style="margin-top:10px;background:#F4F5F7;border-left:3px solid #8A8FA8;border-radius:0 8px 8px 0;padding:10px 14px">
-       <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#8A8FA8;margin-bottom:3px">Insight</div>
-       <div style="font-size:11px;color:#5C6180;line-height:1.6;font-style:italic">${D.analises.causas_insight}</div>
-     </div>`
-  )}
+  <!-- CAUSAS — full width image, analyses below -->
+  ${secHd('Causas-Raiz — Chamados '+D.periodo)}
+  ${causasImg ? `
+  <tr><td style="padding:14px ${pad}px 8px;background:#ffffff">
+    <img src="${causasImg}" width="${inner}" style="width:100%;max-width:${inner}px;display:block;border:1px solid #E2E4EA" alt="Causas-Raiz">
+  </td></tr>
+  <tr><td style="padding:0 ${pad}px 24px;background:#ffffff">
+    ${ana('#c01137','Concentração',D.analises.causas_conc)}
+    ${anaSpacer}
+    ${ana('#3B6BF5','Ações Previstas',D.analises.causas_acoes)}
+    ${anaSpacer}
+    ${ana('#8A8FA8','Insight',D.analises.causas_insight)}
+  </td></tr>` : ''}
 
   <!-- ENTREGAS POR SQUAD -->
   ${secHd('Entregas por Squad')}
-  <tr><td style="padding:16px ${pad}px 24px;background:#fff">
+  <tr><td style="padding:14px ${pad}px 24px;background:#ffffff">
     <table width="100%" cellpadding="0" cellspacing="0" border="0">
       ${poRows}
     </table>
@@ -1355,7 +1346,7 @@ function buildEmailHtml(){
 
   <!-- RELEASES -->
   ${relTitle1 ? secHd(relTitle1) : secHd('Ativos de Dados — Releases '+D.periodo)}
-  <tr><td style="padding:16px ${pad}px 24px;background:#fff">
+  <tr><td style="padding:14px ${pad}px 24px;background:#ffffff">
     <table width="100%" cellpadding="0" cellspacing="0" border="0">
       ${releaseRows1}
     </table>
@@ -1363,27 +1354,22 @@ function buildEmailHtml(){
 
   ${releaseRows2 ? `
   ${relTitle2 ? secHd(relTitle2) : secHd('Ativos de Dados — Releases Previstas')}
-  <tr><td style="padding:16px ${pad}px 24px;background:#fff">
+  <tr><td style="padding:14px ${pad}px 24px;background:#ffffff">
     <table width="100%" cellpadding="0" cellspacing="0" border="0">
       ${releaseRows2}
     </table>
   </td></tr>` : ''}
 
-  <!-- FOOTER -->
-  <tr><td style="background:linear-gradient(120deg,#8C0F3B,#c01137);padding:20px ${pad}px">
-    <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-      <td>
-        <div style="font-size:13px;font-weight:700;color:#fff">Boletim de Qualidade de Dados — ${D.periodo}</div>
-        <div style="font-size:10px;color:rgba(255,255,255,.55);margin-top:3px">Gerado automaticamente · Inteligência de Dados / Bradesco</div>
-      </td>
-    </tr></table>
+  <!-- FOOTER — solid color, no gradient -->
+  <tr><td style="background:#8C0F3B;padding:18px ${pad}px">
+    <div style="font-size:13px;font-weight:700;color:#ffffff;font-family:'Segoe UI',Helvetica,Arial,sans-serif">Boletim de Qualidade de Dados — ${D.periodo}</div>
+    <div style="font-size:10px;color:rgba(255,255,255,.55);margin-top:3px;font-family:'Segoe UI',Helvetica,Arial,sans-serif">Gerado automaticamente · Inteligência de Dados / Bradesco</div>
   </td></tr>
 
 </table>
 </td></tr></table>
 </body></html>`;
 }
-
 // ─── INIT ───
 applyData();
 </script>
