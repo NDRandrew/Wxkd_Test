@@ -7,6 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <style>
 :root{
   --pr:#c01137; --pr-dk:#8C0F3B; --pr-lt:#E8153A; --pr-xlt:#FF4060;
@@ -406,10 +407,12 @@ html,body{height:100%;font-family:var(--font-body);background:linear-gradient(18
     <div class="modal-title">Gerar versão para E-mail</div>
     <div class="modal-desc">HTML table-based compatível com clientes de e-mail. Copie ou faça download.</div>
     <div class="modal-preview" id="emailPreview"></div>
-    <div class="modal-row" style="justify-content:flex-end">
+    <div class="modal-row" style="justify-content:flex-end;align-items:center">
+      <span id="pngStatus" style="font-size:.75rem;color:var(--g500);flex:1;display:none"></span>
       <button class="mbtn cancel" onclick="closeEmailModal()">Fechar</button>
       <button class="mbtn apply" onclick="copyEmailHtml()">Copiar HTML</button>
       <button class="mbtn dl" onclick="downloadEmail()">Download .html</button>
+      <button class="mbtn dl" onclick="downloadEmailPng()" id="btnPng" style="background:#7C4DFF">Download PNG</button>
     </div>
   </div>
 </div>
@@ -497,7 +500,7 @@ html,body{height:100%;font-family:var(--font-body);background:linear-gradient(18
             <div class="kpi-card green">
               <div style="display:grid;grid-template-columns:1fr 1fr">
                 <div><div class="kpi-lbl">Ativos de Dados</div><div class="kpi-val" id="kpi-prod-ativos">90</div></div>
-                <div><div class="kpi-lbl">Entregues</div><div class="kpi-val" id="kpi-prod-entregues">6</div></div>
+                <div><div class="kpi-lbl">Novos</div><div class="kpi-val" id="kpi-prod-entregues">6</div></div>
               </div>
               <div class="kpi-delta up" id="kpi-prod-delta">▲ +3 vs Mar</div>
             </div>
@@ -527,7 +530,7 @@ html,body{height:100%;font-family:var(--font-body);background:linear-gradient(18
           <!-- Chamados -->
           <div class="kpi-wrapper">
             <div class="kpi-card yellow">
-              <div class="kpi-lbl">Taxa de Resolução de Chamados</div>
+              <div class="kpi-lbl">Taxa de Resolução de Chamados Histórica</div>
               <div style="display:flex;align-items:center;gap:2px"><div class="kpi-val" id="kpi-chamados">95</div><div class="kpi-val" style="font-size:.9rem;transform:translateY(5px)">%</div></div>
               <div class="kpi-delta down" id="kpi-chamados-delta">▲ -17 vs Mar</div>
             </div>
@@ -568,7 +571,7 @@ html,body{height:100%;font-family:var(--font-body);background:linear-gradient(18
 
         <!-- Tabela Consolidada + Análise abaixo -->
         <div class="chart-card" style="margin-top:14px">
-          <div class="chart-title">Tabela Consolidada — Ativos Monitorados</div>
+          <div class="chart-title">Produtos com Score abaixo de 95%</div>
           <table class="dados-table" style="margin-top:12px">
             <thead>
               <tr>
@@ -583,20 +586,17 @@ html,body{height:100%;font-family:var(--font-body);background:linear-gradient(18
             <div class="cwa-analysis" style="border-radius:var(--r);flex-direction:column;gap:12px">
               <div class="cwa-analysis-title">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-                Análise da Tabela
+                Analítico
               </div>
               <div class="cwa-sep"></div>
               <div>
-                <div class="cwa-block-label">Distribuição por Criticidade</div>
-                <div class="cwa-block-text" id="ana-tabela-crit">6 produtos com criticidade baixa (verde), 2 com atenção (amarelo) e 2 com risco alto (vermelho). Foco de monitoramento em PLDFT e MANIFESTAÇÕES SACL nos próximos ciclos.</div>
-              </div>
-              <div class="cwa-sep"></div>
-              <div>
-                <div class="cwa-block-label">Volume de Chamados</div>
+                <div class="cwa-block-label">Análise de Desempenho e Impactos</div>
                 <div class="cwa-block-text" id="ana-tabela-cham">Open Finance concentra 81 dos 94 chamados totais (86%). Demais produtos com volumes residuais — sinal de processo maduro nos outros squads.</div>
               </div>
-              <div class="cwa-insight">
-                <p id="ana-tabela-insight">Produtos novos (IA Generativa, Visão 360) entraram com zero chamados — qualidade de onboarding acima do esperado.</p>
+              <div class="cwa-sep"></div>
+              <div>
+                <div class="cwa-block-label">Ações Estratégicas</div>
+                <div class="cwa-block-text" id="ana-tabela-extr">Placeholder</div>
               </div>
             </div>
           </div>
@@ -616,16 +616,13 @@ html,body{height:100%;font-family:var(--font-body);background:linear-gradient(18
             </div>
             <div class="cwa-sep"></div>
             <div>
-              <div class="cwa-block-label">Concentração</div>
+              <div class="cwa-block-label">Destaque</div>
               <div class="cwa-block-text" id="ana-causas-conc">As 2 principais causas (Alteração na Estrutura e Open Finance) concentram 67% dos chamados — padrão de Pareto claro. Ações preventivas nessas categorias teriam impacto direto no volume total.</div>
             </div>
             <div class="cwa-sep"></div>
             <div>
-              <div class="cwa-block-label">Ações Previstas</div>
-              <div class="cwa-block-text" id="ana-causas-acoes">Preenchimento Incorreto pode ser reduzido com capacitação direcionada dos times. Diversas e Externo são residuais — sem ação imediata necessária.</div>
-            </div>
-            <div class="cwa-insight">
-              <p id="ana-causas-insight">63% dos chamados de Alteração na Estrutura estão concentrados em 2 produtos. Mapear origem para mitigação sistêmica no próximo ciclo.</p>
+              <div class="cwa-block-label">Volumetria de Causas Mitigáveis</div>
+              <div class="cwa-block-text" id="ana-causas-resol">Sobre as causas identificadas </div>
             </div>
           </div>
         </div>
@@ -635,84 +632,97 @@ html,body{height:100%;font-family:var(--font-body);background:linear-gradient(18
       <section class="reveal">
         <div class="sec-hd">
           <div class="sec-hd-bar"></div>
-          <div><div class="sec-hd-title">Entregas por Squad</div></div>
+          <div><div class="sec-hd-title">Principais Entregas do Mês</div></div>
         </div>
         <div class="po-grid">
           <div class="po-card">
             <div class="po-card-head">
-              <div><div class="po-name">Data Quality</div><div class="po-role">Desenvolvimento de Ativos de Dados</div></div>
+              <div><div class="po-name"></div><div class="po-role"></div></div>
             </div>
             <div class="po-items">
-              <div class="po-item"><div class="po-item-dot"></div><div class="po-item-content">
+              <div class="po-item"><div class="po-item-dot"></div><div class="po-item-content"> <!-- ══ DATA QUALITY ══ -->
                 <span class="po-item-tag tag-struct">Estruturante</span>
-                <div class="po-item-title">BRAI4DQ em Produção — 6 Dimensões Ativas</div>
-                <div class="po-item-desc">Entrega da solução BRAI4DQ no ambiente produtivo com disponibilidade, completude, consistência, integridade, unicidade e variação.</div>
+                <div class="po-item-title">BRAI4DQ — 10 Dimensões Ativas</div>
+                <div class="po-item-desc">Evolução do BRAI4DQ com a implantação de 4 novas dimensões (Acurácia, Validade, Atualidade e Tempestividade). Com a entrega, a ferramenta atinge o marco de 10 dimensões ativas em ambiente produtivo, ampliando a capacidade de governança e elevando o padrão de qualidade dos Produtos de Dados.</div>
               </div></div>
               <div class="po-item-sep"></div>
               <div class="po-item"><div class="po-item-dot"></div><div class="po-item-content">
                 <span class="po-item-tag tag-struct">Estruturante</span>
-                <div class="po-item-title">4 Novas Dimensões em Desenvolvimento (McKinsey)</div>
-                <div class="po-item-desc">Acurácia, validade, atualidade e tempestividade com implantação produtiva prevista para Mai/26.</div>
+                <div class="po-item-title">Dimensão de Variação — Junto a Área de Crédito</div>
+                <div class="po-item-desc">Desenvolvimento da nova dimensão VDI (Variable Distribution Index) em parceria com a área de Crédito. A iniciativa otimiza processos operacionais e expande nossa esteira de monitoramento, viabilizando a cobertura de novos casos de uso e necessidades dos Produtos de Dados.</div>
+              </div></div>
+              <div class="po-item-sep"></div>
+              <div class="po-item"><div class="po-item-dot"></div><div class="po-item-content">
+                <span class="po-item-tag tag-struct">Estruturante</span>
+                <div class="po-item-title">Evolução e Integração do Modelo Dimensional ao BRAIA4QD</div>
+                <div class="po-item-desc">Evolução do modelo dimensional para integração com os dados do BRAIA4QD. A atualização viabiliza o atendimento às novas demandas do ecossistema Braia e otimiza diretamente a performance e eficiência dos casos de uso já vigentes.</div>
               </div></div>
             </div>
           </div>
           <div class="po-card">
             <div class="po-card-head">
-              <div><div class="po-name">Migration of Data Quality</div><div class="po-role">Analistas de Ativos de Dados</div></div>
+              <div><div class="po-name"></div><div class="po-role"></div></div>
             </div>
             <div class="po-items">
+              
               <div class="po-item"><div class="po-item-dot"></div><div class="po-item-content">
                 <span class="po-item-tag tag-struct">Estruturante</span>
-                <div class="po-item-title">Integração Databricks × SharePoint Homologada</div>
-                <div class="po-item-desc">Conexão segura reduzindo atividades manuais e garantindo rastreabilidade no fluxo de dados.</div>
-              </div></div>
-              <div class="po-item-sep"></div>
-              <div class="po-item"><div class="po-item-dot"></div><div class="po-item-content">
-                <span class="po-item-tag tag-prod">Produtos</span>
-                <div class="po-item-title">7 Produtos de Dados Entregues</div>
-                <div class="po-item-desc">Canais Digitais (R1) · Captação Líquida (R1) · Simulador (R1) · Visão 360 (R2) · Carteiras (R2) · IA Generativa (R2) · Dados Socioeconômicos (R5).</div>
-              </div></div>
-              <div class="po-item-sep"></div>
-              <div class="po-item"><div class="po-item-dot"></div><div class="po-item-content">
-                <span class="po-item-tag tag-init">Iniciativa</span>
-                <div class="po-item-title">Workshop de Assessment para Tribos de Negócio</div>
-                <div class="po-item-desc">Capacitação elevando maturidade em governança e reduzindo riscos de interpretações divergentes.</div>
-              </div></div>
-            </div>
-          </div>
-          <div class="po-card">
-            <div class="po-card-head">
-              <div><div class="po-name">IDQ Decommissioning</div><div class="po-role">Plataforma & Infra</div></div>
-            </div>
-            <div class="po-items">
-              <div class="po-item"><div class="po-item-dot"></div><div class="po-item-content">
-                <span class="po-item-tag tag-struct">Estruturante</span>
-                <div class="po-item-title">Descomissionamento On-Premises Informatica/SAS</div>
-                <div class="po-item-desc">Desativação de 10 tabelas Hive, 8 Teradata e 4 SAS acelerando a migração para Databricks.</div>
-              </div></div>
-              <div class="po-item-sep"></div>
-              <div class="po-item"><div class="po-item-dot"></div><div class="po-item-content">
-                <span class="po-item-tag tag-struct">Estruturante</span>
-                <div class="po-item-title">Control-M Jobs Databricks — AAQD Ativado</div>
-                <div class="po-item-desc">Habilitação da esteira Control-M via automação no Databricks com job de expurgo.</div>
-              </div></div>
-            </div>
-          </div>
-          <div class="po-card">
-            <div class="po-card-head">
-              <div><div class="po-name">Data Quality Tools & Optimization</div><div class="po-role">IA & Automação</div></div>
-            </div>
-            <div class="po-items">
-              <div class="po-item"><div class="po-item-dot"></div><div class="po-item-content">
-                <span class="po-item-tag tag-struct">Estruturante</span>
-                <div class="po-item-title">Agente DEVA em Produção na Plataforma Bridge</div>
-                <div class="po-item-desc">Deploy no Bridge (IA corporativa) e Databricks, com notebook interface compartilhado com o time.</div>
+                <div class="po-item-title">Definição e Documentação da Matriz de Criticidade de Ativos de Dados</div>
+                <div class="po-item-desc">Definição da classificação de criticidade para os ativos de dados (Produtos, Casos de Uso, Modelos e Delta Sharing). A entrega consiste em uma matriz multicritério que avalia dimensões de risco, impacto e dependência técnica. Esse novo modelo estabelece um padrão unificado para apoiar a tomada de decisão executiva, garantindo que ativos de alta sensibilidade institucional recebam a devida priorização em ações de governança, monitoramento e mitigação de incidentes.</div>
               </div></div>
               <div class="po-item-sep"></div>
               <div class="po-item"><div class="po-item-dot"></div><div class="po-item-content">
                 <span class="po-item-tag tag-ops">Eficiência</span>
-                <div class="po-item-title">Revisão do Ecossistema BRAI4DQ</div>
-                <div class="po-item-desc">Adequação de schemas, tabelas e modelo dimensional garantindo integridade operacional contínua.</div>
+                <div class="po-item-title">Mapeamento de Origens e Rastreabilidade de Ativos</div>
+                <div class="po-item-desc">Desenvolvimento de nova dimensão focada no mapeamento estrutural entre bases, catálogos, tabelas e campos. Essa entrega estabelece a linhagem de dados completa, garantindo governança, total rastreabilidade e transparência sobre a origem das informações consumidas pelo portfólio de Produtos de Dados.</div>
+              </div></div>
+            </div>
+          </div>
+          <div class="po-card">
+            <div class="po-card-head">
+              <div><div class="po-name"></div><div class="po-role"></div></div>
+            </div>
+            <div class="po-items">
+              <div class="po-item"><div class="po-item-dot"></div><div class="po-item-content">
+                <span class="po-item-tag tag-struct">Estruturante</span>
+                <div class="po-item-title">Avanços — Agente DEVA Web</div>
+                <div class="po-item-desc">Implantação de infraestrutura no ambiente ARO (plataforma LEAP) para hospedagem da interface web do Agente DEVA. A entrega estabelece a base tecnológica necessária para a evolução do agente, viabilizando uma experiência de usuário (UX) superior e estruturada.</div>
+              </div></div>
+              <div class="po-item-sep"></div>
+              <div class="po-item"><div class="po-item-dot"></div><div class="po-item-content"> <!-- ══ IDQ DECOMISSIONING ══ -->
+                <span class="po-item-tag tag-ops">Eficiência</span>
+                <div class="po-item-title">Descomissionamento On-Premises</div>
+                <div class="po-item-desc">Como parte da migração para o Databricks, realizamos a desativação de 12 tabelas (4 CRM — Teradata, 6 Marketing — Hive, 2 PLD — Hive). O plano continua em junho, com o descomissionamento projetado de 254 tabelas (119 Vila — Hive, 114 CRM — Teradata, 16 BRAIN — Hive e 5 PLD — Hive). A iniciativa faz a transição arquitetural e promove a utilização do ambiente Databricks como já previsto.</div>
+              </div></div>
+              <div class="po-item-sep"></div>
+              <div class="po-item"><div class="po-item-dot"></div><div class="po-item-content">
+                <span class="po-item-tag tag-ops">Eficiência</span>
+                <div class="po-item-title">Feature de Alertas ao Produto de Dados de Qualidade</div>
+                <div class="po-item-desc">Implementação de rotinas automatizadas de notificação para ocorrências de erro em lote e sublote. Por meio da integração do Databricks com o Teams, a entrega cria uma esteira de observabilidade em tempo real, conferindo visibilidade imediata às falhas e otimizando a mitigação de impactos na operação.</div>
+              </div></div>
+            </div>
+          </div>
+          <div class="po-card">
+            <div class="po-card-head">
+              <div><div class="po-name"></div><div class="po-role"></div></div> <!-- ══ DTTOOLS ══ -->
+            </div>
+            <div class="po-items">
+              <div class="po-item"><div class="po-item-dot"></div><div class="po-item-content">
+                <span class="po-item-tag tag-struct">Estruturante</span>
+                <div class="po-item-title">Modelo Trabalhista</div>
+                <div class="po-item-desc">Implantação de modelos de Machine Learning no ADAC/Databricks (Squad People Analytics) para otimizar processos trabalhistas. A solução disponibiliza painéis que guiam o Jurídico e o RH na priorização preventiva e estratégica de casos (pré e pós-judicialização), destravando ganho de eficiência operacional e redução de passivos.</div>
+              </div></div>
+              <div class="po-item-sep"></div>
+              <div class="po-item"><div class="po-item-dot"></div><div class="po-item-content">
+                <span class="po-item-tag tag-struct">Estruturante</span>
+                <div class="po-item-title">Modelo de Propensão BACEN — Ouvidoria</div>
+                <div class="po-item-desc">Implantação de modelo preditivo de propensão (H2O/Databricks) pela Squad Ouvidoria para antecipar o escalonamento de queixas ao BACEN. Com atualização diária e painel de monitoramento, a ferramenta viabiliza ações proativas em casos de alto risco, reduzindo incidentes regulatórios, mapeando ofensores estruturais e protegendo o ranking da instituição.</div>
+              </div></div>
+              <div class="po-item-sep"></div>
+              <div class="po-item"><div class="po-item-dot"></div><div class="po-item-content">
+                <span class="po-item-tag tag-struct">Estruturante</span>
+                <div class="po-item-title">Modelo de Procedência BACEN — Ouvidoria</div>
+                <div class="po-item-desc">Desenvolvimento de modelo preditivo (Squad Ouvidoria) para estimar o risco de procedência de reclamações no BACEN. A inteligência fornece previsibilidade para atuação preventiva em casos com tendência de decisão desfavorável à instituição, mitigando perdas financeiras, otimizando o ranking regulatório e direcionando melhorias nos processos internos.</div>
               </div></div>
             </div>
           </div>
@@ -775,39 +785,32 @@ let D = {
   kpis: {
     score: "97.06%", score_delta: "▲ 0.75% vs Abril/2026",
     prod_ativos: 87, prod_entregues: 4, prod_delta: "▲ 2 Produtos e 2 Modelos",
-    tempo: 10, tempo_delta: "TESTE",
-    chamados: 92.83, chamados_delta: "▲ 1771 Chamados",
-    chamados_aberto: 514, chamados_aberto_delta: "▲ 496"
+    tempo: 9, tempo_delta: "▼ 2 Dias vs Abril/2026",
+    chamados: 92.83, chamados_delta: "▲ 1771 Chamados vs Abril/2026",
+    chamados_aberto: 416, chamados_aberto_delta: "▲ 406 vs Abril/2026"
   },
   analises: {
-    score: "Score em 97,06% com alta de 0,75 pp vs Abril. Evolu\u00e7\u00e3o positiva sustentada pela estabilidade dos ativos consolidados e recupera\u00e7\u00e3o de produtos cr\u00edticos.",
-    prod: "87 ativos monitorados com 4 entregas no per\u00edodo (2 produtos e 2 modelos). Capacidade de absor\u00e7\u00e3o da esteira mantida sem impacto no desempenho geral.",
-    tempo: "Indicador em revis\u00e3o metodol\u00f3gica \u2014 desconsiderado neste ciclo.",
-    chamados: "Taxa de resolu\u00e7\u00e3o em 70,98% com 1.771 chamados no per\u00edodo. Volume elevado requer aten\u00e7\u00e3o nos fluxos de triagem e prioriza\u00e7\u00e3o.",
-    chamados_aberto: "514 chamados fora do prazo (aumento de 496 vs anterior). Necess\u00e1ria prioriza\u00e7\u00e3o imediata para redu\u00e7\u00e3o do backlog.",
-    scores_dest: "6 ativos com score acima de 97%. Autentica\u00e7\u00e3o de Usu\u00e1rios e Simulador CVA no teto (110%). Consist\u00eancia positiva no portf\u00f3lio.",
-    scores_atenc: "Rating PLDTF em 71,43% (queda de 15,5 pp vs Abril) \u2014 principal detrator. Pesquisa de Satisfa\u00e7\u00e3o oscila fortemente (93,29% ap\u00f3s 28,99% em Abril). Dados P\u00fablicos Socioecon\u00f4micos em recupera\u00e7\u00e3o (+8,3 pp).",
-    scores_insight: "Priorizar plano de a\u00e7\u00e3o para PLDTF na dimens\u00e3o Unicidade. Monitorar estabilidade da Pesquisa de Satisfa\u00e7\u00e3o ap\u00f3s forte recupera\u00e7\u00e3o.",
-    causas_conc: "Top 3 causas concentram 66% do volume: Base Indispon\u00edvel (34%), Erro Job/Malha (16%) e Atraso Job/Malha (16%). Padr\u00e3o de Pareto evidente.",
-    causas_acoes: "Estabilizar bases de origem com \u00e1reas provedoras. Revisar agendamentos no Control-M para erros e atrasos. Capacitar times para reduzir preenchimento incorreto.",
-    causas_insight: "34% em indisponibilidade de base sugere depend\u00eancia estrutural externa. Estabelecer SLAs formais com provedores priorit\u00e1rios.",
-    tabela_crit: "6 ativos criticidade 1, 2 criticidade 2 e 2 criticidade 3. PLDTF (crit. 3) com 71,43% \u2014 abaixo do limiar aceit\u00e1vel.",
-    tabela_cham: "Rentabilidade de Investimento concentra 653 dos 775 chamados (84%). Demais ativos com volumes residuais \u2014 processo maduro.",
-    tabela_insight: "Investiga\u00e7\u00e3o dedicada em Rentabilidade de Investimento: 653 chamados na dimens\u00e3o Consist\u00eancia indicam problema sist\u00eamico a ser endere\u00e7ado."
+    score: "Score em 97,06% com alta de 0,75 pp vs Abril. Tend\u00eancia positiva sustentada pelo crescimento estável de ativos já consolidados podendo dar destaque a <i>Rentabilidade de Investimento BVP</i>, <i> Bradesco Global Solution</i> e <i>Clientes Apostadores</i>, sendo os 3 produtos com maior crescimento.",
+    prod: "87 ativos monitorados, 4 entregas no per\u00edodo (2 produtos e 2 modelos). Capacidade de absor\u00e7\u00e3o mantida sem impacto no desempenho.",
+    tempo: "Tempo m\u00e9dio de 9 dias, redu\u00e7\u00e3o de 2 dias vs Abril. Ganho de efici\u00eancia operacional no ciclo de entregas impulsionado pelo uso do DEVA e BRAIA4DQ.",
+    chamados: "Taxa de Resolu\u00e7\u00e3o de Chamados Histórica em 92,83% com 1.771 chamados à mais. Desempenho no período abaixo do esperado com Taxa de Resolução Mensal em 79,40%.",
+    chamados_aberto: "416 chamados fora do prazo (aumento de 406 vs anterior), volume esperado pelo crecimento de chamados no período. Backlog requer prioriza\u00e7\u00e3o imediata.",
+    scores_atenc: "Rating PLDTF em 71,43% (\u221215,5 pp vs Abril) \u2014 principal detrator. Pesquisa de Satisfa\u00e7\u00e3o em forte recupera\u00e7\u00e3o (93,3% ap\u00f3s 29,0% em Abril).",
+    causas_conc: "Alta concentração de chamados em <strong>Rentabilidade de Investimento</strong>, totalizando 653 chamados gerados no período. O produto representou 54,25% dos casos Job/Malha com Atraso e 48,45% dos casos de Job/Malha com Erro de Execução, além de 15,34% dos casos de Base Origem Indisponível. O cenário é reflexo das alterações e revisões de regras atualmente em implementação.",
+    causas_soluc: "Identificado que 21% (Preenchimento Incorreto e Alteração na Estrutura da Tabela ou Rotina) dos casos registrados possuem oportunidade de mitigação",
+    tabela_crit: "6 ativos criticidade Baixa, 2 com criticidade Média e 2 com criticidade Alta. PLDTF (crit. Alta) com 71,43% \u2014 abaixo do limiar aceit\u00e1vel de 85%.",
+    tabela_cham: "<br><strong>Dados Públicos Socioeconômicos e Demográficos</strong> \u2014 O score do produto segue abaixo do esperado, mesmo com alta de 5,83% no mês. O desvio ocorreu devido a 31 tabelas descalibradas, cujas correções já foram aplicadas e refletem no avanço recente." + "<br><br>" + "<strong>Operação e Repasse FINAME BNDES</strong> \u2014 Impacto negativo de 21,21% gerado por indisponibilidade na camada bronze. Incidente em tratativa com a equipe de Ingestão, no momento aguardando parecer definitivo." + "<br><br>" + "<strong>Rating de Riscos PLDTF</strong> \u2014 Mesmo com evolução de 4,52%, o score permanece abaixo do ideal devido à relevância de Alta Criticidade do produto. O impacto temporário deve-se à remoção de um schema em descontinuação, ação que já está sendo tratada pelo time técnico." + "<br><br>" + "<strong>Rentabilidade de Investimento</strong> \u2014 Com crescimento de 0,67%, o indicador atingiu 88,33%, mantendo-se em aceitável, sendo abaixo do esperado para a média criticidade. O patamar atual reflete a revisão em andamento das regras aplicadas para assegurar o alinhamento ao cenário real das tabelas, alta taxa de chamados atingindo 653 sendo concentrado em Base Indisponível e Job/Malha com Erro de Execução." + "<br><br>" + "<strong>Restritivo</strong> \u2014 Retração de 6,04% em produto de média criticidade devido à instabilidade nos pipelines, que gerou indisponibilidade temporária de dados para consumo. Os tech leads atuaram prontamente na correção e um comunicado oficial foi enviado sobre a manutenção dos processos, já colhendo resultados, estando atualmente 97,03%.",
+    tabela_extr: "<br><strong>Kunumi</strong> \u2014 No contexto do Projeto Kunumi, a modernização do monitoramento do Comportamental PJ evolui com mapeamento concluído e ampliação de escopo por meio de IA aplicada à Qualidade de Dados. A curadoria técnica está em fase final, com conclusão prevista para 12/06. Na sequência, a implementação das novas métricas deverá elevar o score do produto. O projeto inclui ainda o expurgo de tabelas obsoletas, conduzido em alinhamento contínuo com os responsáveis pelos dados, reforçando a governança. A entrega completa está estimada para jun/2026." + "<br><br>" + "<strong>CMR - Comprometimento Máximo de Renda</strong> \u2014 Em tratativa via sala de guerra junto à superintendência, identificou-se que a redução de aproximadamente 2 mil clientes elegíveis originou-se de um desvio na variável de book. A análise de Qualidade de Dados aponta um gap, visto que o processamento ocorre em uma camada de trabalho (WKR) sem monitoramento ativo, limitando visibilidade e governança — hoje restrito às fases iniciais. Como plano de ação, será avaliada a evolução da arquitetura para camadas estruturadas (Silver/Gold) ou sua formalização como Produto de Dados, garantindo monitoramento contínuo.",
   },
   meses: ['Mai/26','Abr/26','Mar/26','Fev/26','Jan/26'],
   produtos: [
-    {nome:'Dados Publicos Socioeconomicos e Demograficos',gestor:'Gestao Corporativa de Riscos',scores:[80.43,72.11,68.09,68.30,74.13],chamados:45,dim:'Disponibilidade',crit:1},
-    {nome:'Operacao e Repasse FINAME BNDES',gestor:'ID - Financas',scores:[99.46,87.66,100.00,100.00,78.79],chamados:3,dim:'Disponibilidade',crit:1},
-    {nome:'Rating de Risco PLDTF',gestor:'ID - Seguranca',scores:[71.43,86.96,80.00,83.33,87.85],chamados:2,dim:'Unicidade',crit:3},
-    {nome:'Rentabilidade de Investimento',gestor:'BU Wealth',scores:[87.81,88.38,88.18,87.66,88.33],chamados:653,dim:'Consistencia',crit:2},
+    {nome:'Dados Publicos Socioeconomicos e Demograficos',gestor:'Controle Integrado de Riscos',scores:[80.43,72.11,68.09,68.30,74.13],chamados:45,dim:'Disponibilidade',crit:1},
+    {nome:'Operacao e Repasse FINAME BNDES',gestor:'Controladoria',scores:[99.46,87.66,100.00,100.00,78.79],chamados:3,dim:'Disponibilidade',crit:1},
+    {nome:'Rating de Risco PLDTF',gestor:'Segurança Corporativa',scores:[71.43,86.96,80.00,83.33,87.85],chamados:2,dim:'Unicidade',crit:3},
+    {nome:'Rentabilidade de Investimento',gestor:'Investimentos',scores:[87.81,88.38,88.18,87.66,88.33],chamados:653,dim:'Consistencia',crit:2},
     {nome:'Autentificacao de Usuarios - Canais Digitais',gestor:'Bradesco Experience',scores:[110.00,110.00,110.00,90.19,92.40],chamados:6,dim:'Completude',crit:1},
     {nome:'Restritivo',gestor:'Credito',scores:[99.82,99.57,100.00,98.98,92.94],chamados:9,dim:'Disponibilidade',crit:2},
-    {nome:'Simulador de Metricas de Risco de Contraparte de Derivativos CVA',gestor:'Inteligencia de Dados',scores:[110.00,110.00,99.71,92.96,94.89],chamados:42,dim:'Disponibilidade',crit:1},
-    {nome:'Folha de Pagamento',gestor:'BBI - Diretoria',scores:[97.32,96.38,97.36,95.46,95.09],chamados:5,dim:'Disponibilidade',crit:1},
-    {nome:'Pagamento Cobranca e Renegociacao de Dividas',gestor:'DRC',scores:[98.75,98.13,99.10,98.17,95.67],chamados:2,dim:'Disponibilidade',crit:3},
-    {nome:'Pesquisa de Satisfação Customer Satisfaction',gestor:'Bradesco Experience',scores:[93.29,28.99,75.47,95.12,95.91],chamados:8,dim:'Completude',crit:1},
- 
+    {nome:'Simulador de Metricas de Risco de Contraparte de Derivativos CVA',gestor:'Controle Integrado de Riscos',scores:[110.00,110.00,99.71,92.96,94.89],chamados:42,dim:'Disponibilidade',crit:1}, 
   ],
   tendencia: {abertos:[1],concluidos:[1]},
   mediaDias: {data:[1]},
@@ -834,7 +837,7 @@ function getCtx(id){const el=document.getElementById(id);if(!el)return null;dest
 // ─── APPLY DATA TO UI ───
 function applyData(){
   // Header
-  document.getElementById('bltHeaderSub').textContent=`Referência: ${D.periodo} · Gerado em ${D.gerado}`;
+  document.getElementById('bltHeaderSub').textContent=`Referência: ${D.periodo}`;
   // KPIs
   setEl('kpi-score',D.kpis.score);
   setEl('kpi-score-delta',D.kpis.score_delta);
@@ -850,9 +853,9 @@ function applyData(){
   // Analises
   const anaMap={
     'ana-score':'score','ana-prod':'prod','ana-tempo':'tempo','ana-chamados':'chamados','ana-chamados-aberto':'chamados_aberto',
-    'ana-scores-dest':'scores_dest','ana-scores-atenc':'scores_atenc','ana-scores-insight':'scores_insight',
-    'ana-causas-conc':'causas_conc','ana-causas-acoes':'causas_acoes','ana-causas-insight':'causas_insight',
-    'ana-tabela-crit':'tabela_crit','ana-tabela-cham':'tabela_cham','ana-tabela-insight':'tabela_insight'
+    'ana-scores-atenc':'scores_atenc',
+    'ana-causas-conc':'causas_conc','ana-causas-resol':'causas_soluc',
+    'ana-tabela-crit':'tabela_crit','ana-tabela-cham':'tabela_cham', 'ana-tabela-extr':'tabela_extr'
   };
   Object.entries(anaMap).forEach(([id,key])=>setEl(id,D.analises[key]||''));
   // Table
@@ -860,7 +863,7 @@ function applyData(){
   // Charts
   initCharts();
 }
-function setEl(id,val){const e=document.getElementById(id);if(e)e.textContent=val;}
+function setEl(id,val){const e=document.getElementById(id);if(e)e.innerHTML=val;}
 
 // ─── NAV ───
 function goPage(id){
@@ -999,7 +1002,7 @@ function showJsonSchema(e){
   const schema={
     periodo:"string",gerado:"string",
     kpis:{score:"string",score_delta:"string",prod_ativos:0,prod_entregues:0,prod_delta:"string",tempo:0,tempo_delta:"string",chamados:0,chamados_delta:"string",chamados_aberto:0,chamados_aberto_delta:"string"},
-    analises:{score:"string",prod:"string",tempo:"string",chamados:"string",chamados_aberto:"string",scores_dest:"string",scores_atenc:"string",scores_insight:"string",causas_conc:"string",causas_acoes:"string",causas_insight:"string",tabela_crit:"string",tabela_cham:"string",tabela_insight:"string"},
+    analises:{score:"string",prod:"string",tempo:"string",chamados:"string",chamados_aberto:"string",scores_atenc:"string",causas_conc:"string",causas_soluc:"string",tabela_crit:"string",tabela_cham:"string",tabela_extr:"string"},
     meses:["string"],
     produtos:[{nome:"string",gestor:"string",scores:["number|null"],chamados:0,dim:"string",crit:1}],
     tendencia:{abertos:[0],concluidos:[0]},
@@ -1045,6 +1048,76 @@ function downloadEmail(){
   a.download=`boletim_email_${D.periodo.replace(/\s/g,'_')}.html`;a.click();
 }
 
+function downloadEmailPng(){
+  const btn    = document.getElementById('btnPng');
+  const status = document.getElementById('pngStatus');
+
+  // ── 1. Write email HTML into a hidden, off-screen iframe ──────────────────
+  const html = buildEmailHtml();
+  const iframe = document.createElement('iframe');
+  // position off-screen so it doesn't flash
+  iframe.style.cssText = 'position:fixed;left:-9999px;top:0;border:none;';
+  // email is 900px wide — set exactly that so layout is correct
+  iframe.width  = '900';
+  iframe.height = '1';
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentDocument || iframe.contentWindow.document;
+  doc.open(); doc.write(html); doc.close();
+
+  // ── 2. Wait for iframe content to fully render (images + layout) ──────────
+  btn.disabled  = true;
+  btn.textContent = 'Gerando…';
+  status.style.display = 'inline';
+  status.textContent   = 'Renderizando — pode levar alguns segundos…';
+
+  // Use requestAnimationFrame + small timeout to let the iframe paint
+  setTimeout(() => {
+    const iframeDoc  = iframe.contentDocument || iframe.contentWindow.document;
+    const fullHeight = iframeDoc.body.scrollHeight || iframeDoc.documentElement.scrollHeight;
+
+    // Resize iframe to full height so nothing is clipped
+    iframe.height = fullHeight;
+
+    // Small extra delay to ensure reflow after resize
+    setTimeout(() => {
+      html2canvas(iframeDoc.body, {
+        scale       : 3,          // 3× = ~2700px wide, crisp on any screen
+        useCORS     : true,
+        allowTaint  : true,
+        width       : 900,
+        height      : fullHeight,
+        windowWidth : 900,
+        scrollX     : 0,
+        scrollY     : 0,
+        backgroundColor: '#ECEEF3'
+      }).then(canvas => {
+        // Download as PNG
+        canvas.toBlob(blob => {
+          const url = URL.createObjectURL(blob);
+          const a   = document.createElement('a');
+          a.href    = url;
+          a.download = `boletim_email_${D.periodo.replace(/\s/g,'_')}.png`;
+          a.click();
+          URL.revokeObjectURL(url);
+
+          // Clean up
+          document.body.removeChild(iframe);
+          btn.disabled    = false;
+          btn.textContent = 'Download PNG';
+          status.style.display = 'none';
+        }, 'image/png');
+      }).catch(err => {
+        console.error('html2canvas error:', err);
+        document.body.removeChild(iframe);
+        btn.disabled    = false;
+        btn.textContent = 'Download PNG';
+        status.textContent = 'Erro ao gerar imagem. Tente novamente.';
+      });
+    }, 300);
+  }, 600);
+}
+
 function buildEmailHtml(){
   // ── Capture charts (only causas — scores chart removed) ─────────────────────
   const causasCanvas = document.getElementById('cCausas');
@@ -1071,14 +1144,15 @@ function buildEmailHtml(){
      </td></tr>`;
 
   // Analysis strip — solid bg color, no gradient
-  const ana = (color, label, text) =>
+  const ana = (color, bgcolor, label, text) =>
     `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:0"><tr>
-       <td style="width:3px;background:${color};font-size:1px;line-height:1px">&nbsp;</td>
-       <td style="background:${color}18;padding:9px 13px">
-         <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:${color};margin-bottom:3px;font-family:'Segoe UI',Helvetica,Arial,sans-serif">${label}</div>
-         <div style="font-size:11px;color:#5C6180;line-height:1.6;font-style:italic;font-family:'Segoe UI',Helvetica,Arial,sans-serif">${text}</div>
-       </td>
-     </tr></table>`;
+      <td style="background:${bgcolor}; border-left:3px solid ${color}; padding:9px 13px">
+        <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:${color};margin-bottom:3px;font-family:'Segoe UI',Helvetica,Arial,sans-serif">${label}</div>
+        <div style="font-size:11px;color:#5C6180;line-height:1.6;font-style:italic;font-family:'Segoe UI',Helvetica,Arial,sans-serif">${text}</div>
+      </td>
+    </tr></table>`;
+
+
 
   // Spacer between ana strips
   const anaSpacer = `<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="height:6px;font-size:1px;line-height:1px">&nbsp;</td></tr></table>`;
@@ -1114,7 +1188,7 @@ function buildEmailHtml(){
     return `<tr style="background:${bg}">
       <td style="padding:8px 10px;border-bottom:1px solid #E2E4EA;white-space:nowrap;font-family:'Segoe UI',Helvetica,Arial,sans-serif">
         <table cellpadding="0" cellspacing="0" border="0"><tr>
-          <td style="width:8px;height:8px;background:${cClr};font-size:1px;line-height:8px">&nbsp;</td>
+          <td><div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${cClr}"></div></td>
           <td style="padding-left:5px;font-size:10px;font-weight:700;color:${cClr}">${cLbl}</td>
         </tr></table>
       </td>
@@ -1199,15 +1273,11 @@ function buildEmailHtml(){
                      it.querySelector('.po-item-tag')?.classList.contains('tag-init')?'#3B6BF5':
                      it.querySelector('.po-item-tag')?.classList.contains('tag-ops')?'#00C07A':'#7C4DFF';
       return `<tr>
-        <td style="width:6px;padding-top:2px;vertical-align:top">
-          <table cellpadding="0" cellspacing="0" border="0"><tr>
-            <td style="width:5px;height:5px;background:#c01137;font-size:1px;line-height:5px">&nbsp;</td>
-          </tr></table>
+        <td style="width:6px;padding-top:20px;vertical-align:top">
+          
         </td>
-        <td style="padding-left:8px;padding-bottom:10px">
-          <table cellpadding="0" cellspacing="0" border="0" style="margin-bottom:4px"><tr>
-            <td style="background:${tagClr}22;padding:2px 6px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:${tagClr};font-family:'Segoe UI',Helvetica,Arial,sans-serif">${tag}</td>
-          </tr></table>
+        <td style="padding-left:8px;padding-bottom:10px;padding-top:10px">
+          
           <div style="font-size:11px;font-weight:700;color:#1A1D2E;line-height:1.35;margin-bottom:3px;font-family:'Segoe UI',Helvetica,Arial,sans-serif">${ttl}</div>
           <div style="font-size:10px;color:#5C6180;line-height:1.5;font-family:'Segoe UI',Helvetica,Arial,sans-serif">${desc}</div>
         </td>
@@ -1262,7 +1332,7 @@ function buildEmailHtml(){
         <td style="border:1px solid rgba(255,255,255,.25);padding:3px 12px;font-size:9px;font-weight:700;color:rgba(255,255,255,.8);text-transform:uppercase;letter-spacing:.1em;font-family:'Segoe UI',Helvetica,Arial,sans-serif">Boletim Mensal · Inteligência de Dados</td>
       </tr></table>
       <div style="font-size:24px;font-weight:800;color:#ffffff;line-height:1.05;margin-bottom:8px;font-family:'Segoe UI',Helvetica,Arial,sans-serif">Boletim de Qualidade de Dados</div>
-      <div style="font-size:12px;color:rgba(255,255,255,.65);font-family:'Segoe UI',Helvetica,Arial,sans-serif">Referência: <strong style="color:#ffffff">${D.periodo}</strong> &nbsp;·&nbsp; Gerado em ${D.gerado}</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.65);font-family:'Segoe UI',Helvetica,Arial,sans-serif">Referência: <strong style="color:#ffffff">${D.periodo}</strong> &nbsp;</div>
     </td></tr></table>
   </td></tr>
 
@@ -1270,11 +1340,11 @@ function buildEmailHtml(){
   ${secHd('Resumo Executivo')}
   <tr><td style="padding:14px ${pad}px 0;background:#ffffff">
     <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-      ${kpiCard('#c01137','Score Médio',D.kpis.score,D.kpis.score_delta,'#00C07A')}
-      ${kpiCard('#00C07A','Ativos de Dados',D.kpis.prod_ativos,D.kpis.prod_delta)}
-      ${kpiCard('#3B6BF5','Entregues no Mês',D.kpis.prod_entregues,D.kpis.prod_delta)}
-      ${kpiCard('#F5A623','Taxa de Resolução',D.kpis.chamados+'%',D.kpis.chamados_delta)}
-      ${kpiCard('#c01137','Chamados Fora do Prazo',D.kpis.chamados_aberto,D.kpis.chamados_aberto_delta)}
+      ${kpiCard('#00C07A','Score Médio',D.kpis.score,D.kpis.score_delta,'#00C07A')}
+      ${kpiCard('#00C07A','Ativos de Dados',D.kpis.prod_ativos,D.kpis.prod_delta,'#00C07A')}
+      ${kpiCard('#3B6BF5','Tempo médio de Entrega',D.kpis.tempo,D.kpis.tempo_delta,'#00C07A')}
+      ${kpiCard('#F5A623','Taxa de Resolução Histórica',D.kpis.chamados+'%',D.kpis.chamados_delta,'#FF2C2C')}
+      ${kpiCard('#c01137','Chamados Fora do Prazo',D.kpis.chamados_aberto,D.kpis.chamados_aberto_delta,'#FF2C2C')}
     </tr></table>
   </td></tr>
 
@@ -1282,22 +1352,22 @@ function buildEmailHtml(){
   <tr><td style="padding:10px ${pad}px 24px;background:#ffffff">
     <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
       <td width="${Math.floor(inner/2)-6}" style="vertical-align:top;padding-right:6px">
-        ${ana('#c01137','Score Médio Geral',D.analises.score)}
+        ${ana('#00C07A','#e7f9f2','Score Médio Geral',D.analises.score)}
         ${anaSpacer}
-        ${ana('#3B6BF5','Tempo de Entrega',D.analises.tempo)}
+        ${ana('#3B6BF5','#edf1fe','Tempo de Entrega',D.analises.tempo)}
         ${anaSpacer}
-        ${ana('#c01137','Chamados Fora do Prazo',D.analises.chamados_aberto)}
+        ${ana('#c01137','#f9e9ec','Chamados Fora do Prazo',D.analises.chamados_aberto)}
       </td>
       <td width="${Math.floor(inner/2)-6}" style="vertical-align:top;padding-left:6px">
-        ${ana('#00C07A','Ativos de Dados',D.analises.prod)}
+        ${ana('#00C07A','#e7f9f2','Ativos de Dados',D.analises.prod)}
         ${anaSpacer}
-        ${ana('#F5A623','Taxa de Resolução',D.analises.chamados)}
+        ${ana('#F5A623','#fef7ea','Taxa de Resolução',D.analises.chamados)}
       </td>
     </tr></table>
   </td></tr>
 
   <!-- TABELA CONSOLIDADA -->
-  ${secHd('Tabela Consolidada — Ativos Monitorados')}
+  ${secHd('Produtos com Score abaixo de 95%')}
   <tr><td style="padding:14px ${pad}px 8px;background:#ffffff">
     <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #E2E4EA">
       <tr style="background:#F4F5F7">
@@ -1315,11 +1385,12 @@ function buildEmailHtml(){
   </td></tr>
   <!-- Table analyses below -->
   <tr><td style="padding:0 ${pad}px 24px;background:#ffffff">
-    ${ana('#c01137','Distribuição por Criticidade',D.analises.tabela_crit)}
+    ${ana('#c01137','#f9e9ec','Distribuição por Criticidade',D.analises.tabela_crit)}
     ${anaSpacer}
-    ${ana('#F5A623','Volume de Chamados',D.analises.tabela_cham)}
+    ${ana('#F5A623','#fef7ea','Análise de Desempenho e Impactos',D.analises.tabela_cham)}
     ${anaSpacer}
-    ${ana('#8A8FA8','Insight',D.analises.tabela_insight)}
+    ${ana('#c01137','#f9e9ec','Ações Estratégicas',D.analises.tabela_extr)}
+    ${anaSpacer}
   </td></tr>
 
   <!-- CAUSAS — full width image, analyses below -->
@@ -1329,15 +1400,14 @@ function buildEmailHtml(){
     <img src="${causasImg}" width="${inner}" style="width:100%;max-width:${inner}px;display:block;border:1px solid #E2E4EA" alt="Causas-Raiz">
   </td></tr>
   <tr><td style="padding:0 ${pad}px 24px;background:#ffffff">
-    ${ana('#c01137','Concentração',D.analises.causas_conc)}
+    ${ana('#c01137','#f9e9ec','Destaque',D.analises.causas_conc)}
     ${anaSpacer}
-    ${ana('#3B6BF5','Ações Previstas',D.analises.causas_acoes)}
+    ${ana('#F5A623','#fef7ea','Solução',D.analises.causas_soluc)}
     ${anaSpacer}
-    ${ana('#8A8FA8','Insight',D.analises.causas_insight)}
   </td></tr>` : ''}
 
   <!-- ENTREGAS POR SQUAD -->
-  ${secHd('Entregas por Squad')}
+  ${secHd('Principais Entregas do Mês')}
   <tr><td style="padding:14px ${pad}px 24px;background:#ffffff">
     <table width="100%" cellpadding="0" cellspacing="0" border="0">
       ${poRows}
@@ -1363,7 +1433,7 @@ function buildEmailHtml(){
   <!-- FOOTER — solid color, no gradient -->
   <tr><td style="background:#8C0F3B;padding:18px ${pad}px">
     <div style="font-size:13px;font-weight:700;color:#ffffff;font-family:'Segoe UI',Helvetica,Arial,sans-serif">Boletim de Qualidade de Dados — ${D.periodo}</div>
-    <div style="font-size:10px;color:rgba(255,255,255,.55);margin-top:3px;font-family:'Segoe UI',Helvetica,Arial,sans-serif">Gerado automaticamente · Inteligência de Dados / Bradesco</div>
+    <div style="font-size:10px;color:rgba(255,255,255,.55);margin-top:3px;font-family:'Segoe UI',Helvetica,Arial,sans-serif">· Inteligência de Dados / Bradesco</div>
   </td></tr>
 
 </table>
